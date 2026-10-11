@@ -252,7 +252,7 @@ function startPaperRunner(sid) {
 }
 app.get('/api/bot/status', auth, (req, res) => {
   const runner = botRunners.get(req.cookies.sid);
-  res.json({ ok: true, enabled: botStates.get(req.cookies.sid) === true, running: Boolean(runner?.running), cycles: runner?.cycles || 0, error: runner?.error || null, last_started_at: runner?.last_started_at || null, last_finished_at: runner?.last_finished_at || null, last_polled_at: runner?.last_polled_at || null, watermark: runner?.watermark || {}, mode: 'paper_observation', ordersEnabled: false });
+  res.json({ ok: true, enabled: botStates.get(req.cookies.sid) === true, observing: Boolean(runner?.timer), running: Boolean(runner?.running), cycles: runner?.cycles || 0, error: runner?.error || null, last_started_at: runner?.last_started_at || null, last_finished_at: runner?.last_finished_at || null, last_polled_at: runner?.last_polled_at || null, watermark: runner?.watermark || {}, mode: 'paper_observation', ordersEnabled: false });
 });
 
 app.post('/api/bot/toggle', auth, (req, res) => {

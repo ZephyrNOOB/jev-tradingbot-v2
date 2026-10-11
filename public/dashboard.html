@@ -98,7 +98,7 @@ async function refreshBot() {
   button.textContent = bot.enabled ? 'BOT ON' : 'BOT OFF';
   button.classList.toggle('bot-enabled', bot.enabled);
   button.setAttribute('aria-pressed', String(bot.enabled));
-  button.title = bot.running ? `Paper cycle running · ${bot.cycles} completed` : (bot.error || (bot.enabled ? 'Paper runner starting' : 'Paper runner stopped'));
+  button.title = bot.running ? `Paper cycle running · ${bot.cycles} completed` : (bot.error || (bot.enabled ? 'Trading bot ready' : 'Trading bot stopped'));
   const runtime = document.getElementById('botRuntime');
   runtime.textContent = bot.error ? 'PAPER ERROR' : bot.running ? `PAPER RUNNING · ${bot.cycles}` : bot.enabled ? `PAPER ON · ${bot.cycles} CYCLES` : 'PAPER STOPPED';
   runtime.classList.toggle('bot-runtime-error', Boolean(bot.error));
