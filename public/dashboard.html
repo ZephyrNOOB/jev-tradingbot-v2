@@ -26,7 +26,7 @@
       <div class="header-actions"><span id="userInfo" style="font-family:var(--mono);font-size:12px;color:var(--muted)"></span><span id="headerConnection" class="header-connection is-offline">CONNECTION OFFLINE</span><button id="botToggle" class="bot-toggle" onclick="toggleBot()">BOT OFF</button><span id="botRuntime" class="bot-runtime">PAPER STOPPED</span></div>
     </div>
 
-    <section class="market-charts" aria-labelledby="marketChartsTitle"><div class="charts-header"><div><h3 id="marketChartsTitle">LIVE MARKET CHARTS</h3><p class="muted mono">5M closed candles · read-only observer · refresh 60s</p></div><span id="chartsUpdated" class="muted mono">WAITING</span></div><div id="pairCharts" class="pair-charts"></div></section>
+    <section class="market-charts" aria-labelledby="marketChartsTitle"><div class="charts-header"><div><h3 id="marketChartsTitle">LIVE MARKET CHARTS</h3><p class="muted mono">5M closed candles · read-only observer · refresh 5s</p></div><span id="chartsUpdated" class="muted mono">LIVE --:--:--</span></div><div id="pairCharts" class="pair-charts"></div></section>
     <div class="card workflow-office"><div class="office-header"><div><h3 style="font-size:14px;margin-bottom:6px">V2 WORKFLOW OFFICE</h3><p class="muted mono">Read-only paper execution monitor · orders disabled</p></div><span class="office-live"><i></i> PAPER MODE</span></div><div class="workflow-track" id="workflowTrack"></div><p id="v2Status" class="muted mono" style="margin-top:14px">Loading paper status...</p><div id="v2Pairs" class="table-wrap"></div></div>
 </div>
 <script>
@@ -48,11 +48,14 @@ function drawChart(canvas, candles) {
   candles.forEach((c, i) => { const x = i * width / Math.max(1, candles.length - 1), y = height - ((c.close - min) / range) * (height - 10) - 5; i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.stroke();
   ctx.fillStyle = '#6b6966'; ctx.font = '10px monospace'; ctx.fillText(max.toFixed(2), 8, 12); ctx.fillText(min.toFixed(2), 8, height - 4);
 }
+let chartsRefreshing = false;
 async function refreshCharts() {
+  if (chartsRefreshing) return;
+  chartsRefreshing = true;
   const root = document.getElementById('pairCharts');
   if (!root.children.length) root.innerHTML = chartPairs.map(symbol => `<article class="pair-chart"><div class="pair-chart-title"><strong>${symbol}</strong><span id="chartState-${symbol}">LOADING</span></div><canvas id="chart-${symbol}" aria-label="${symbol} 5 minute price chart"></canvas></article>`).join('');
   await Promise.all(chartPairs.map(async symbol => { const state = document.getElementById(`chartState-${symbol}`); try { const result = await api(`/chart/candles?symbol=${symbol}&interval=5m&limit=120`); if (!result?.ok) throw new Error(result?.error || 'Unavailable'); drawChart(document.getElementById(`chart-${symbol}`), result.candles); state.textContent = `${result.candles.length} CANDLES`; } catch { state.textContent = 'ERROR'; } }));
-  document.getElementById('chartsUpdated').textContent = `UPDATED ${new Date().toLocaleTimeString()}`;
+  document.getElementById('chartsUpdated').textContent = `LIVE ${new Date().toLocaleTimeString()}`;
 }
 
 async function init() {
@@ -105,7 +108,9 @@ async function logout() {
 
 init();
 refreshCharts();
-setInterval(() => { refreshCharts(); refreshBot(); }, 60_000);
+setInterval(refreshCharts, 5_000);
+setInterval(refreshBot, 60_000);
+setInterval(() => { const el = document.getElementById('chartsUpdated'); if (el) el.textContent = `LIVE ${new Date().toLocaleTimeString()}`; }, 1_000);
 </script>
 </body>
 </html>
