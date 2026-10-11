@@ -36,6 +36,9 @@ const sessions = new Map();
 const botStates = new Map();
 const botRunners = new Map();
 const PAPER_INTERVAL_MS = 60_000;
+const PAPER_STALE_AFTER_MS = 15 * 60_000;
+const PAPER_POLL_TIMEOUT_MS = 10_000;
+const PAPER_SYMBOLS = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XAUUSDT'];
 const DB_PATH = path.join(__dirname, 'jev.db');
 const KEY_PATH = path.join(__dirname, '.jev-master-key');
 const isProduction = process.env.NODE_ENV === 'production';
@@ -189,35 +192,69 @@ app.get('/api/me', auth, (req, res) => {
   res.json(u || {});
 });
 
-function runPaperCycle(sid) {
+async function readClosedCandleWatermark() {
+  const now = Date.now();
+  const signatures = {};
+  for (const symbol of PAPER_SYMBOLS) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), PAPER_POLL_TIMEOUT_MS);
+    try {
+      const url = BINANCE_DATA_BASE + '/fapi/v1/klines?symbol=' + encodeURIComponent(symbol) + '&interval=5m&limit=2';
+      const response = await fetchBinance(url, { signal: controller.signal });
+      const data = await response.json();
+      if (!response.ok || !Array.isArray(data)) throw new Error(data?.msg || 'Candle poll failed');
+      const latest = data.filter(row => Number(row[6]) < now).at(-1);
+      if (!latest) throw new Error('No closed 5m candle: ' + symbol);
+      const age = now - Number(latest[6]);
+      if (age < 0 || age > PAPER_STALE_AFTER_MS) throw new Error('Stale 5m candle: ' + symbol);
+      signatures[symbol] = Number(latest[6]);
+    } finally { clearTimeout(timeout); }
+  }
+  return signatures;
+}
+function stopPaperRunner(sid, error = null) {
+  const runner = botRunners.get(sid);
+  if (!runner) return;
+  if (runner.timer) clearInterval(runner.timer);
+  runner.timer = null;
+  runner.running = false;
+  if (error) runner.error = error;
+  botStates.set(sid, false);
+}
+async function runPaperCycle(sid) {
   const runner = botRunners.get(sid);
   if (!runner || runner.running) return;
   runner.running = true;
   runner.last_started_at = Date.now();
-  execFile(process.env.PYTHON || 'python', [path.join(__dirname, 'v2', 'scripts', 'binance_demo_paper_pipeline.py')], { cwd: __dirname, timeout: 90_000, windowsHide: true, maxBuffer: 1_000_000 }, (error) => {
+  try {
+    const signatures = await readClosedCandleWatermark();
+    const changed = PAPER_SYMBOLS.some(symbol => runner.watermark[symbol] !== signatures[symbol]);
+    runner.last_polled_at = Date.now();
+    runner.watermark = signatures;
+    if (!changed) return;
+    await new Promise((resolve, reject) => execFile(process.env.PYTHON || 'python', [path.join(__dirname, 'v2', 'scripts', 'binance_demo_paper_pipeline.py')], { cwd: __dirname, timeout: 90_000, windowsHide: true, maxBuffer: 1_000_000 }, error => error ? reject(error) : resolve()));
+    runner.error = null;
+    runner.cycles += 1;
+  } catch (error) {
+    stopPaperRunner(sid, error?.name === 'AbortError' ? 'candle_poll_timeout' : (error?.message || 'paper_cycle_failed'));
+  } finally {
     runner.running = false;
     runner.last_finished_at = Date.now();
-    if (error) runner.error = 'paper_cycle_failed';
-    else { runner.error = null; runner.cycles += 1; }
-  });
+  }
 }
 function startPaperRunner(sid) {
   const existing = botRunners.get(sid);
-  if (existing) return existing;
-  const runner = { timer: null, running: false, cycles: 0, error: null, last_started_at: null, last_finished_at: null };
+  if (existing?.timer) return existing;
+  const runner = existing || { timer: null, running: false, cycles: 0, error: null, watermark: {}, last_started_at: null, last_finished_at: null, last_polled_at: null };
+  runner.error = null;
   runner.timer = setInterval(() => runPaperCycle(sid), PAPER_INTERVAL_MS);
   botRunners.set(sid, runner);
   runPaperCycle(sid);
   return runner;
 }
-function stopPaperRunner(sid) {
-  const runner = botRunners.get(sid);
-  if (runner) clearInterval(runner.timer);
-  botRunners.delete(sid);
-}
 app.get('/api/bot/status', auth, (req, res) => {
   const runner = botRunners.get(req.cookies.sid);
-  res.json({ ok: true, enabled: botStates.get(req.cookies.sid) === true, running: Boolean(runner?.running), cycles: runner?.cycles || 0, error: runner?.error || null, last_started_at: runner?.last_started_at || null, last_finished_at: runner?.last_finished_at || null, mode: 'paper_observation', ordersEnabled: false });
+  res.json({ ok: true, enabled: botStates.get(req.cookies.sid) === true, running: Boolean(runner?.running), cycles: runner?.cycles || 0, error: runner?.error || null, last_started_at: runner?.last_started_at || null, last_finished_at: runner?.last_finished_at || null, last_polled_at: runner?.last_polled_at || null, watermark: runner?.watermark || {}, mode: 'paper_observation', ordersEnabled: false });
 });
 
 app.post('/api/bot/toggle', auth, (req, res) => {
