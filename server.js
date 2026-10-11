@@ -16,8 +16,6 @@ app.disable('x-powered-by');
 app.set('trust proxy', 1);
 app.use(express.json({ limit: '64kb' }));
 app.use(cookieParser());
-app.use(['/api/backtest'], (req, res) => res.status(404).json({ error: 'Backtest disabled' }));
-app.get(['/backtest.html', '/ablation.html'], (req, res) => res.status(404).send('Not found'));
 app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
@@ -479,6 +477,7 @@ async function fetchBinanceCandles(symbol, interval, limit) {
 }
 app.get('*', (req, res) => {
   if (req.path.startsWith('/api/')) return res.status(404).json({ error: 'Not found' });
+  if (req.path.endsWith('.html') && !['/index.html', '/dashboard.html', '/exchange.html', '/history.html'].includes(req.path)) return res.status(404).send('Not found');
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
