@@ -171,6 +171,7 @@ app.post('/api/login', async (req, res) => {
   const csrfToken = newToken();
   sessions.set(sid, row.id);
   botStates.set(sid, false);
+  startPaperRunner(sid);
   const cookieOptions = { httpOnly: true, sameSite: 'strict', secure: isHttps, maxAge: 86400000, path: '/' };
   res.cookie('sid', sid, cookieOptions);
   res.cookie('csrf', csrfToken, { ...cookieOptions, httpOnly: false });
@@ -264,7 +265,7 @@ app.get('/api/bot/status', auth, (req, res) => {
 app.post('/api/bot/toggle', auth, (req, res) => {
   const enabled = req.body?.enabled === true;
   botStates.set(req.cookies.sid, enabled);
-  if (enabled) startPaperRunner(req.cookies.sid); else stopPaperRunner(req.cookies.sid);
+  startPaperRunner(req.cookies.sid);
   const runner = botRunners.get(req.cookies.sid);
   res.json({ ok: true, enabled, observing: Boolean(runner?.timer), running: Boolean(runner?.running), cycles: runner?.cycles || 0, mode: 'paper_observation', ordersEnabled: false });
 });
