@@ -34,6 +34,6 @@ Continuation Bullish/Bearish is archived and inactive. CHoCH/MSS and liquidity-s
 - `scripts/confirmation_5m_authoritative.py` — 5M confirmation contract.
 - `scripts/setup_bots_executable.py` — setup-owned plans and validators.
 - `scripts/binance_demo_paper_pipeline.py` — read-only Demo paper pipeline.
-- `artifacts/` — selected backtest, robustness, preflight, observation, and paper evidence.
+- `artifacts/` — Demo preflight, observation, and paper evidence.
 
-Legacy research and generated cache moved to `../_archive/`. Restore only when reproducing historical research.
+Retired research and generated cache are removed from this production workspace.

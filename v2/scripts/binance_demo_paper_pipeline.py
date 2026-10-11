@@ -11,7 +11,7 @@ BASE = "https://demo-fapi.binance.com"
 SYMBOLS = ("BTCUSDT", "ETHUSDT", "SOLUSDT", "XAUUSDT")
 sys.path.insert(0, str(ROOT / "v2" / "scripts"))
 from architecture_v2 import ConfirmationBot, MarketBiasBot, MarketStructureBot, SelectionBot, load_csv, pivots
-from backtest_architecture_v2 import lifecycle_context, setup_context
+from paper_context import lifecycle_context, setup_context
 from setup_bots_executable import build_plan, validate_entry_sl_provenance, validate_plan_economics
 
 def get(path):

@@ -9,7 +9,7 @@ Source artifacts:
 - `v2/artifacts/ARCHITECTURE_V2_BACKTEST.json`
 - `v2/artifacts/ARCHITECTURE_V2_TRADES.json`
 - `v2/scripts/architecture_v2.py`
-- `v2/scripts/backtest_architecture_v2.py`
+- `v2/scripts/paper_context.py`
 - `v2/scripts/setup_bots_executable.py`
 
 ## Shared rule

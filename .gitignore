@@ -5,8 +5,6 @@ jev.db
 *.log
 data/*.csv
 data/*.json
-# Generated research and local archive
-_archive/
 v2/data/
 v2/backtests/
 v2/scripts/__pycache__/
