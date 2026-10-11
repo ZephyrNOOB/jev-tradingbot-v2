@@ -172,7 +172,6 @@ app.post('/api/login', async (req, res) => {
   const csrfToken = newToken();
   sessions.set(sid, row.id);
   botStates.set(sid, false);
-  startMarketObserver(sid);
   const cookieOptions = { httpOnly: true, sameSite: 'strict', secure: isHttps, maxAge: 86400000, path: '/' };
   res.cookie('sid', sid, cookieOptions);
   res.cookie('csrf', csrfToken, { ...cookieOptions, httpOnly: false });
@@ -213,12 +212,12 @@ async function readClosedCandleWatermark() {
   }
   return signatures;
 }
-function startMarketObserver(sid) {
-  if (marketObservers.has(sid)) return marketObservers.get(sid);
+function startMarketObserver() {
+  if (marketObservers.has('global')) return marketObservers.get('global');
   const observer = { timer: null, watermark: {}, error: null, last_polled_at: null };
   const poll = async () => { try { observer.watermark = await readClosedCandleWatermark(); observer.last_polled_at = Date.now(); observer.error = null; } catch (error) { observer.error = error?.name === 'AbortError' ? 'candle_poll_timeout' : (error?.message || 'candle_poll_failed'); } };
   observer.timer = setInterval(poll, PAPER_INTERVAL_MS);
-  marketObservers.set(sid, observer);
+  marketObservers.set('global', observer);
   poll();
   return observer;
 }
@@ -257,7 +256,7 @@ function startPaperRunner(sid) {
   return runner;
 }app.get('/api/bot/status', auth, (req, res) => {
   const runner = botRunners.get(req.cookies.sid);
-  const observer = marketObservers.get(req.cookies.sid);
+  const observer = marketObservers.get('global');
   res.json({ ok: true, enabled: botStates.get(req.cookies.sid) === true, observing: Boolean(observer?.timer), running: Boolean(runner?.running), cycles: runner?.cycles || 0, error: runner?.error || null, observer_error: observer?.error || null, last_started_at: runner?.last_started_at || null, last_finished_at: runner?.last_finished_at || null, last_polled_at: observer?.last_polled_at || null, watermark: observer?.watermark || {}, mode: 'paper_observation', ordersEnabled: false });
 });
 
@@ -266,7 +265,8 @@ app.post('/api/bot/toggle', auth, (req, res) => {
   botStates.set(req.cookies.sid, enabled);
   if (enabled) startPaperRunner(req.cookies.sid); else stopPaperRunner(req.cookies.sid);
   const runner = botRunners.get(req.cookies.sid);
-  res.json({ ok: true, enabled, observing: Boolean(runner?.timer), running: Boolean(runner?.running), cycles: runner?.cycles || 0, mode: 'paper_observation', ordersEnabled: false });
+  const observer = marketObservers.get('global');
+  res.json({ ok: true, enabled, observing: Boolean(observer?.timer), running: Boolean(runner?.running), cycles: runner?.cycles || 0, mode: 'paper_observation', ordersEnabled: false });
 });
 app.get('/api/v2/status', auth, (req, res) => {
   const artifactPath = path.join(__dirname, 'v2', 'artifacts', 'BINANCE_DEMO_PAPER_PIPELINE.json');
@@ -285,6 +285,7 @@ const EXCHANGES = {
 };
 const BINANCE_DEMO_FUTURES_BASE = 'https://demo-fapi.binance.com';
 const BINANCE_DATA_BASE = BINANCE_DEMO_FUTURES_BASE;
+startMarketObserver();
 
 app.get('/api/chart/candles', auth, async (req, res) => {
   const symbol = String(req.query.symbol || '').toUpperCase();
