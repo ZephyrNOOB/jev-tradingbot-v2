@@ -65,6 +65,13 @@ async function refreshCharts() {
 async function refreshV2() {
   const v2 = await api('/v2/status');
   if (!v2?.ok) return;
+  const bot = await api('/bot/status');
+  if (!bot?.enabled) {
+    document.getElementById('workflowTrack').textContent = 'TRADING BOT OFF - V2 WORKFLOW STOPPED';
+    document.getElementById('v2Status').textContent = 'Trading Bot OFF - no workflow execution';
+    document.getElementById('v2Pairs').innerHTML = '';
+    return;
+  }
   const t = v2.artifact.totals;
   const rooms = [['BIAS BOT','1H','Reads closed 1H candles; sets market direction.',t.bias_ready > 0 ? 'READY' : 'WAITING'],['MARKET STRUCTURE BOT','15M','Builds SMC structure and emits BOS / CHoCH evidence.',t.structure_events > 0 ? 'ANALYZING' : 'WAITING'],['CONFIRMATION BOT','5M','Checks retest, rejection, and micro-break confirmation.',t.confirmed_5m > 0 ? 'CONFIRMED' : 'WAITING'],['SELECTION BOT','GATE','Accepts only bias-aligned, causally owned setups.',t.selected > 0 ? 'SELECTED' : 'WAITING'],['SETUP BOT','PLAN','Builds virtual Entry / SL / TP with provenance and economics.',t.paper_plans > 0 ? 'PAPER READY' : 'WAITING']];
   const track = document.getElementById('workflowTrack');
