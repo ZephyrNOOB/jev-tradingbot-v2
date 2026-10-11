@@ -1,0 +1,36 @@
+{
+  "name": "BINANCE_DEMO_WEBSOCKET_OBSERVATION",
+  "status": "PASS",
+  "environment": "demo-fstream",
+  "attempts": [
+    {
+      "attempt": 1,
+      "status": "PASS",
+      "started_at": 1791703291656,
+      "messages": 36,
+      "symbols": [
+        "BTCUSDT",
+        "ETHUSDT",
+        "SOLUSDT",
+        "XAUUSDT"
+      ],
+      "closed_messages": 0
+    },
+    {
+      "attempt": 2,
+      "status": "PASS",
+      "started_at": 1791703302666,
+      "messages": 54,
+      "symbols": [
+        "BTCUSDT",
+        "ETHUSDT",
+        "SOLUSDT",
+        "XAUUSDT"
+      ],
+      "closed_messages": 0
+    }
+  ],
+  "reconnect_attempted": true,
+  "orders_sent": false,
+  "withdrawals_sent": false
+}
