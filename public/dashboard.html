@@ -23,7 +23,7 @@
   <main class="main">
     <div class="page-header">
       <h2 class="page-title">DASHBOARD</h2>
-      <span id="userInfo" style="font-family:var(--mono);font-size:12px;color:var(--muted)"></span>
+      <div class="header-actions"><span id="userInfo" style="font-family:var(--mono);font-size:12px;color:var(--muted)"></span><button id="botToggle" class="bot-toggle" onclick="toggleBot()">BOT OFF</button></div>
     </div>
 
     <div class="card">
@@ -54,6 +54,8 @@ async function init() {
   const me = await api('/me');
   if (!me) return;
   document.getElementById('userInfo').textContent = me.username;
+  const bot = await api('/bot/status');
+  if (bot?.ok) renderBot(bot);
   const v2 = await api('/v2/status');
   if (v2?.ok) {
     const t = v2.artifact.totals;
@@ -74,6 +76,17 @@ async function init() {
   }
 }
 
+function renderBot(bot) {
+  const button = document.getElementById('botToggle');
+  button.textContent = bot.enabled ? 'BOT ON' : 'BOT OFF';
+  button.classList.toggle('bot-enabled', bot.enabled);
+  button.setAttribute('aria-pressed', String(bot.enabled));
+}
+async function toggleBot() {
+  const current = document.getElementById('botToggle').classList.contains('bot-enabled');
+  const result = await api('/bot/toggle', { method: 'POST', body: JSON.stringify({ enabled: !current }) });
+  if (result?.ok) renderBot(result);
+}
 async function logout() {
   await api('/logout', { method: 'POST' });
   window.location.href = '/';

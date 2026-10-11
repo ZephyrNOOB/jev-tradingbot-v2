@@ -32,6 +32,7 @@ app.use((req, res, next) => {
 
 // ponytail: single-process memory session store. upgrade to Redis when multi-instance needed.
 const sessions = new Map();
+const botStates = new Map();
 const DB_PATH = path.join(__dirname, 'jev.db');
 const KEY_PATH = path.join(__dirname, '.jev-master-key');
 const isProduction = process.env.NODE_ENV === 'production';
@@ -163,6 +164,7 @@ app.post('/api/login', async (req, res) => {
   const sid = newToken();
   const csrfToken = newToken();
   sessions.set(sid, row.id);
+  botStates.set(sid, false);
   const cookieOptions = { httpOnly: true, sameSite: 'strict', secure: isHttps, maxAge: 86400000, path: '/' };
   res.cookie('sid', sid, cookieOptions);
   res.cookie('csrf', csrfToken, { ...cookieOptions, httpOnly: false });
@@ -171,6 +173,7 @@ app.post('/api/login', async (req, res) => {
 
 app.post('/api/logout', (req, res) => {
   sessions.delete(req.cookies.sid);
+  botStates.delete(req.cookies.sid);
   res.clearCookie('sid');
   res.json({ ok: true });
 });
@@ -180,6 +183,15 @@ app.get('/api/me', auth, (req, res) => {
   res.json(u || {});
 });
 
+app.get('/api/bot/status', auth, (req, res) => {
+  res.json({ ok: true, enabled: botStates.get(req.cookies.sid) === true, mode: 'paper_observation', ordersEnabled: false });
+});
+
+app.post('/api/bot/toggle', auth, (req, res) => {
+  const enabled = req.body?.enabled === true;
+  botStates.set(req.cookies.sid, enabled);
+  res.json({ ok: true, enabled, mode: 'paper_observation', ordersEnabled: false });
+});
 app.get('/api/v2/status', auth, (req, res) => {
   const artifactPath = path.join(__dirname, 'v2', 'artifacts', 'BINANCE_DEMO_PAPER_PIPELINE.json');
   try {
