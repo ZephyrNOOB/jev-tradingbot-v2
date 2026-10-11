@@ -76,11 +76,15 @@ async function init() {
   }
 }
 
-function renderBot(bot) {
+async function refreshBot() {
+  const bot = await api('/bot/status');
+  if (bot?.ok) renderBot(bot);
+}function renderBot(bot) {
   const button = document.getElementById('botToggle');
   button.textContent = bot.enabled ? 'BOT ON' : 'BOT OFF';
   button.classList.toggle('bot-enabled', bot.enabled);
   button.setAttribute('aria-pressed', String(bot.enabled));
+  button.title = bot.running ? Paper cycle running ·  completed : (bot.error || (bot.enabled ? 'Paper runner starting' : 'Paper runner stopped'));
 }
 async function toggleBot() {
   const current = document.getElementById('botToggle').classList.contains('bot-enabled');

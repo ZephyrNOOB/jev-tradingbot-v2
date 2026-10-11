@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import initSqlJs from 'sql.js';
 import bcrypt from 'bcryptjs';
 import cookieParser from 'cookie-parser';
+import { execFile } from 'node:child_process';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -33,6 +34,8 @@ app.use((req, res, next) => {
 // ponytail: single-process memory session store. upgrade to Redis when multi-instance needed.
 const sessions = new Map();
 const botStates = new Map();
+const botRunners = new Map();
+const PAPER_INTERVAL_MS = 60_000;
 const DB_PATH = path.join(__dirname, 'jev.db');
 const KEY_PATH = path.join(__dirname, '.jev-master-key');
 const isProduction = process.env.NODE_ENV === 'production';
@@ -165,6 +168,7 @@ app.post('/api/login', async (req, res) => {
   const csrfToken = newToken();
   sessions.set(sid, row.id);
   botStates.set(sid, false);
+  botRunners.delete(sid);
   const cookieOptions = { httpOnly: true, sameSite: 'strict', secure: isHttps, maxAge: 86400000, path: '/' };
   res.cookie('sid', sid, cookieOptions);
   res.cookie('csrf', csrfToken, { ...cookieOptions, httpOnly: false });
@@ -174,6 +178,8 @@ app.post('/api/login', async (req, res) => {
 app.post('/api/logout', (req, res) => {
   sessions.delete(req.cookies.sid);
   botStates.delete(req.cookies.sid);
+  const runner = botRunners.get(req.cookies.sid);
+  if (runner) { clearInterval(runner.timer); botRunners.delete(req.cookies.sid); }
   res.clearCookie('sid');
   res.json({ ok: true });
 });
@@ -183,14 +189,43 @@ app.get('/api/me', auth, (req, res) => {
   res.json(u || {});
 });
 
+function runPaperCycle(sid) {
+  const runner = botRunners.get(sid);
+  if (!runner || runner.running) return;
+  runner.running = true;
+  runner.last_started_at = Date.now();
+  execFile(process.env.PYTHON || 'python', [path.join(__dirname, 'v2', 'scripts', 'binance_demo_paper_pipeline.py')], { cwd: __dirname, timeout: 90_000, windowsHide: true, maxBuffer: 1_000_000 }, (error) => {
+    runner.running = false;
+    runner.last_finished_at = Date.now();
+    if (error) runner.error = 'paper_cycle_failed';
+    else { runner.error = null; runner.cycles += 1; }
+  });
+}
+function startPaperRunner(sid) {
+  const existing = botRunners.get(sid);
+  if (existing) return existing;
+  const runner = { timer: null, running: false, cycles: 0, error: null, last_started_at: null, last_finished_at: null };
+  runner.timer = setInterval(() => runPaperCycle(sid), PAPER_INTERVAL_MS);
+  botRunners.set(sid, runner);
+  runPaperCycle(sid);
+  return runner;
+}
+function stopPaperRunner(sid) {
+  const runner = botRunners.get(sid);
+  if (runner) clearInterval(runner.timer);
+  botRunners.delete(sid);
+}
 app.get('/api/bot/status', auth, (req, res) => {
-  res.json({ ok: true, enabled: botStates.get(req.cookies.sid) === true, mode: 'paper_observation', ordersEnabled: false });
+  const runner = botRunners.get(req.cookies.sid);
+  res.json({ ok: true, enabled: botStates.get(req.cookies.sid) === true, running: Boolean(runner?.running), cycles: runner?.cycles || 0, error: runner?.error || null, last_started_at: runner?.last_started_at || null, last_finished_at: runner?.last_finished_at || null, mode: 'paper_observation', ordersEnabled: false });
 });
 
 app.post('/api/bot/toggle', auth, (req, res) => {
   const enabled = req.body?.enabled === true;
   botStates.set(req.cookies.sid, enabled);
-  res.json({ ok: true, enabled, mode: 'paper_observation', ordersEnabled: false });
+  if (enabled) startPaperRunner(req.cookies.sid); else stopPaperRunner(req.cookies.sid);
+  const runner = botRunners.get(req.cookies.sid);
+  res.json({ ok: true, enabled, running: Boolean(runner?.running), cycles: runner?.cycles || 0, mode: 'paper_observation', ordersEnabled: false });
 });
 app.get('/api/v2/status', auth, (req, res) => {
   const artifactPath = path.join(__dirname, 'v2', 'artifacts', 'BINANCE_DEMO_PAPER_PIPELINE.json');
