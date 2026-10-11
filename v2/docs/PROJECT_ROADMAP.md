@@ -127,20 +127,16 @@ Status: COMPLETE
 
 Baseline run: `v2/artifacts/ARCHITECTURE_V2_BACKTEST.json` covers 105,119 closed 5M bars, 35,040 15M bars, and 8,760 1H bars with 1,090 funding records. Funnel: 9,790 structure events → 1,470 confirmed 5M events → 395 selected → 277 planned/executed. Chronological holdout: 83 trades, net PnL `171.56262907493908`; deterministic replay and no-lookahead checks PASS. This remains diagnostic evidence only; no setup promotion or production performance claim.
 
-## Stage 7 — Diagnose and iterate
+## Stage 7 — Evidence review (closed, no promotion)
 
-Status: IN_PROGRESS
+Status: CLOSED — EXPERIMENT ONLY
 
-Only evidence-backed changes:
+Stage 7 hypotheses were not proven superior to the locked V2 baseline. No experiment changed production behavior, setup selection, market-structure contracts, or the V2 workflow.
 
-```text
-data → analysis → research → hypothesis → one-variable test → decision
-```
-
-## Current gate
+The active architecture remains the Stage 6-locked V2 paper workflow:
 
 ```text
-Stage 7 in progress.
-Stage 6 diagnostic acceptance is complete; audit evidence and run one-variable comparisons.
-Do not enable setup selection, entry, SL/TP, live orders, or strategy PnL backtests.
+1H Bias → 15M MarketStructureBot → 5M ConfirmationBot → SelectionBot → fvg_context / ob_context → virtual Entry/SL/TP → Paper Observer
 ```
+
+Stage 7 results are retained only as research context. Do not resume or promote its hypotheses without a new explicit experiment and acceptance decision.

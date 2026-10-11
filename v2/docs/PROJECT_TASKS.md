@@ -256,50 +256,16 @@ Acceptance: `v2/artifacts/STAGE6_SMC_SETUP_ACCEPTANCE.json` (`passed: true`).
 
 Validation: no-lookahead PASS; deterministic replay PASS; funnel/trade-count match PASS; provenance and MAE/MFE PASS; 83-trade chronological holdout recorded. Results remain diagnostic only; no setup family promoted.
 
-## Stage 7 — Evidence-Based Iteration
+## Stage 7 — Evidence review (closed, no promotion)
 
-Status: IN_PROGRESS
+Status: CLOSED — EXPERIMENT ONLY
 
-Stage 7 baseline: locked diagnostic evidence from Stage 6. First iteration target is evidence review and hypothesis registration; no production behavior change is authorized.
+Stage 7 was evaluation only. Its unproven hypotheses were not promoted and have no effect on the active V2 architecture or runtime.
 
-Audit artifact: 2/artifacts/STAGE7_STAGE6_EVIDENCE_AUDIT.json; reproducible trade-count and holdout assertions PASS.
-
-Tasks:
-
-- [x] close Stage 6 with acceptance evidence;
-- [x] remove abandoned Liquidity Sweep Reversal research artifacts;
-- [x] audit Stage 6 results by setup, side, exit reason, and holdout behavior;
-- [x] register one falsifiable, one-variable hypothesis;
-- [x] run deterministic comparison on stable opportunity keys;
-- [ ] accept or reject hypothesis with evidence.
-
-Required loop:
+Active V2 workflow:
 
 ```text
-data
-→ analysis
-→ external research
-→ falsifiable hypothesis
-→ one-variable change
-→ deterministic test
-→ compare stable opportunity keys
-→ accept/reject
+1H Bias → 15M MarketStructureBot → 5M ConfirmationBot → SelectionBot → fvg_context / ob_context → virtual Entry/SL/TP → Paper Observer
 ```
 
-`r`nCost-qualified target artifact: `v2/artifacts/CONTINUATION_COST_QUALIFIED_TARGET.json`; 33/33 candidates passed modeled-cost filter, but holdout net PnL was -4.9524. Decision: `NO_PRODUCTION_CHANGE`.
-
-Continuation Bullish/Bearish removed from production SetupBot registry and workflow. Research artifacts retained for traceability; active SetupBots: vg_context, ob_context. `r`n`r`n
-
-FVG/OB audit artifact: `v2/artifacts/STAGE7_FVG_OB_EVIDENCE_AUDIT.json`; audit reproducible PASS. FVG holdout: 107 trades, net 200.2385; OB holdout: 10 trades, net 27.7006. Next hypothesis: test stop-first candle-order convention; no production change yet.
-
-## Stage transition record
-
-Current stage: Stage 7
-
-Current status: IN_PROGRESS
-
-Next allowed action: audit locked Stage 6 evidence, register one falsifiable hypothesis, then run one-variable deterministic comparison.
-
-Next forbidden actions: live orders, withdrawals, setup promotion, production execution, and threshold tuning.
-
-Last validated gate: `PASS Stage 6 acceptance; diagnostic-only holdout and replay evidence locked`
+No Stage 7 production change. Any future hypothesis requires a new experiment, deterministic comparison, and explicit acceptance decision.
