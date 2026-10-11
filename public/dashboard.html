@@ -100,8 +100,8 @@ async function refreshBot() {
   button.setAttribute('aria-pressed', String(bot.enabled));
   button.title = bot.running ? `Paper cycle running · ${bot.cycles} completed` : (bot.error || (bot.enabled ? 'Trading bot ready' : 'Trading bot stopped'));
   const runtime = document.getElementById('botRuntime');
-  runtime.textContent = bot.error ? 'PAPER ERROR' : bot.running ? `PAPER RUNNING · ${bot.cycles}` : bot.enabled ? `BOT ON · ${bot.cycles} CYCLES` : bot.observing ? 'PAPER OBSERVER ON · BOT OFF' : 'PAPER OBSERVER OFF';
-  runtime.classList.toggle('bot-runtime-error', Boolean(bot.error));
+  runtime.textContent = bot.running ? `PAPER RUNNING · ${bot.cycles}` : bot.enabled ? `BOT ON · ${bot.cycles} CYCLES` : bot.observing ? 'PAPER OBSERVER ON · BOT OFF' : 'PAPER OBSERVER OFF';
+  runtime.classList.toggle('bot-runtime-error', Boolean(bot.error && bot.enabled));
 }
 async function toggleBot() {
   const current = document.getElementById('botToggle').classList.contains('bot-enabled');

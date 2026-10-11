@@ -215,9 +215,7 @@ async function readClosedCandleWatermark() {
 function stopPaperRunner(sid, error = null) {
   const runner = botRunners.get(sid);
   if (!runner) return;
-  runner.running = false;
   if (error) runner.error = error;
-  botStates.set(sid, false);
 }
 async function runPaperCycle(sid) {
   const runner = botRunners.get(sid);
@@ -229,21 +227,25 @@ async function runPaperCycle(sid) {
     const changed = PAPER_SYMBOLS.some(symbol => runner.watermark[symbol] !== signatures[symbol]);
     runner.last_polled_at = Date.now();
     runner.watermark = signatures;
-    if (!changed) return;
+    runner.observer_error = null;
+    if (!changed || botStates.get(sid) !== true) return;
     await new Promise((resolve, reject) => execFile(process.env.PYTHON || 'python', [path.join(__dirname, 'v2', 'scripts', 'binance_demo_paper_pipeline.py')], { cwd: __dirname, timeout: 90_000, windowsHide: true, shell: process.platform === 'win32', maxBuffer: 1_000_000 }, error => error ? reject(error) : resolve()));
+    runner.pipeline_error = null;
     runner.error = null;
     runner.cycles += 1;
   } catch (error) {
-    stopPaperRunner(sid, error?.name === 'AbortError' ? 'candle_poll_timeout' : (error?.message || 'paper_cycle_failed'));
+    if (runner.last_polled_at) runner.pipeline_error = error?.message || 'paper_cycle_failed';
+    else runner.observer_error = error?.name === 'AbortError' ? 'candle_poll_timeout' : (error?.message || 'candle_poll_failed');
+    runner.error = runner.pipeline_error || runner.observer_error;
+    botStates.set(sid, false);
   } finally {
     runner.running = false;
     runner.last_finished_at = Date.now();
   }
-}
-function startPaperRunner(sid) {
+}function startPaperRunner(sid) {
   const existing = botRunners.get(sid);
   if (existing?.timer) return existing;
-  const runner = existing || { timer: null, running: false, cycles: 0, error: null, watermark: {}, last_started_at: null, last_finished_at: null, last_polled_at: null };
+  const runner = existing || { timer: null, running: false, cycles: 0, error: null, observer_error: null, pipeline_error: null, watermark: {}, last_started_at: null, last_finished_at: null, last_polled_at: null };
   runner.error = null;
   runner.timer = setInterval(() => runPaperCycle(sid), PAPER_INTERVAL_MS);
   botRunners.set(sid, runner);
@@ -252,7 +254,7 @@ function startPaperRunner(sid) {
 }
 app.get('/api/bot/status', auth, (req, res) => {
   const runner = botRunners.get(req.cookies.sid);
-  res.json({ ok: true, enabled: botStates.get(req.cookies.sid) === true, observing: Boolean(runner?.timer), running: Boolean(runner?.running), cycles: runner?.cycles || 0, error: runner?.error || null, last_started_at: runner?.last_started_at || null, last_finished_at: runner?.last_finished_at || null, last_polled_at: runner?.last_polled_at || null, watermark: runner?.watermark || {}, mode: 'paper_observation', ordersEnabled: false });
+  res.json({ ok: true, enabled: botStates.get(req.cookies.sid) === true, observing: Boolean(runner?.timer), running: Boolean(runner?.running), cycles: runner?.cycles || 0, error: runner?.error || null, observer_error: runner?.observer_error || null, pipeline_error: runner?.pipeline_error || null, last_started_at: runner?.last_started_at || null, last_finished_at: runner?.last_finished_at || null, last_polled_at: runner?.last_polled_at || null, watermark: runner?.watermark || {}, mode: 'paper_observation', ordersEnabled: false });
 });
 
 app.post('/api/bot/toggle', auth, (req, res) => {
@@ -260,7 +262,7 @@ app.post('/api/bot/toggle', auth, (req, res) => {
   botStates.set(req.cookies.sid, enabled);
   startPaperRunner(req.cookies.sid);
   const runner = botRunners.get(req.cookies.sid);
-  res.json({ ok: true, enabled, running: Boolean(runner?.running), cycles: runner?.cycles || 0, mode: 'paper_observation', ordersEnabled: false });
+  res.json({ ok: true, enabled, observing: Boolean(runner?.timer), running: Boolean(runner?.running), cycles: runner?.cycles || 0, mode: 'paper_observation', ordersEnabled: false });
 });
 app.get('/api/v2/status', auth, (req, res) => {
   const artifactPath = path.join(__dirname, 'v2', 'artifacts', 'BINANCE_DEMO_PAPER_PIPELINE.json');
