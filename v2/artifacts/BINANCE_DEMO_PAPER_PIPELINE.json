@@ -2,7 +2,7 @@
   "name": "BINANCE_DEMO_PAPER_PIPELINE",
   "status": "PASS",
   "environment": "demo-fapi",
-  "server_time": 1791728682824,
+  "server_time": 1791728923578,
   "symbols": {
     "BTCUSDT": {
       "closed_counts": {
