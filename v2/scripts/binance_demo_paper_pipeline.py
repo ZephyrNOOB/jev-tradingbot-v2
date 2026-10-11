@@ -1,3 +1,4 @@
+import hashlib
 """Read-only paper pipeline on latest Binance Demo closed candles."""
 import json
 import urllib.request
@@ -24,7 +25,7 @@ def rows(symbol, interval, limit=500):
 
 def main():
     server_time = int(get("/fapi/v1/time")["serverTime"])
-    observations = {}; totals = {"bias_ready": 0, "structure_events": 0, "confirmed_5m": 0, "selected": 0, "paper_plans": 0, "gate_rejections": 0}
+    observations = {}; execution_candidates = []; totals = {"bias_ready": 0, "structure_events": 0, "confirmed_5m": 0, "selected": 0, "paper_plans": 0, "gate_rejections": 0}
     for symbol in SYMBOLS:
         h, m, q = rows(symbol, "1h"), rows(symbol, "15m"), rows(symbol, "5m")
         closed = lambda data: [x for x in data if x["close_time"] < server_time]
@@ -66,11 +67,13 @@ def main():
                                 row["paper_rejection"] = economics_reason
                             else:
                                 row.update({"virtual_order": True, "virtual_entry_sl_tp": True, "paper_plan": {"setup_id": plan.setup_id, "side": plan.side, "entry": plan.entry, "sl": plan.sl, "tp": plan.tp, "rr": plan.rr, "entry_reason": plan.entry_reason, "sl_reason": plan.sl_reason, "tp_reason": plan.tp_reason, "evidence": plan.evidence}})
+                                client_order_id = "jev_" + hashlib.sha256(f"{symbol}:{plan.evidence['event_id']}".encode()).hexdigest()[:24]
+                                execution_candidates.append({"client_order_id": client_order_id, "symbol": symbol, "side": "BUY" if plan.side == "BULLISH" else "SELL", "setup_id": plan.setup_id, "entry": plan.entry, "sl": plan.sl, "tp": plan.tp, "rr": plan.rr, "status": "PENDING_POLICY_SIZING", "evidence": plan.evidence})
                                 totals["paper_plans"] += 1
             symbol_rows.append(row)
         observations[symbol] = {"closed_counts": {"1h": len(h), "15m": len(m), "5m": len(q)}, "recent_events": symbol_rows}
 
-    out = {"name": "BINANCE_DEMO_PAPER_PIPELINE", "status": "PASS", "environment": "demo-fapi", "server_time": server_time, "symbols": observations, "totals": totals, "orders_sent": False, "withdrawals_sent": False, "virtual_entry_sl_tp": totals["paper_plans"] > 0, "next_action": "Continue observation across closed-candle cycles; do not enable order path."}
+    out = {"name": "BINANCE_DEMO_PAPER_PIPELINE", "status": "PASS", "environment": "demo-fapi", "server_time": server_time, "symbols": observations, "execution_candidates": execution_candidates, "totals": totals, "orders_sent": False, "withdrawals_sent": False, "virtual_entry_sl_tp": totals["paper_plans"] > 0, "next_action": "Validate policy sizing and Binance filters before Demo execution."}
     (ART / "BINANCE_DEMO_PAPER_PIPELINE.json").write_text(json.dumps(out, indent=2) + "\n"); print(json.dumps(out, indent=2))
 
 if __name__ == "__main__": main()
