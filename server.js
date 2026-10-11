@@ -475,6 +475,10 @@ async function fetchBinanceCandles(symbol, interval, limit) {
   if (!r.ok || !Array.isArray(data)) throw new Error(data.msg || 'Binance candle request failed');
   return normalizeBinance(data);
 }
+app.get('/healthz', (req, res) => {
+  const observer = marketObservers.get('global');
+  res.json({ ok: true, observer: Boolean(observer?.timer), observer_error: observer?.error || null, ordersEnabled: false });
+});
 app.get('*', (req, res) => {
   if (req.path.startsWith('/api/')) return res.status(404).json({ error: 'Not found' });
   if (req.path.endsWith('.html') && !['/index.html', '/dashboard.html', '/exchange.html', '/history.html'].includes(req.path)) return res.status(404).send('Not found');
@@ -482,8 +486,16 @@ app.get('*', (req, res) => {
 });
 
 const PORT = process.env.PORT || 3700;
+let server;
+function shutdown() {
+  for (const observer of marketObservers.values()) if (observer.timer) clearInterval(observer.timer);
+  for (const runner of botRunners.values()) if (runner.timer) clearInterval(runner.timer);
+  if (server) server.close(() => process.exit(0)); else process.exit(0);
+}
+process.once('SIGTERM', shutdown);
+process.once('SIGINT', shutdown);
 initDb().then(() => {
-  app.listen(PORT, () => console.log('JEV Trading Bot running on http://localhost:' + PORT));
+  server = app.listen(PORT, () => console.log('JEV Trading Bot running on http://localhost:' + PORT));
 }).catch(e => {
   console.error('DB init failed:', e);
   process.exit(1);
