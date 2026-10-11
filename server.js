@@ -280,6 +280,28 @@ const EXCHANGES = {
 const BINANCE_DEMO_FUTURES_BASE = 'https://demo-fapi.binance.com';
 const BINANCE_DATA_BASE = BINANCE_DEMO_FUTURES_BASE;
 
+app.get('/api/chart/candles', auth, async (req, res) => {
+  const symbol = String(req.query.symbol || '').toUpperCase();
+  const interval = String(req.query.interval || '5m');
+  const limit = Math.min(200, Math.max(30, Number(req.query.limit) || 120));
+  if (!PAPER_SYMBOLS.includes(symbol) || interval !== '5m') return res.status(400).json({ error: 'Unsupported chart request' });
+  try {
+    const candles = await fetchBinanceCandles(symbol, interval, limit);
+    res.json({ ok: true, symbol, interval, candles });
+  } catch (error) {
+    res.status(502).json({ ok: false, symbol, error: error.message });
+  }
+});
+app.get('/api/chart/candles', auth, async (req, res) => {
+  const symbol = String(req.query.symbol || '').toUpperCase();
+  const interval = String(req.query.interval || '5m');
+  const limit = Math.min(200, Math.max(30, Number(req.query.limit) || 120));
+  if (!PAPER_SYMBOLS.includes(symbol) || interval !== '5m') return res.status(400).json({ error: 'Unsupported chart request' });
+  try {
+    const candles = await fetchBinanceCandles(symbol, interval, limit);
+    res.json({ ok: true, symbol, interval, candles });
+  } catch (error) { res.status(502).json({ ok: false, symbol, error: error.message }); }
+});
 app.get('/api/exchanges', auth, (req, res) => {
   res.json(Object.entries(EXCHANGES).map(([id, x]) => ({ id, name: x.name, passphrase: x.passphrase })));
 });
