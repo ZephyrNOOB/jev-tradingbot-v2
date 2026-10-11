@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JEV - Dashboard</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <div class="sidebar-brand">JEV<span class="emerald">.</span>BOT</div>
+    <nav class="sidebar-nav">
+      <a class="nav-item active" href="/dashboard.html">Dashboard</a>
+      <a class="nav-item" href="/exchange.html">Settings</a>
+
+      <a class="nav-item" href="/history.html">Trade History</a>
+    </nav>
+    <div class="sidebar-footer">
+      <button onclick="logout()">LOGOUT</button>
+    </div>
+  </aside>
+  <main class="main">
+    <div class="page-header">
+      <h2 class="page-title">DASHBOARD</h2>
+      <span id="userInfo" style="font-family:var(--mono);font-size:12px;color:var(--muted)"></span>
+    </div>
+
+    <div class="card">
+      <h3 style="font-size:14px;margin-bottom:10px;font-weight:600">JEV TRADING CONTROL CENTER</h3>
+      <p style="font:12px var(--mono);color:var(--muted);line-height:1.7">Exchange credentials and private API access are managed separately.</p>
+      <a href="/exchange.html" style="display:inline-block;margin-top:14px;color:var(--emerald);font:12px var(--mono)">OPEN EXCHANGE CONNECTION →</a>
+    </div>
+
+    <!-- Quick Stats -->
+    <div class="card-grid" id="statsGrid">
+      <div class="card"><div class="stat-label">Active Key</div><div class="stat-value" id="statKeys">0</div></div>
+      <div class="card"><div class="stat-label">Paper Plans</div><div class="stat-value" id="statPlans">--</div></div>
+      <div class="card"><div class="stat-label">Connection</div><div class="stat-value" id="statConn" style="color:var(--muted)">OFFLINE</div></div>
+    </div>
+    <div class="card"><h3 style="font-size:14px;margin-bottom:14px">V2 WORKFLOW</h3><div class="workflow-line mono">1H Bias <span>→</span> 15M MarketStructureBot <span>→</span> 5M ConfirmationBot <span>→</span> SelectionBot <span>→</span> SetupBot</div><p id="v2Status" class="muted mono" style="margin-top:14px">Loading paper status...</p><div id="v2Pairs" class="table-wrap"></div></div>  </main>
+</div>
+<script>
+function csrfToken() { return document.cookie.split('; ').find(x => x.startsWith('csrf='))?.split('=')[1] || ''; }
+async function api(path, opts = {}) {
+  const headers = { 'Content-Type': 'application/json', ...(opts.headers || {}) };
+  if (opts.method && opts.method !== 'GET') headers['x-csrf-token'] = csrfToken();
+  const r = await fetch('/api' + path, { ...opts, headers });
+  if (r.status === 401) { window.location.href = '/'; return null; }
+  return r.json();
+}
+
+async function init() {
+  const me = await api('/me');
+  if (!me) return;
+  document.getElementById('userInfo').textContent = me.username;
+  const v2 = await api('/v2/status');
+  if (v2?.ok) {
+    const t = v2.artifact.totals;
+    document.getElementById('statPlans').textContent = t.paper_plans;
+    document.getElementById('v2Status').textContent = `Demo paper · ${t.structure_events} structure events · ${t.confirmed_5m} confirmed · ${t.selected} selected · orders disabled`;
+    document.getElementById('v2Pairs').innerHTML = '<table><thead><tr><th>Pair</th><th>Events</th><th>Plans</th></tr></thead><tbody>' + Object.entries(v2.artifact.symbols).map(([s,x]) => `<tr><td>${s}</td><td>${x.recent_events.length}</td><td>${x.recent_events.filter(e => e.virtual_entry_sl_tp).length}</td></tr>`).join('') + '</tbody></table>';
+  }
+  const keys = await api('/keys');
+  if (keys) {
+    document.getElementById('statKeys').textContent = keys.length;
+    const online = keys.some(k => k.status === 'connected');
+    const conn = document.getElementById('statConn');
+    conn.textContent = online ? 'ONLINE' : 'OFFLINE';
+    conn.style.color = online ? 'var(--emerald)' : 'var(--muted)';
+  }
+}
+
+async function logout() {
+  await api('/logout', { method: 'POST' });
+  window.location.href = '/';
+}
+
+init();
+</script>
+</body>
+</html>
