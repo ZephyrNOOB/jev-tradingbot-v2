@@ -76,6 +76,7 @@ function decryptSecret(value) {
 }
 
 function newToken() { return crypto.randomBytes(32).toString('hex'); }
+function sessionHash(sid) { return crypto.createHash('sha256').update(sid).digest('hex'); }
 const loginAttempts = new Map();
 const apiAttempts = new Map();
 function rateLimit(map, key, max, windowMs) {
@@ -130,6 +131,7 @@ async function initDb() {
   try { run('ALTER TABLE api_keys ADD COLUMN verified_at TEXT'); } catch {}
   migrateApiKeys();
   run('CREATE TABLE IF NOT EXISTS trade_history (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, inst_id TEXT, side TEXT, pos_side TEXT, size REAL, price REAL, fee REAL, funding_rate REAL, slippage REAL, pnl REAL, ts INTEGER, raw_json TEXT)');
+  run('CREATE TABLE IF NOT EXISTS sessions (sid_hash TEXT PRIMARY KEY, user_id INTEGER NOT NULL, expires_at INTEGER NOT NULL)');
 }
 
 function migrateApiKeys() {
@@ -148,8 +150,11 @@ function csrf(req, res, next) {
 
 function auth(req, res, next) {
   const sid = req.cookies.sid;
-  if (!sid || !sessions.has(sid)) return res.status(401).json({ error: 'Unauthorized' });
-  req.userId = sessions.get(sid);
+  if (!sid) return res.status(401).json({ error: 'Unauthorized' });
+  const row = get('SELECT user_id, expires_at FROM sessions WHERE sid_hash = ?', [sessionHash(sid)]);
+  if (!row || Number(row.expires_at) <= Date.now()) { sessions.delete(sid); return res.status(401).json({ error: 'Unauthorized' }); }
+  sessions.set(sid, Number(row.user_id));
+  req.userId = Number(row.user_id);
   next();
 }
 
@@ -170,7 +175,9 @@ app.post('/api/login', async (req, res) => {
   if (!row || !(await bcrypt.compare(String(password || ''), row.password_hash))) return res.status(401).json({ error: 'Invalid credentials' });
   const sid = newToken();
   const csrfToken = newToken();
+  const expiresAt = Date.now() + 86400000;
   sessions.set(sid, row.id);
+  run('INSERT INTO sessions (sid_hash, user_id, expires_at) VALUES (?, ?, ?)', [sessionHash(sid), row.id, expiresAt]);
   botStates.set(sid, false);
   const cookieOptions = { httpOnly: true, sameSite: 'strict', secure: isHttps, maxAge: 86400000, path: '/' };
   res.cookie('sid', sid, cookieOptions);
@@ -180,6 +187,7 @@ app.post('/api/login', async (req, res) => {
 
 app.post('/api/logout', (req, res) => {
   sessions.delete(req.cookies.sid);
+  run('DELETE FROM sessions WHERE sid_hash = ?', [sessionHash(req.cookies.sid || '')]);
   botStates.delete(req.cookies.sid);
   const runner = botRunners.get(req.cookies.sid);
   if (runner) { clearInterval(runner.timer); botRunners.delete(req.cookies.sid); }

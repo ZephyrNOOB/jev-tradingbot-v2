@@ -9,3 +9,5 @@ v2/data/
 v2/backtests/
 v2/scripts/__pycache__/
 v2/artifacts/backtests/
+
+backups/
