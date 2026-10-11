@@ -62,21 +62,24 @@ async function refreshCharts() {
     document.getElementById('chartsUpdated').textContent = `LIVE ${new Date().toLocaleTimeString()}`;
   } finally { chartsRefreshing = false; }
 }
+async function refreshV2() {
+  const v2 = await api('/v2/status');
+  if (!v2?.ok) return;
+  const t = v2.artifact.totals;
+  const rooms = [['BIAS BOT','1H','Reads closed 1H candles; sets market direction.',t.bias_ready > 0 ? 'READY' : 'WAITING'],['MARKET STRUCTURE BOT','15M','Builds SMC structure and emits BOS / CHoCH evidence.',t.structure_events > 0 ? 'ANALYZING' : 'WAITING'],['CONFIRMATION BOT','5M','Checks retest, rejection, and micro-break confirmation.',t.confirmed_5m > 0 ? 'CONFIRMED' : 'WAITING'],['SELECTION BOT','GATE','Accepts only bias-aligned, causally owned setups.',t.selected > 0 ? 'SELECTED' : 'WAITING'],['SETUP BOT','PLAN','Builds virtual Entry / SL / TP with provenance and economics.',t.paper_plans > 0 ? 'PAPER READY' : 'WAITING']];
+  const track = document.getElementById('workflowTrack');
+  track.replaceChildren();
+  rooms.forEach((r,i) => { const room = document.createElement('div'); room.className = 'workflow-room' + (r[3] !== 'WAITING' ? ' room-active' : ''); room.innerHTML = `<div class="room-top"><span class="room-index">0${i + 1}</span><span class="room-status">${r[3]}</span></div><div class="room-icon">${r[1]}</div><h4>${r[0]}</h4><p>${r[2]}</p>`; if (i < rooms.length - 1) { const connector = document.createElement('span'); connector.className = 'room-connector'; connector.textContent = '›'; room.appendChild(connector); } track.appendChild(room); });
+  document.getElementById('v2Status').textContent = `Demo paper · ${t.structure_events} structure events · ${t.confirmed_5m} confirmed · ${t.selected} selected · orders disabled`;
+  document.getElementById('v2Pairs').innerHTML = '<table><thead><tr><th>Pair</th><th>Events</th><th>Plans</th></tr></thead><tbody>' + Object.entries(v2.artifact.symbols).map(([symbol,x]) => `<tr><td>${symbol}</td><td>${x.recent_events.length}</td><td>${x.recent_events.filter(e => e.virtual_entry_sl_tp).length}</td></tr>`).join('') + '</tbody></table>';
+}
 async function init() {
   const me = await api('/me');
   if (!me) return;
   document.getElementById('userInfo').textContent = me.username;
   const bot = await api('/bot/status');
   if (bot?.ok) renderBot(bot);
-  const v2 = await api('/v2/status');
-  if (v2?.ok) {
-    const t = v2.artifact.totals;
-    const rooms = [['BIAS BOT','1H','Reads closed 1H candles; sets market direction.',t.bias_ready > 0 ? 'READY' : 'WAITING'],['MARKET STRUCTURE BOT','15M','Builds SMC structure and emits BOS / CHoCH evidence.',t.structure_events > 0 ? 'ANALYZING' : 'WAITING'],['CONFIRMATION BOT','5M','Checks retest, rejection, and micro-break confirmation.',t.confirmed_5m > 0 ? 'CONFIRMED' : 'WAITING'],['SELECTION BOT','GATE','Accepts only bias-aligned, causally owned setups.',t.selected > 0 ? 'SELECTED' : 'WAITING'],['SETUP BOT','PLAN','Builds virtual Entry / SL / TP with provenance and economics.',t.paper_plans > 0 ? 'PAPER READY' : 'WAITING']];
-    const track = document.getElementById('workflowTrack');
-    rooms.forEach((r,i) => { const room = document.createElement('div'); room.className = 'workflow-room' + (r[3] !== 'WAITING' ? ' room-active' : ''); room.innerHTML = `<div class="room-top"><span class="room-index">0${i + 1}</span><span class="room-status">${r[3]}</span></div><div class="room-icon">${r[1]}</div><h4>${r[0]}</h4><p>${r[2]}</p>`; if (i < rooms.length - 1) { const connector = document.createElement('span'); connector.className = 'room-connector'; connector.textContent = '›'; room.appendChild(connector); } track.appendChild(room); });
-    document.getElementById('v2Status').textContent = `Demo paper · ${t.structure_events} structure events · ${t.confirmed_5m} confirmed · ${t.selected} selected · orders disabled`;
-    document.getElementById('v2Pairs').innerHTML = '<table><thead><tr><th>Pair</th><th>Events</th><th>Plans</th></tr></thead><tbody>' + Object.entries(v2.artifact.symbols).map(([s,x]) => `<tr><td>${s}</td><td>${x.recent_events.length}</td><td>${x.recent_events.filter(e => e.virtual_entry_sl_tp).length}</td></tr>`).join('') + '</tbody></table>';
-  }
+  await refreshV2();
   const keys = await api('/keys');
   if (keys) {
     const online = keys.some(k => k.status === 'connected');
@@ -114,6 +117,7 @@ init();
 refreshCharts();
 setInterval(refreshCharts, 5_000);
 setInterval(refreshBot, 60_000);
+setInterval(refreshV2, 5_000);
 setInterval(() => { const el = document.getElementById('chartsUpdated'); if (el) el.textContent = `LIVE ${new Date().toLocaleTimeString()}`; }, 1_000);
 </script>
 </body>
