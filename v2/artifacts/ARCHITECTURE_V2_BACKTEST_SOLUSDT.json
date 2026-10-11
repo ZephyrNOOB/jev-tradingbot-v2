@@ -1,0 +1,109 @@
+{
+  "name": "ARCHITECTURE_V2_FRESH_BACKTEST",
+  "pipeline": "MarketBiasBot 1H -> MarketStructureBot 15M -> ConfirmationBot 5M -> SelectionBot exclusive -> SetupBot",
+  "capital": {
+    "initial_balance_usdt": 1000.0,
+    "notional_per_trade_usdt": 1000.0,
+    "compounding": false
+  },
+  "cost_model": {
+    "entry_fee_rate": 0.0004,
+    "exit_fee_rate": 0.0004,
+    "entry_fee_type": "taker",
+    "exit_fee_type": "taker",
+    "fee_environment": "binance_futures_demo_account_snapshot",
+    "entry_slippage_rate": 0.0002,
+    "exit_slippage_rate": 0.0002,
+    "slippage_source": "research_assumption_not_Binance_fixed_rate",
+    "funding_source": "binance_futures_demo_public_history"
+  },
+  "data": {
+    "5m": 502038,
+    "15m": 167344,
+    "1h": 41834,
+    "closed_only": true
+  },
+  "funding_records": 1332,
+  "funnel": {
+    "structure_events": 25642,
+    "confirmed_5m": 6066,
+    "selected": 1578,
+    "planned": 1213,
+    "executed": 1213
+  },
+  "rejections": {
+    "selection_rejected": 24064,
+    "confirmation_rejected": 19576,
+    "plan_exception_fvg_context": 215,
+    "economic_gross_reward_below_modeled_costs_fvg_context": 51,
+    "plan_exception_ob_context": 19,
+    "structure_context_rejected": 57,
+    "lifecycle_rejected": 21,
+    "economic_gross_reward_below_modeled_costs_ob_context": 2
+  },
+  "no_lookahead": {
+    "structure_source_violations": [],
+    "passed": true
+  },
+  "chronological_holdout": {
+    "cut_open_time": 1761487200000,
+    "trades": 627,
+    "net_pnl": 3370.689186738224,
+    "status": "DIAGNOSTIC_ONLY"
+  },
+  "deterministic_replay": {
+    "trade_digest": "2ef62a0cd890a78c5c45190d147a4dbd2737d6eca00319d70f9bb86de56639bd",
+    "passed": true
+  },
+  "results": {
+    "fvg_context": {
+      "name": "FvgContextBot",
+      "trades": 1122,
+      "wins": 967,
+      "losses": 155,
+      "win_rate": 0.8618538324420677,
+      "gross_pnl": 16757.763053924653,
+      "fees": 897.6,
+      "slippage": 448.8,
+      "funding": -2.85184,
+      "net_pnl": 15414.21489392465,
+      "avg_mae_pct": 0.48006789906581104,
+      "avg_mfe_pct": 2.8059228338333173,
+      "exit_reasons": {
+        "target": 918,
+        "stop": 106,
+        "timeout": 68,
+        "stop_first": 30
+      }
+    },
+    "ob_context": {
+      "name": "OrderBlockContextBot",
+      "trades": 91,
+      "wins": 77,
+      "losses": 14,
+      "win_rate": 0.8461538461538461,
+      "gross_pnl": 1519.636418692195,
+      "fees": 72.8,
+      "slippage": 36.4,
+      "funding": 0.4729,
+      "net_pnl": 1409.963518692195,
+      "avg_mae_pct": 0.8153311804175181,
+      "avg_mfe_pct": 2.9976720203357585,
+      "exit_reasons": {
+        "stop": 12,
+        "target": 75,
+        "timeout": 3,
+        "stop_first": 1
+      }
+    }
+  },
+  "trades": 1213,
+  "promotion_status": "DIAGNOSTIC_ONLY_HOLDOUT_REQUIRED",
+  "execution_model_assertions": {
+    "passed": true,
+    "planned_equals_executed": true,
+    "stop_first_policy": "stop_first",
+    "entry_is_next_5m_candle": true,
+    "target_evaluated_after_fill": true
+  }
+}

@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JEV - Trade History</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <div class="sidebar-brand">JEV<span class="emerald">.</span>BOT</div>
+    <nav class="sidebar-nav">
+      <a class="nav-item" href="/dashboard.html">Dashboard</a>
+      <a class="nav-item" href="/backtest.html">Backtest</a>
+      <a class="nav-item active" href="/history.html">Trade History</a>
+    </nav>
+    <div class="sidebar-footer">
+      <button onclick="logout()">LOGOUT</button>
+    </div>
+  </aside>
+  <main class="main">
+    <div class="page-header">
+      <h2 class="page-title">TRADE HISTORY</h2>
+      <div style="display:flex;gap:10px;align-items:center">
+        <input type="date" id="dateFilter" style="width:auto;margin:0">
+        <button onclick="loadHistory()" style="width:auto;padding:8px 16px">FILTER</button>
+        <button onclick="loadHistory()" style="width:auto;padding:8px 16px;border-color:var(--muted);color:var(--muted)">REFRESH</button>
+      </div>
+    </div>
+
+    <!-- Summary Cards -->
+    <div class="card-grid" id="summaryCards">
+      <div class="card"><div class="stat-label">Total Trades</div><div class="stat-value" id="sumTrades">0</div></div>
+      <div class="card"><div class="stat-label">Net PnL (after fees)</div><div class="stat-value" id="sumPnl">0.00</div></div>
+      <div class="card"><div class="stat-label">Total Commission</div><div class="stat-value" id="sumFee" style="color:var(--red)">0.00</div></div>
+      <div class="card"><div class="stat-label">Total Funding</div><div class="stat-value" id="sumFunding">0.00</div></div>
+      <div class="card"><div class="stat-label">Total Slippage</div><div class="stat-value" id="sumSlip" style="color:var(--red)">0.00</div></div>
+      <div class="card"><div class="stat-label">Win Rate</div><div class="stat-value" id="sumWr">--%</div></div>
+    </div>
+
+    <!-- Trade Table -->
+    <div class="card">
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>Pair</th>
+              <th>Side</th>
+              <th>Pos Side</th>
+              <th>Size</th>
+              <th>Price</th>
+              <th>Commission</th>
+              <th>Funding Rate</th>
+              <th>Funding Cost</th>
+              <th>Slippage</th>
+              <th>PnL Gross</th>
+              <th>PnL Net</th>
+            </tr>
+          </thead>
+          <tbody id="tradeBody">
+            <tr><td colspan="12" style="text-align:center;color:var(--muted);padding:40px">No trades yet</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+</div>
+<script>
+function csrfToken() { return document.cookie.split('; ').find(x => x.startsWith('csrf='))?.split('=')[1] || ''; }
+async function api(path, opts = {}) {
+  const headers = { 'Content-Type': 'application/json', ...(opts.headers || {}) };
+  if (opts.method && opts.method !== 'GET') headers['x-csrf-token'] = csrfToken();
+  const r = await fetch('/api' + path, { ...opts, headers });
+  if (r.status === 401) { window.location.href = '/'; return null; }
+  return r.json();
+}
+
+function fmt(n, d = 4) { return Number(n || 0).toFixed(d); }
+function fmtUsd(n) { return (n >= 0 ? '+' : '') + Number(n || 0).toFixed(2); }
+
+async function loadHistory() {
+  const date = document.getElementById('dateFilter').value;
+  const url = date ? '/history?date=' + date : '/history';
+  const trades = await api(url);
+  if (!trades) return;
+
+  const tbody = document.getElementById('tradeBody');
+  if (!trades.length) {
+    tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;color:var(--muted);padding:40px">No trades found</td></tr>';
+    updateSummary([]);
+    return;
+  }
+
+  tbody.innerHTML = trades.map(t => {
+    const time = new Date(t.ts).toLocaleString();
+    const sideBadge = t.side === 'buy' ? '<span class="badge badge-long">BUY</span>' : '<span class="badge badge-short">SELL</span>';
+    const pnlNet = t.pnl - Math.abs(t.fee) - Math.abs(t.slippage);
+    const pnlClass = pnlNet >= 0 ? 'pos' : 'neg';
+    return `<tr>
+      <td>${time}</td>
+      <td style="font-weight:600">${t.inst_id}</td>
+      <td>${sideBadge}</td>
+      <td>${t.pos_side || '--'}</td>
+      <td>${fmt(t.size)}</td>
+      <td>${fmt(t.price, 2)}</td>
+      <td style="color:var(--red)">${fmt(t.fee)}</td>
+      <td>${fmt(t.funding_rate, 6)}</td>
+      <td>${fmt(t.funding_rate * t.size * t.price, 4)}</td>
+      <td style="color:var(--red)">${fmt(t.slippage)}</td>
+      <td class="${t.pnl >= 0 ? 'pos' : 'neg'}">${fmtUsd(t.pnl)}</td>
+      <td class="${pnlClass}" style="font-weight:700">${fmtUsd(pnlNet)}</td>
+    </tr>`;
+  }).join('');
+
+  updateSummary(trades);
+}
+
+function updateSummary(trades) {
+  document.getElementById('sumTrades').textContent = trades.length;
+  let totalPnl = 0, totalFee = 0, totalFunding = 0, totalSlip = 0, wins = 0;
+  for (const t of trades) {
+    const net = t.pnl - Math.abs(t.fee) - Math.abs(t.slippage);
+    totalPnl += net;
+    totalFee += Math.abs(t.fee);
+    totalFunding += Math.abs(t.funding_rate * t.size * t.price);
+    totalSlip += Math.abs(t.slippage);
+    if (net > 0) wins++;
+  }
+  const el = (id, v) => document.getElementById(id);
+  el('sumPnl').textContent = fmtUsd(totalPnl);
+  el('sumPnl').className = 'stat-value ' + (totalPnl >= 0 ? 'pos' : 'neg');
+  el('sumFee').textContent = fmtUsd(-totalFee);
+  el('sumFunding').textContent = fmtUsd(-totalFunding);
+  el('sumFunding').className = 'stat-value ' + (totalFunding <= 0 ? 'neg' : 'pos');
+  el('sumSlip').textContent = fmtUsd(-totalSlip);
+  el('sumWr').textContent = trades.length ? ((wins / trades.length) * 100).toFixed(1) + '%' : '--%';
+}
+
+async function logout() {
+  await api('/logout', { method: 'POST' });
+  window.location.href = '/';
+}
+
+// Set today as default
+document.getElementById('dateFilter').value = new Date().toISOString().split('T')[0];
+loadHistory();
+</script>
+</body>
+</html>

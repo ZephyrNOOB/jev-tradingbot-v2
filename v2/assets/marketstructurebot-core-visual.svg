@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="800" viewBox="0 0 1280 800">
+<defs><pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M40 0H0V40" fill="none" stroke="#1d252b" stroke-width="1"/></pattern><filter id="glow"><feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
+<rect width="1280" height="800" fill="#080b0e"/><rect width="1280" height="800" fill="url(#grid)"/>
+<text x="48" y="50" fill="#e6edf3" font-family="Arial" font-size="25" font-weight="700">JEV · MARKET STRUCTURE BOT</text><text x="48" y="78" fill="#7d8c98" font-family="Arial" font-size="13">15M · CORE LOGIC VISUALIZATION · ILLUSTRATIVE, NOT LIVE DATA</text>
+<rect x="48" y="105" width="1184" height="68" rx="10" fill="#101820" stroke="#26343d"/><text x="70" y="132" fill="#94a3ad" font-family="Arial" font-size="12">1H BIAS · IMMUTABLE INPUT</text><text x="70" y="157" fill="#00d992" font-family="Arial" font-size="18" font-weight="700">BULLISH · 15M CONFIRMED</text><text x="562" y="145" fill="#71808a" font-family="Arial" font-size="13">MarketStructureBot reads completed 15M candles; does not create Entry / SL / TP</text>
+<rect x="48" y="195" width="1184" height="470" rx="10" fill="#0b1014" stroke="#26343d"/>
+<!-- swing sequence -->
+<g stroke="#697782" stroke-width="2" fill="none" opacity=".8"><path d="M100 560 L190 480 L275 535 L365 420 L450 482 L545 350 L630 420 L735 305 L830 380 L920 250 L1010 320 L1110 185"/></g>
+<!-- candles -->
+<g stroke-width="2">
+<g stroke="#f05c67"><line x1="100" y1="490" x2="100" y2="575"/><rect x="92" y="515" width="16" height="34" fill="#f05c67"/></g>
+<g stroke="#00c98a"><line x1="155" y1="465" x2="155" y2="535"/><rect x="147" y="480" width="16" height="29" fill="#00c98a"/></g>
+<g stroke="#00c98a"><line x1="210" y1="470" x2="210" y2="555"/><rect x="202" y="490" width="16" height="36" fill="#00c98a"/></g>
+<g stroke="#f05c67"><line x1="265" y1="495" x2="265" y2="565"/><rect x="257" y="510" width="16" height="28" fill="#f05c67"/></g>
+<g stroke="#00c98a"><line x1="320" y1="400" x2="320" y2="525"/><rect x="312" y="425" width="16" height="72" fill="#00c98a"/></g>
+<g stroke="#00c98a"><line x1="375" y1="390" x2="375" y2="470"/><rect x="367" y="410" width="16" height="36" fill="#00c98a"/></g>
+<g stroke="#f05c67"><line x1="430" y1="420" x2="430" y2="510"/><rect x="422" y="440" width="16" height="35" fill="#f05c67"/></g>
+<g stroke="#00c98a"><line x1="485" y1="330" x2="485" y2="470"/><rect x="477" y="355" width="16" height="90" fill="#00c98a"/></g>
+<g stroke="#f05c67"><line x1="540" y1="345" x2="540" y2="430"/><rect x="532" y="370" width="16" height="32" fill="#f05c67"/></g>
+<g stroke="#00c98a"><line x1="595" y1="295" x2="595" y2="410"/><rect x="587" y="315" width="16" height="72" fill="#00c98a"/></g>
+<g stroke="#00c98a"><line x1="650" y1="300" x2="650" y2="375"/><rect x="642" y="320" width="16" height="27" fill="#00c98a"/></g>
+<g stroke="#f05c67"><line x1="705" y1="340" x2="705" y2="425"/><rect x="697" y="350" width="16" height="40" fill="#f05c67"/></g>
+<g stroke="#00c98a"><line x1="760" y1="255" x2="760" y2="405"/><rect x="752" y="275" width="16" height="88" fill="#00c98a"/></g>
+<g stroke="#f05c67"><line x1="815" y1="270" x2="815" y2="360"/><rect x="807" y="290" width="16" height="40" fill="#f05c67"/></g>
+<g stroke="#00c98a"><line x1="870" y1="205" x2="870" y2="340"/><rect x="862" y="225" width="16" height="80" fill="#00c98a"/></g>
+<g stroke="#00c98a"><line x1="925" y1="220" x2="925" y2="300"/><rect x="917" y="240" width="16" height="27" fill="#00c98a"/></g>
+<g stroke="#f05c67"><line x1="980" y1="260" x2="980" y2="345"/><rect x="972" y="275" width="16" height="39" fill="#f05c67"/></g>
+<g stroke="#00c98a"><line x1="1035" y1="155" x2="1035" y2="320"/><rect x="1027" y="180" width="16" height="100" fill="#00c98a"/></g>
+<g stroke="#00c98a"><line x1="1090" y1="150" x2="1090" y2="240"/><rect x="1082" y="168" width="16" height="35" fill="#00c98a"/></g>
+<g stroke="#00c98a"><line x1="1145" y1="120" x2="1145" y2="205"/><rect x="1137" y="136" width="16" height="44" fill="#00c98a"/></g></g>
+<!-- labels and levels -->
+<g font-family="Arial" font-size="12" font-weight="700"><text x="122" y="593" fill="#f47280">LL</text><text x="250" y="583" fill="#00d992">HL</text><text x="337" y="402" fill="#00d992">HH</text><text x="415" y="526" fill="#00d992">HL</text><text x="502" y="315" fill="#00d992">HH</text><text x="620" y="442" fill="#00d992">HL</text><text x="720" y="285" fill="#00d992">HH</text><text x="805" y="400" fill="#00d992">HL</text><text x="900" y="230" fill="#00d992">HH</text></g>
+<line x1="760" y1="363" x2="1190" y2="363" stroke="#00d992" stroke-width="1.5" stroke-dasharray="7 6"/><text x="1048" y="354" fill="#00d992" font-family="Arial" font-size="12" font-weight="700">PROTECTED HL · ACTIVE</text>
+<line x1="1035" y1="180" x2="1185" y2="180" stroke="#b98cff" stroke-width="1.5" stroke-dasharray="6 5"/><text x="1050" y="167" fill="#c9a7ff" font-family="Arial" font-size="12" font-weight="700">BOS · CLOSE CONFIRMED</text>
+<!-- internal/external tags -->
+<rect x="75" y="210" width="132" height="26" rx="13" fill="#17212a" stroke="#354550"/><text x="91" y="228" fill="#9cabb5" font-family="Arial" font-size="11">EXTERNAL STRUCTURE</text>
+<rect x="75" y="243" width="125" height="24" rx="12" fill="#151b20" stroke="#303a40"/><text x="91" y="259" fill="#82919b" font-family="Arial" font-size="10">INTERNAL · NESTED</text>
+<!-- event flow -->
+<rect x="48" y="685" width="1184" height="78" rx="10" fill="#101820" stroke="#26343d"/><text x="70" y="711" fill="#8b9aa4" font-family="Arial" font-size="11" font-weight="700">EVENT STATE</text>
+<g font-family="Arial" font-size="13" font-weight="700"><rect x="205" y="700" width="120" height="34" rx="17" fill="#19232b" stroke="#45535d"/><text x="230" y="722" fill="#bdc8ce">DETECTED</text><text x="340" y="724" fill="#677781">→</text><rect x="370" y="700" width="130" height="34" rx="17" fill="#16262a" stroke="#00a878"/><text x="392" y="722" fill="#00d992">CONFIRMED</text><text x="515" y="724" fill="#677781">→</text><rect x="545" y="700" width="120" height="34" rx="17" fill="#132822" stroke="#00d992"/><text x="573" y="722" fill="#00d992">ACCEPTED</text><text x="690" y="724" fill="#677781">/</text><rect x="720" y="700" width="105" height="34" rx="17" fill="#2b1a20" stroke="#a94753"/><text x="746" y="722" fill="#f27b85">FAILED</text><text x="860" y="722" fill="#84939c" font-size="11" font-weight="400">event_id · source_swing_id · timestamp · source indices</text></g>
+</svg>

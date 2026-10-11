@@ -1,0 +1,185 @@
+{
+  "name": "BINANCE_DEMO_OBSERVATION",
+  "status": "PASS",
+  "environment": "demo-fapi",
+  "base_url": "https://demo-fapi.binance.com",
+  "server_time": 1791702736975,
+  "server_datetime": "2026-10-11T07:12:16.975000+00:00",
+  "started_at": 1791702735843,
+  "checks": {
+    "server_time": true,
+    "symbols_trading": true,
+    "closed_only": true,
+    "ascending": true
+  },
+  "symbols": {
+    "BTCUSDT": {
+      "1h": {
+        "latest_closed": {
+          "open_time": 1791698400000,
+          "open": 83016.1,
+          "high": 83137.7,
+          "low": 83016.0,
+          "close": 83123.4,
+          "volume": 19581.8529,
+          "close_time": 1791701999999
+        },
+        "rows_received": 3,
+        "closed_rows": 2
+      },
+      "15m": {
+        "latest_closed": {
+          "open_time": 1791701100000,
+          "open": 83050.1,
+          "high": 83137.7,
+          "low": 83049.9,
+          "close": 83123.4,
+          "volume": 17260.1905,
+          "close_time": 1791701999999
+        },
+        "rows_received": 3,
+        "closed_rows": 2
+      },
+      "5m": {
+        "latest_closed": {
+          "open_time": 1791702300000,
+          "open": 83129.4,
+          "high": 83137.7,
+          "low": 83119.6,
+          "close": 83119.6,
+          "volume": 14.9043,
+          "close_time": 1791702599999
+        },
+        "rows_received": 3,
+        "closed_rows": 2
+      }
+    },
+    "ETHUSDT": {
+      "1h": {
+        "latest_closed": {
+          "open_time": 1791698400000,
+          "open": 2502.72,
+          "high": 2507.2,
+          "low": 2502.37,
+          "close": 2504.66,
+          "volume": 622576.122,
+          "close_time": 1791701999999
+        },
+        "rows_received": 3,
+        "closed_rows": 2
+      },
+      "15m": {
+        "latest_closed": {
+          "open_time": 1791701100000,
+          "open": 2503.51,
+          "high": 2507.2,
+          "low": 2502.73,
+          "close": 2504.66,
+          "volume": 292524.534,
+          "close_time": 1791701999999
+        },
+        "rows_received": 3,
+        "closed_rows": 2
+      },
+      "5m": {
+        "latest_closed": {
+          "open_time": 1791702300000,
+          "open": 2505.48,
+          "high": 2505.75,
+          "low": 2503.11,
+          "close": 2503.11,
+          "volume": 56290.483,
+          "close_time": 1791702599999
+        },
+        "rows_received": 3,
+        "closed_rows": 2
+      }
+    },
+    "SOLUSDT": {
+      "1h": {
+        "latest_closed": {
+          "open_time": 1791698400000,
+          "open": 109.29,
+          "high": 109.85,
+          "low": 109.29,
+          "close": 109.84,
+          "volume": 11702.06,
+          "close_time": 1791701999999
+        },
+        "rows_received": 3,
+        "closed_rows": 2
+      },
+      "15m": {
+        "latest_closed": {
+          "open_time": 1791701100000,
+          "open": 109.44,
+          "high": 109.85,
+          "low": 109.33,
+          "close": 109.84,
+          "volume": 7731.45,
+          "close_time": 1791701999999
+        },
+        "rows_received": 3,
+        "closed_rows": 2
+      },
+      "5m": {
+        "latest_closed": {
+          "open_time": 1791702300000,
+          "open": 109.84,
+          "high": 109.86,
+          "low": 109.78,
+          "close": 109.78,
+          "volume": 2102.32,
+          "close_time": 1791702599999
+        },
+        "rows_received": 3,
+        "closed_rows": 2
+      }
+    },
+    "XAUUSDT": {
+      "1h": {
+        "latest_closed": {
+          "open_time": 1791698400000,
+          "open": 4195.76,
+          "high": 4198.68,
+          "low": 4195.76,
+          "close": 4198.68,
+          "volume": 209.163,
+          "close_time": 1791701999999
+        },
+        "rows_received": 3,
+        "closed_rows": 2
+      },
+      "15m": {
+        "latest_closed": {
+          "open_time": 1791701100000,
+          "open": 4197.34,
+          "high": 4198.68,
+          "low": 4197.34,
+          "close": 4198.68,
+          "volume": 169.202,
+          "close_time": 1791701999999
+        },
+        "rows_received": 3,
+        "closed_rows": 2
+      },
+      "5m": {
+        "latest_closed": {
+          "open_time": 1791702300000,
+          "open": 4199.7,
+          "high": 4199.9,
+          "low": 4199.17,
+          "close": 4199.17,
+          "volume": 63.86,
+          "close_time": 1791702599999
+        },
+        "rows_received": 3,
+        "closed_rows": 2
+      }
+    }
+  },
+  "paper_orders": [],
+  "orders_sent": false,
+  "withdrawals_sent": false,
+  "next_action": "Feed closed snapshots into virtual signal/SL/TP engine; keep real order path disabled."
+}

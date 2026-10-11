@@ -1,0 +1,264 @@
+{
+  "name": "D10_ROBUSTNESS_AUDIT",
+  "status": "DIAGNOSTIC_ONLY",
+  "production_changed": false,
+  "scope": {
+    "symbol": "XAUUSDT",
+    "data_timeframe": [
+      "1h",
+      "15m",
+      "5m"
+    ],
+    "trades": 339,
+    "initial_balance_usdt": 1000.0,
+    "notional_per_trade_usdt": 1000.0,
+    "compounding": false
+  },
+  "method": {
+    "regime": "1H close versus 20-bar average plus 24-bar return; bull/bear threshold 3%, otherwise range",
+    "drawdown": "sequential cumulative net PnL, peak-to-trough",
+    "monthly": "UTC entry month",
+    "stress": "recompute gross - funding - two-sided fee/slippage"
+  },
+  "baseline": {
+    "trades": 339,
+    "wins": 314,
+    "losses": 25,
+    "win_rate": 0.9262536873156342,
+    "net_pnl": 865.6238555579238,
+    "avg_pnl": 2.553462700760837,
+    "max_drawdown_usdt": 4.99616443521694
+  },
+  "by_setup": {
+    "fvg_context": {
+      "trades": 306,
+      "wins": 283,
+      "losses": 23,
+      "win_rate": 0.9248366013071896,
+      "net_pnl": 784.8691520369609,
+      "avg_pnl": 2.5649318694018333,
+      "max_drawdown_usdt": 4.99616443521694
+    },
+    "ob_context": {
+      "trades": 33,
+      "wins": 31,
+      "losses": 2,
+      "win_rate": 0.9393939393939394,
+      "net_pnl": 80.75470352096285,
+      "avg_pnl": 2.447112227907965,
+      "max_drawdown_usdt": 2.2457924806296106
+    }
+  },
+  "by_side": {
+    "BEARISH": {
+      "trades": 166,
+      "wins": 154,
+      "losses": 12,
+      "win_rate": 0.927710843373494,
+      "net_pnl": 462.053374285355,
+      "avg_pnl": 2.78345406195997,
+      "max_drawdown_usdt": 4.99616443521694
+    },
+    "BULLISH": {
+      "trades": 173,
+      "wins": 160,
+      "losses": 13,
+      "win_rate": 0.9248554913294798,
+      "net_pnl": 403.57048127256877,
+      "avg_pnl": 2.3327773483963514,
+      "max_drawdown_usdt": 4.566989073756908
+    }
+  },
+  "by_regime": {
+    "BEAR": {
+      "trades": 41,
+      "wins": 40,
+      "losses": 1,
+      "win_rate": 0.975609756097561,
+      "net_pnl": 210.7052328176524,
+      "avg_pnl": 5.139152019942741,
+      "max_drawdown_usdt": 4.010675707431318
+    },
+    "BULL": {
+      "trades": 27,
+      "wins": 24,
+      "losses": 3,
+      "win_rate": 0.8888888888888888,
+      "net_pnl": 91.14191684428181,
+      "avg_pnl": 3.375626549788215,
+      "max_drawdown_usdt": 4.566989073756911
+    },
+    "RANGE": {
+      "trades": 271,
+      "wins": 250,
+      "losses": 21,
+      "win_rate": 0.922509225092251,
+      "net_pnl": 563.7767058959896,
+      "avg_pnl": 2.080356848324685,
+      "max_drawdown_usdt": 4.99616443521694
+    }
+  },
+  "monthly": {
+    "2025-12": {
+      "trades": 18,
+      "wins": 15,
+      "losses": 3,
+      "win_rate": 0.8333333333333334,
+      "net_pnl": 23.535967421376718,
+      "avg_pnl": 1.3075537456320399,
+      "max_drawdown_usdt": 2.794196775272301
+    },
+    "2026-01": {
+      "trades": 48,
+      "wins": 45,
+      "losses": 3,
+      "win_rate": 0.9375,
+      "net_pnl": 167.90877156140957,
+      "avg_pnl": 3.498099407529366,
+      "max_drawdown_usdt": 4.566989073756908
+    },
+    "2026-02": {
+      "trades": 45,
+      "wins": 42,
+      "losses": 3,
+      "win_rate": 0.9333333333333333,
+      "net_pnl": 136.00200455771443,
+      "avg_pnl": 3.0222667679492097,
+      "max_drawdown_usdt": 2.5186842374247362
+    },
+    "2026-03": {
+      "trades": 23,
+      "wins": 21,
+      "losses": 2,
+      "win_rate": 0.9130434782608695,
+      "net_pnl": 90.63926412819067,
+      "avg_pnl": 3.9408375707908987,
+      "max_drawdown_usdt": 4.996164435216933
+    },
+    "2026-04": {
+      "trades": 28,
+      "wins": 26,
+      "losses": 2,
+      "win_rate": 0.9285714285714286,
+      "net_pnl": 90.10415807533722,
+      "avg_pnl": 3.218005645547758,
+      "max_drawdown_usdt": 1.877898112375732
+    },
+    "2026-05": {
+      "trades": 37,
+      "wins": 34,
+      "losses": 3,
+      "win_rate": 0.918918918918919,
+      "net_pnl": 61.40951048955051,
+      "avg_pnl": 1.6597164997175815,
+      "max_drawdown_usdt": 2.1360339158180714
+    },
+    "2026-06": {
+      "trades": 40,
+      "wins": 38,
+      "losses": 2,
+      "win_rate": 0.95,
+      "net_pnl": 113.25945624759555,
+      "avg_pnl": 2.831486406189889,
+      "max_drawdown_usdt": 4.010675707431311
+    },
+    "2026-07": {
+      "trades": 25,
+      "wins": 22,
+      "losses": 3,
+      "win_rate": 0.88,
+      "net_pnl": 66.34443690486984,
+      "avg_pnl": 2.6537774761947936,
+      "max_drawdown_usdt": 3.9613166760291456
+    },
+    "2026-08": {
+      "trades": 33,
+      "wins": 32,
+      "losses": 1,
+      "win_rate": 0.9696969696969697,
+      "net_pnl": 46.665669442958574,
+      "avg_pnl": 1.414111195241169,
+      "max_drawdown_usdt": 1.1632684095334689
+    },
+    "2026-09": {
+      "trades": 35,
+      "wins": 33,
+      "losses": 2,
+      "win_rate": 0.9428571428571428,
+      "net_pnl": 58.949703463092526,
+      "avg_pnl": 1.6842772418026435,
+      "max_drawdown_usdt": 2.256562623547339
+    },
+    "2026-10": {
+      "trades": 7,
+      "wins": 6,
+      "losses": 1,
+      "win_rate": 0.8571428571428571,
+      "net_pnl": 10.804913265828132,
+      "avg_pnl": 1.5435590379754474,
+      "max_drawdown_usdt": 0.014634727117111446
+    }
+  },
+  "cost_stress": {
+    "base": {
+      "trades": 339,
+      "wins": 314,
+      "losses": 25,
+      "win_rate": 0.9262536873156342,
+      "net_pnl": 865.6238555579238,
+      "avg_pnl": 2.553462700760837,
+      "max_drawdown_usdt": 4.99616443521694,
+      "fee_rate_per_side": 0.0004,
+      "slippage_rate_per_side": 0.0002
+    },
+    "fee_2x": {
+      "trades": 339,
+      "wins": 268,
+      "losses": 71,
+      "win_rate": 0.7905604719764012,
+      "net_pnl": 594.4238555579237,
+      "avg_pnl": 1.753462700760837,
+      "max_drawdown_usdt": 6.166989073756916,
+      "fee_rate_per_side": 0.0008,
+      "slippage_rate_per_side": 0.0002
+    },
+    "slippage_2x": {
+      "trades": 339,
+      "wins": 296,
+      "losses": 43,
+      "win_rate": 0.8731563421828908,
+      "net_pnl": 730.0238555579238,
+      "avg_pnl": 2.153462700760837,
+      "max_drawdown_usdt": 5.396164435216917,
+      "fee_rate_per_side": 0.0004,
+      "slippage_rate_per_side": 0.0004
+    },
+    "fee_slippage_2x": {
+      "trades": 339,
+      "wins": 219,
+      "losses": 120,
+      "win_rate": 0.6460176991150443,
+      "net_pnl": 458.82385555792365,
+      "avg_pnl": 1.3534627007608366,
+      "max_drawdown_usdt": 9.742729550483794,
+      "fee_rate_per_side": 0.0008,
+      "slippage_rate_per_side": 0.0004
+    }
+  },
+  "concentration": {
+    "setup_share": {
+      "fvg_context": 0.9026548672566371,
+      "ob_context": 0.09734513274336283
+    },
+    "largest_setup_net_share": 0.9067092444339884
+  },
+  "checks": {
+    "trade_count_matches_artifact": true,
+    "setup_registry_unchanged": true,
+    "all_have_cost_fields": true,
+    "chronological_order": true,
+    "regimes_known": true
+  },
+  "decision": "DIAGNOSTIC_ONLY_HOLDOUT_REQUIRED",
+  "next_action": "Repeat D1-D10 for ETHUSDT, SOLUSDT, and XAUUSDT; then run independent holdout and demo preflight. Do not promote setups from this BTC-only audit."
+}

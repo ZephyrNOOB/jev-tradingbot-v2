@@ -1,0 +1,32 @@
+{
+  "ETHUSDT": {
+    "trades": 1191,
+    "net_pnl": 8538.637580160213,
+    "holdout": {
+      "cut_open_time": 1761486300000,
+      "trades": 564,
+      "net_pnl": 2403.6846156210563,
+      "status": "DIAGNOSTIC_ONLY"
+    }
+  },
+  "SOLUSDT": {
+    "trades": 1213,
+    "net_pnl": 16824.178412616846,
+    "holdout": {
+      "cut_open_time": 1761487200000,
+      "trades": 627,
+      "net_pnl": 3370.689186738224,
+      "status": "DIAGNOSTIC_ONLY"
+    }
+  },
+  "XAUUSDT": {
+    "trades": 339,
+    "net_pnl": 865.6238555579238,
+    "holdout": {
+      "cut_open_time": 1786376700000,
+      "trades": 63,
+      "net_pnl": 98.43295335363815,
+      "status": "DIAGNOSTIC_ONLY"
+    }
+  }
+}

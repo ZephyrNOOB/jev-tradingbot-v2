@@ -1,0 +1,13 @@
+node_modules/
+jev.db
+.jev-master-key
+.env
+*.log
+data/*.csv
+data/*.json
+# Generated research and local archive
+_archive/
+v2/data/
+v2/backtests/
+v2/scripts/__pycache__/
+v2/artifacts/backtests/
