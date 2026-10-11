@@ -406,6 +406,37 @@ app.post('/api/binance-demo/order-test', auth, async (req, res) => {
     res.status(502).json({ ok: false, testOnly: true, error: 'Binance Demo order test failed' });
   }
 });
+app.post('/api/binance-demo/order', auth, async (req, res) => {
+  const { keyId, symbol, side, quantity, price } = req.body || {};
+  if (Number(keyId) <= 0 || String(symbol).toUpperCase() !== 'BTCUSDT' || side !== 'BUY') return res.status(400).json({ ok: false, error: 'Only BTCUSDT Demo BUY orders are allowed' });
+  const qty = Number(quantity), limitPrice = Number(price);
+  if (!Number.isFinite(qty) || qty <= 0 || qty > 0.003 || !Number.isFinite(limitPrice) || limitPrice <= 0 || qty * limitPrice > 250) return res.status(400).json({ ok: false, error: 'Order exceeds Demo test safety limits' });
+  const keyRow = get('SELECT * FROM api_keys WHERE id = ? AND user_id = ? AND exchange = ?', [Number(keyId), req.userId, 'binanceTestnet']);
+  if (!keyRow) return res.status(400).json({ ok: false, error: 'Binance Demo key not found' });
+  try {
+    const query = new URLSearchParams({ symbol: 'BTCUSDT', side: 'BUY', type: 'LIMIT', timeInForce: 'GTC', quantity: String(quantity), price: String(price), recvWindow: '5000', timestamp: String(Date.now()) });
+    const queryString = query.toString();
+    const url = EXCHANGES.binanceTestnet.base + '/fapi/v1/order?' + queryString + '&signature=' + binanceSignature(decryptSecret(keyRow.secret_key), queryString);
+    const response = await fetchBinance(url, { method: 'POST', headers: { 'X-MBX-APIKEY': decryptSecret(keyRow.api_key) } });
+    const data = await response.json();
+    res.status(response.ok ? 200 : response.status).json({ ok: response.ok, demoOnly: true, exchangeResponse: data });
+  } catch { res.status(502).json({ ok: false, demoOnly: true, error: 'Binance Demo order failed' }); }
+});
+
+app.post('/api/binance-demo/cancel', auth, async (req, res) => {
+  const { keyId, symbol = 'BTCUSDT', orderId } = req.body || {};
+  if (Number(keyId) <= 0 || String(symbol).toUpperCase() !== 'BTCUSDT' || !Number.isInteger(Number(orderId)) || Number(orderId) <= 0) return res.status(400).json({ ok: false, error: 'Invalid Demo cancel request' });
+  const keyRow = get('SELECT * FROM api_keys WHERE id = ? AND user_id = ? AND exchange = ?', [Number(keyId), req.userId, 'binanceTestnet']);
+  if (!keyRow) return res.status(400).json({ ok: false, error: 'Binance Demo key not found' });
+  try {
+    const query = new URLSearchParams({ symbol: 'BTCUSDT', orderId: String(orderId), recvWindow: '5000', timestamp: String(Date.now()) });
+    const queryString = query.toString();
+    const url = EXCHANGES.binanceTestnet.base + '/fapi/v1/order?' + queryString + '&signature=' + binanceSignature(decryptSecret(keyRow.secret_key), queryString);
+    const response = await fetchBinance(url, { method: 'DELETE', headers: { 'X-MBX-APIKEY': decryptSecret(keyRow.api_key) } });
+    const data = await response.json();
+    res.status(response.ok ? 200 : response.status).json({ ok: response.ok, demoOnly: true, exchangeResponse: data });
+  } catch { res.status(502).json({ ok: false, demoOnly: true, error: 'Binance Demo cancel failed' }); }
+});
 app.post('/api/exchanges/:exchange/request', auth, async (req, res) => {
   if (!rateLimit(apiAttempts, clientIp(req) + ':' + req.userId, 60, 15 * 60 * 1000)) return res.status(429).json({ error: 'Too many requests' });
   const exchange = req.params.exchange;
