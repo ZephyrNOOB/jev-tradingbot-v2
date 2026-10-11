@@ -1,6 +1,6 @@
 # JEV Trading Bot — Active V2
 
-Status: Stage 7 in progress. Active workflow is read-only paper observation on Binance Demo.
+Status: Stage 7 closed without promotion. Active workflow is read-only paper observation on Binance Demo.
 
 ## Active workflow
 
