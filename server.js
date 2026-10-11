@@ -292,15 +292,14 @@ app.get('/api/chart/candles', auth, async (req, res) => {
     res.status(502).json({ ok: false, symbol, error: error.message });
   }
 });
-app.get('/api/chart/candles', auth, async (req, res) => {
-  const symbol = String(req.query.symbol || '').toUpperCase();
-  const interval = String(req.query.interval || '5m');
-  const limit = Math.min(200, Math.max(30, Number(req.query.limit) || 120));
-  if (!PAPER_SYMBOLS.includes(symbol) || interval !== '5m') return res.status(400).json({ error: 'Unsupported chart request' });
+app.get('/api/chart/tickers', auth, async (req, res) => {
   try {
-    const candles = await fetchBinanceCandles(symbol, interval, limit);
-    res.json({ ok: true, symbol, interval, candles });
-  } catch (error) { res.status(502).json({ ok: false, symbol, error: error.message }); }
+    const query = encodeURIComponent(JSON.stringify(PAPER_SYMBOLS));
+    const response = await fetchBinance(BINANCE_DATA_BASE + '/fapi/v1/ticker/price?symbols=' + query);
+    const data = await response.json();
+    if (!response.ok || !Array.isArray(data)) throw new Error(data?.msg || 'Ticker request failed');
+    res.json({ ok: true, prices: Object.fromEntries(data.map(row => [row.symbol, Number(row.price)])), updated_at: Date.now() });
+  } catch (error) { res.status(502).json({ ok: false, error: error.message }); }
 });
 app.get('/api/exchanges', auth, (req, res) => {
   res.json(Object.entries(EXCHANGES).map(([id, x]) => ({ id, name: x.name, passphrase: x.passphrase })));

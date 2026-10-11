@@ -40,13 +40,14 @@ async function api(path, opts = {}) {
 }
 
 const chartPairs = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XAUUSDT'];
-function drawChart(canvas, candles) {
+function drawChart(canvas, candles, livePrice) {
   const ctx = canvas.getContext('2d'), ratio = devicePixelRatio || 1, width = canvas.clientWidth, height = canvas.clientHeight;
   canvas.width = width * ratio; canvas.height = height * ratio; ctx.scale(ratio, ratio);
-  const prices = candles.flatMap(c => [c.high, c.low]), max = Math.max(...prices), min = Math.min(...prices), range = max - min || 1;
+  const prices = candles.flatMap(c => [c.high, c.low]).concat(livePrice), max = Math.max(...prices), min = Math.min(...prices), range = max - min || 1;
   ctx.clearRect(0, 0, width, height); ctx.strokeStyle = '#00d992'; ctx.lineWidth = 1.2; ctx.beginPath();
   candles.forEach((c, i) => { const x = i * width / Math.max(1, candles.length - 1), y = height - ((c.close - min) / range) * (height - 10) - 5; i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.stroke();
-  ctx.fillStyle = '#6b6966'; ctx.font = '10px monospace'; ctx.fillText(max.toFixed(2), 8, 12); ctx.fillText(min.toFixed(2), 8, height - 4);
+  const liveY = height - ((livePrice - min) / range) * (height - 10) - 5; ctx.strokeStyle = '#f2b84b'; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.moveTo(0, liveY); ctx.lineTo(width, liveY); ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle = '#6b6966'; ctx.font = '10px monospace'; ctx.fillText(max.toFixed(2), 8, 12); ctx.fillText(min.toFixed(2), 8, height - 4); ctx.fillStyle = '#f2b84b'; ctx.fillText(`LIVE ${livePrice}`, Math.max(8, width - 90), 12);
 }
 let chartsRefreshing = false;
 async function refreshCharts() {
@@ -54,10 +55,13 @@ async function refreshCharts() {
   chartsRefreshing = true;
   const root = document.getElementById('pairCharts');
   if (!root.children.length) root.innerHTML = chartPairs.map(symbol => `<article class="pair-chart"><div class="pair-chart-title"><strong>${symbol}</strong><span id="chartState-${symbol}">LOADING</span></div><canvas id="chart-${symbol}" aria-label="${symbol} 5 minute price chart"></canvas></article>`).join('');
-  await Promise.all(chartPairs.map(async symbol => { const state = document.getElementById(`chartState-${symbol}`); try { const result = await api(`/chart/candles?symbol=${symbol}&interval=5m&limit=120`); if (!result?.ok) throw new Error(result?.error || 'Unavailable'); drawChart(document.getElementById(`chart-${symbol}`), result.candles); state.textContent = `${result.candles.length} CANDLES`; } catch { state.textContent = 'ERROR'; } }));
-  document.getElementById('chartsUpdated').textContent = `LIVE ${new Date().toLocaleTimeString()}`;
+  try {
+    const ticker = await api('/chart/tickers');
+    if (!ticker?.ok) throw new Error(ticker?.error || 'Ticker unavailable');
+    await Promise.all(chartPairs.map(async symbol => { const state = document.getElementById(`chartState-${symbol}`); try { const result = await api(`/chart/candles?symbol=${symbol}&interval=5m&limit=120`); if (!result?.ok) throw new Error(result?.error || 'Unavailable'); drawChart(document.getElementById(`chart-${symbol}`), result.candles, ticker.prices[symbol]); state.textContent = `LIVE ${ticker.prices[symbol]} · ${result.candles.length} CANDLES`; } catch { state.textContent = 'ERROR'; } }));
+    document.getElementById('chartsUpdated').textContent = `LIVE ${new Date().toLocaleTimeString()}`;
+  } finally { chartsRefreshing = false; }
 }
-
 async function init() {
   const me = await api('/me');
   if (!me) return;
