@@ -230,7 +230,7 @@ async function runPaperCycle(sid) {
     runner.last_polled_at = Date.now();
     runner.watermark = signatures;
     if (!changed) return;
-    await new Promise((resolve, reject) => execFile(process.env.PYTHON || 'python', [path.join(__dirname, 'v2', 'scripts', 'binance_demo_paper_pipeline.py')], { cwd: __dirname, timeout: 90_000, windowsHide: true, maxBuffer: 1_000_000 }, error => error ? reject(error) : resolve()));
+    await new Promise((resolve, reject) => execFile(process.env.PYTHON || 'python', [path.join(__dirname, 'v2', 'scripts', 'binance_demo_paper_pipeline.py')], { cwd: __dirname, timeout: 90_000, windowsHide: true, shell: process.platform === 'win32', maxBuffer: 1_000_000 }, error => error ? reject(error) : resolve()));
     runner.error = null;
     runner.cycles += 1;
   } catch (error) {
