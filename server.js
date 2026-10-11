@@ -385,6 +385,27 @@ app.delete('/api/keys/:id', auth, (req, res) => {
   res.json({ ok: true });
 });
 
+app.post('/api/binance-demo/order-test', auth, async (req, res) => {
+  const { keyId, symbol, side, type = 'LIMIT', quantity, price, timeInForce = 'GTC' } = req.body || {};
+  const allowedSymbols = new Set(PAPER_SYMBOLS);
+  if (Number(keyId) <= 0 || !allowedSymbols.has(String(symbol).toUpperCase()) || !['BUY', 'SELL'].includes(side) || type !== 'LIMIT' || timeInForce !== 'GTC') {
+    return res.status(400).json({ ok: false, error: 'Only Binance Demo LIMIT GTC order tests are allowed' });
+  }
+  const qty = Number(quantity), limitPrice = Number(price);
+  if (!Number.isFinite(qty) || qty <= 0 || !Number.isFinite(limitPrice) || limitPrice <= 0) return res.status(400).json({ ok: false, error: 'Invalid quantity or price' });
+  const keyRow = get('SELECT * FROM api_keys WHERE id = ? AND user_id = ? AND exchange = ?', [Number(keyId), req.userId, 'binanceTestnet']);
+  if (!keyRow) return res.status(400).json({ ok: false, error: 'Binance Demo key not found' });
+  try {
+    const query = new URLSearchParams({ symbol: String(symbol).toUpperCase(), side, type, timeInForce, quantity: String(quantity), price: String(price), recvWindow: '5000', timestamp: String(Date.now()) });
+    const queryString = query.toString();
+    const url = EXCHANGES.binanceTestnet.base + '/fapi/v1/order/test?' + queryString + '&signature=' + binanceSignature(decryptSecret(keyRow.secret_key), queryString);
+    const response = await fetchBinance(url, { method: 'POST', headers: { 'X-MBX-APIKEY': decryptSecret(keyRow.api_key) } });
+    const data = await response.json();
+    res.status(response.ok ? 200 : response.status).json({ ok: response.ok, testOnly: true, symbol: String(symbol).toUpperCase(), side, type, quantity: qty, price: limitPrice, exchangeResponse: data });
+  } catch {
+    res.status(502).json({ ok: false, testOnly: true, error: 'Binance Demo order test failed' });
+  }
+});
 app.post('/api/exchanges/:exchange/request', auth, async (req, res) => {
   if (!rateLimit(apiAttempts, clientIp(req) + ':' + req.userId, 60, 15 * 60 * 1000)) return res.status(429).json({ error: 'Too many requests' });
   const exchange = req.params.exchange;
