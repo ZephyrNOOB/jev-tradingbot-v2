@@ -38,7 +38,7 @@
       <div class="card"><div class="stat-label">Paper Plans</div><div class="stat-value" id="statPlans">--</div></div>
       <div class="card"><div class="stat-label">Connection</div><div class="stat-value" id="statConn" style="color:var(--muted)">OFFLINE</div></div>
     </div>
-    <div class="card"><h3 style="font-size:14px;margin-bottom:14px">V2 WORKFLOW</h3><div class="workflow-line mono">1H Bias <span>→</span> 15M MarketStructureBot <span>→</span> 5M ConfirmationBot <span>→</span> SelectionBot <span>→</span> SetupBot</div><p id="v2Status" class="muted mono" style="margin-top:14px">Loading paper status...</p><div id="v2Pairs" class="table-wrap"></div></div>  </main>
+    <div class="card workflow-office"><div class="office-header"><div><h3 style="font-size:14px;margin-bottom:6px">V2 WORKFLOW OFFICE</h3><p class="muted mono">Read-only paper execution monitor · orders disabled</p></div><span class="office-live"><i></i> PAPER MODE</span></div><div class="workflow-track" id="workflowTrack"></div><p id="v2Status" class="muted mono" style="margin-top:14px">Loading paper status...</p><div id="v2Pairs" class="table-wrap"></div></div>
 </div>
 <script>
 function csrfToken() { return document.cookie.split('; ').find(x => x.startsWith('csrf='))?.split('=')[1] || ''; }
@@ -56,6 +56,9 @@ async function init() {
   document.getElementById('userInfo').textContent = me.username;
   const v2 = await api('/v2/status');
   if (v2?.ok) {
+    const rooms = [['BIAS BOT','1H','Reads closed 1H candles; sets market direction.',t.bias_ready > 0 ? 'READY' : 'WAITING'],['MARKET STRUCTURE BOT','15M','Builds SMC structure and emits BOS / CHoCH evidence.',t.structure_events > 0 ? 'ANALYZING' : 'WAITING'],['CONFIRMATION BOT','5M','Checks retest, rejection, and micro-break confirmation.',t.confirmed_5m > 0 ? 'CONFIRMED' : 'WAITING'],['SELECTION BOT','GATE','Accepts only bias-aligned, causally owned setups.',t.selected > 0 ? 'SELECTED' : 'WAITING'],['SETUP BOT','PLAN','Builds virtual Entry / SL / TP with provenance and economics.',t.paper_plans > 0 ? 'PAPER READY' : 'WAITING']];
+    const track = document.getElementById('workflowTrack');
+    rooms.forEach((r,i) => { const room = document.createElement('div'); room.className = 'workflow-room' + (r[3] !== 'WAITING' ? ' room-active' : ''); room.innerHTML = `<div class="room-top"><span class="room-index">0${i + 1}</span><span class="room-status">${r[3]}</span></div><div class="room-icon">${r[1]}</div><h4>${r[0]}</h4><p>${r[2]}</p>`; if (i < rooms.length - 1) { const connector = document.createElement('span'); connector.className = 'room-connector'; connector.textContent = '›'; room.appendChild(connector); } track.appendChild(room); });
     const t = v2.artifact.totals;
     document.getElementById('statPlans').textContent = t.paper_plans;
     document.getElementById('v2Status').textContent = `Demo paper · ${t.structure_events} structure events · ${t.confirmed_5m} confirmed · ${t.selected} selected · orders disabled`;
