@@ -472,7 +472,7 @@ app.get('/api/chart/candles', auth, async (req, res) => {
   const symbol = String(req.query.symbol || '').toUpperCase();
   const interval = String(req.query.interval || '5m');
   const limit = Math.min(200, Math.max(30, Number(req.query.limit) || 120));
-  if (!PAPER_SYMBOLS.includes(symbol) || interval !== '5m') return res.status(400).json({ error: 'Unsupported chart request' });
+  if (!PAPER_SYMBOLS.includes(symbol) || !['1h', '15m', '5m'].includes(interval)) return res.status(400).json({ error: 'Unsupported chart request' });
   try {
     const candles = await fetchBinanceCandles(symbol, interval, limit);
     res.json({ ok: true, symbol, interval, candles });
