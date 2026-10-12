@@ -94,7 +94,9 @@ def main():
         observations[symbol] = {"closed_counts": {"1h": len(h), "15m": len(m), "5m": len(q)}, "recent_events": symbol_rows}
 
     execution_candidates = collapse_active_plans(observations, plan_candidates)
-    totals["selected_events"] = totals["selected"]\n    totals["selected"] = len(execution_candidates)\n    totals["paper_plans"] = len(execution_candidates)
+    totals["selected_events"] = totals["selected"]
+    totals["selected"] = len(execution_candidates)
+    totals["paper_plans"] = len(execution_candidates)
 
     out = {"name": "BINANCE_DEMO_PAPER_PIPELINE", "status": "PASS", "environment": "demo-fapi", "server_time": server_time, "symbols": observations, "execution_candidates": execution_candidates, "totals": totals, "orders_sent": False, "withdrawals_sent": False, "virtual_entry_sl_tp": totals["paper_plans"] > 0, "next_action": "Validate policy sizing and Binance filters before Demo execution."}
     (ART / "BINANCE_DEMO_PAPER_PIPELINE.json").write_text(json.dumps(out, indent=2) + "\n"); print(json.dumps(out, indent=2))
