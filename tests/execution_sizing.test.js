@@ -5,6 +5,7 @@ import { buildDemoEntryOrder, canSendDemoEntry } from '../v2/scripts/demo_entry_
 import { buildProtectionOrders, verifyEntryFill } from '../v2/scripts/demo_protection.js';
 import { reconcileDemoState } from '../v2/scripts/demo_reconciliation.js';
 import { evaluateRiskLimits } from '../v2/scripts/demo_risk_guard.js';
+import { monitorProtectionState } from '../v2/scripts/demo_monitoring.js';
 
 const filters = { filters: [
   { filterType: 'LOT_SIZE', minQty: '0.001', stepSize: '0.001' },
@@ -66,4 +67,12 @@ test('blocks new entries at position and daily-loss limits', () => {
   assert.equal(evaluateRiskLimits([{ positionAmt: '1' }], -5, { availableBalance: 100 }, policy).status, 'REJECTED_MAX_OPEN_POSITIONS');
   assert.equal(evaluateRiskLimits([], -1, { availableBalance: 100 }, policy).status, 'REJECTED_MAX_DAILY_LOSS');
   assert.equal(evaluateRiskLimits([], -0.5, { availableBalance: 100 }, policy).status, 'ALLOWED');
+});
+
+test('marks filled positions without complete protection as unsafe', () => {
+  const candidates = [{ client_order_id: 'jev_1', symbol: 'BTCUSDT' }];
+  const position = [{ symbol: 'BTCUSDT', positionAmt: '0.002' }];
+  assert.equal(monitorProtectionState(candidates, [], position)[0].status, 'ENTRY_FILLED_NO_PROTECTION');
+  assert.equal(monitorProtectionState(candidates, [{ clientOrderId: 'jev_1_sl', status: 'NEW' }], position)[0].status, 'PROTECTION_INCOMPLETE');
+  assert.equal(monitorProtectionState(candidates, [{ clientOrderId: 'jev_1_sl', status: 'NEW' }, { clientOrderId: 'jev_1_tp', status: 'NEW' }], position)[0].status, 'HEALTHY');
 });

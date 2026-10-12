@@ -12,6 +12,7 @@ import { buildDemoEntryOrder, canSendDemoEntry } from './v2/scripts/demo_entry_e
 import { buildProtectionOrders, verifyEntryFill } from './v2/scripts/demo_protection.js';
 import { reconcileDemoState } from './v2/scripts/demo_reconciliation.js';
 import { evaluateRiskLimits } from './v2/scripts/demo_risk_guard.js';
+import { monitorProtectionState } from './v2/scripts/demo_monitoring.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -336,7 +337,8 @@ app.get('/api/binance-demo/reconciliation', auth, async (req, res) => {
     const [positions, ordersBySymbol] = await Promise.all([signed('/fapi/v2/positionRisk'), Promise.all(PAPER_SYMBOLS.map(symbol => signed('/fapi/v1/openOrders', { symbol }))) ]);
     const artifact = JSON.parse(fs.readFileSync(path.join(__dirname, 'v2', 'artifacts', 'BINANCE_DEMO_PAPER_PIPELINE.json'), 'utf8'));
     const reconciliation = reconcileDemoState(artifact.execution_candidates || [], ordersBySymbol.flat(), positions);
-    res.json({ ok: true, demoOnly: true, observedAt: new Date().toISOString(), ordersSent: false, withdrawalsSent: false, ...reconciliation });
+    const monitoring = monitorProtectionState(artifact.execution_candidates || [], ordersBySymbol.flat(), positions);
+    res.json({ ok: true, demoOnly: true, observedAt: new Date().toISOString(), ordersSent: false, withdrawalsSent: false, monitoring, ...reconciliation });
   } catch (error) { res.status(502).json({ ok: false, demoOnly: true, error: error.message || 'Demo reconciliation failed' }); }
 });app.post('/api/binance-demo/protection-plan', auth, (req, res) => {
   const fill = verifyEntryFill(req.body?.exchangeOrder);
@@ -638,6 +640,7 @@ initDb().then(() => {
   console.error('DB init failed:', e);
   process.exit(1);
 });
+
 
 
 
