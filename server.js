@@ -14,6 +14,7 @@ import { reconcileDemoState } from './v2/scripts/demo_reconciliation.js';
 import { evaluateRiskLimits } from './v2/scripts/demo_risk_guard.js';
 import { monitorProtectionState } from './v2/scripts/demo_monitoring.js';
 import { buildRecoveryPlan } from './v2/scripts/demo_recovery.js';
+import { summarizeDemoDryRun } from './v2/scripts/demo_cycle.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -42,6 +43,7 @@ app.use((req, res, next) => {
 const sessions = new Map();
 const botStates = new Map();
 const botRunners = new Map();
+const demoCycleSummaries = new Map();
 const marketObservers = new Map();
 const PAPER_INTERVAL_MS = 60_000;
 const PAPER_STALE_AFTER_MS = 15 * 60_000;
@@ -265,6 +267,8 @@ async function runPaperCycle(sid) {
   try {
     await new Promise((resolve, reject) => execFile(process.env.PYTHON || 'python', [path.join(__dirname, 'v2', 'scripts', 'binance_demo_paper_pipeline.py')], { cwd: __dirname, timeout: 90_000, windowsHide: true, shell: process.platform === 'win32', maxBuffer: 1_000_000 }, error => error ? reject(error) : resolve()));
     runner.error = null;
+    const artifact = JSON.parse(fs.readFileSync(path.join(__dirname, 'v2', 'artifacts', 'BINANCE_DEMO_PAPER_PIPELINE.json'), 'utf8'));
+    demoCycleSummaries.set(sid, { ...summarizeDemoDryRun(artifact), observedAt: new Date().toISOString() });
     runner.cycles += 1;
   } catch (error) {
     runner.error = error?.message || 'paper_cycle_failed';
@@ -284,7 +288,7 @@ function startPaperRunner(sid) {
 }app.get('/api/bot/status', auth, (req, res) => {
   const runner = botRunners.get(req.cookies.sid);
   const observer = marketObservers.get('global');
-  res.json({ ok: true, enabled: botStates.get(req.cookies.sid) === true, observing: Boolean(observer?.timer), running: Boolean(runner?.running), cycles: runner?.cycles || 0, error: runner?.error || null, observer_error: observer?.error || null, last_started_at: runner?.last_started_at || null, last_finished_at: runner?.last_finished_at || null, last_polled_at: observer?.last_polled_at || null, watermark: observer?.watermark || {}, mode: 'paper_observation', ordersEnabled: false });
+  res.json({ ok: true, enabled: botStates.get(req.cookies.sid) === true, observing: Boolean(observer?.timer), running: Boolean(runner?.running), cycles: runner?.cycles || 0, error: runner?.error || null, observer_error: observer?.error || null, last_started_at: runner?.last_started_at || null, last_finished_at: runner?.last_finished_at || null, last_polled_at: observer?.last_polled_at || null, watermark: observer?.watermark || {}, mode: 'paper_observation', demoCycle: demoCycleSummaries.get(req.cookies.sid) || null, ordersEnabled: false });
 });
 
 app.post('/api/bot/toggle', auth, (req, res) => {
@@ -295,7 +299,7 @@ app.post('/api/bot/toggle', auth, (req, res) => {
   if (enabled) startPaperRunner(req.cookies.sid); else stopPaperRunner(req.cookies.sid);
   const runner = botRunners.get(req.cookies.sid);
   const observer = marketObservers.get('global');
-  res.json({ ok: true, enabled, observing: Boolean(observer?.timer), running: Boolean(runner?.running), cycles: runner?.cycles || 0, mode: 'paper_observation', ordersEnabled: false });
+  res.json({ ok: true, enabled, observing: Boolean(observer?.timer), running: Boolean(runner?.running), cycles: runner?.cycles || 0, mode: 'paper_observation', demoCycle: demoCycleSummaries.get(req.cookies.sid) || null, ordersEnabled: false });
 });
 app.get('/api/binance-demo/execution-preflight', auth, async (req, res) => {
   const keyRow = get("SELECT * FROM api_keys WHERE id = (SELECT id FROM api_keys WHERE user_id = ? AND exchange = 'binanceTestnet' AND status = 'connected' ORDER BY id DESC LIMIT 1)", [req.userId]);
@@ -644,6 +648,7 @@ initDb().then(() => {
   console.error('DB init failed:', e);
   process.exit(1);
 });
+
 
 
 
