@@ -383,18 +383,48 @@ app.get('/api/binance-demo/reconciliation', auth, async (req, res) => {
   const plan = fill.filled ? buildProtectionOrders(req.body?.candidate, req.body?.sizing, req.body?.precisionValidation) : { status: 'WAITING_ENTRY_FILL', orders: [] };
   res.status(plan.status === 'READY_AFTER_ENTRY_FILL' ? 200 : 409).json({ ok: plan.status === 'READY_AFTER_ENTRY_FILL', demoOnly: true, fill, plan, ordersSent: false, withdrawalsSent: false });
 });
-app.post('/api/binance-demo/execute-candidate', auth, (req, res) => {
-  const candidateId = String(req.body?.clientOrderId || '');
-  const artifactPath = path.join(__dirname, 'v2', 'artifacts', 'BINANCE_DEMO_PAPER_PIPELINE.json');
+async function loadServerExecutionCandidate(userId, candidateId) {
+  const keyRow = get("SELECT * FROM api_keys WHERE id = (SELECT id FROM api_keys WHERE user_id = ? AND exchange = 'binanceTestnet' AND status = 'connected' ORDER BY id DESC LIMIT 1)", [userId]);
+  const policyRow = get('SELECT risk_per_trade, max_notional, leverage, margin_mode, max_open_positions, max_daily_loss FROM execution_policies WHERE user_id = ?', [userId]);
+  if (!keyRow || !policyRow) return { error: 'Connected Binance Demo key and execution policy required' };
+  const apiKey = decryptSecret(keyRow.api_key), secret = decryptSecret(keyRow.secret_key);
+  const signed = async (apiPath, params = {}) => {
+    const query = new URLSearchParams({ ...params, recvWindow: '5000', timestamp: String(Date.now()) });
+    const queryString = query.toString();
+    const response = await fetchBinance(EXCHANGES.binanceTestnet.base + apiPath + '?' + queryString + '&signature=' + binanceSignature(secret, queryString), { headers: { 'X-MBX-APIKEY': apiKey }, signal: AbortSignal.timeout(10000) });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data?.msg || 'Binance Demo execution preflight failed');
+    return data;
+  };
+  const [exchangeInfo, account, positions, income] = await Promise.all([
+    fetchBinance(EXCHANGES.binanceTestnet.base + '/fapi/v1/exchangeInfo', { signal: AbortSignal.timeout(10000) }).then(async r => { const data = await r.json(); if (!r.ok) throw new Error(data?.msg || 'exchangeInfo failed'); return data; }),
+    signed('/fapi/v2/account'), signed('/fapi/v2/positionRisk'),
+    signed('/fapi/v1/income', { incomeType: 'REALIZED_PNL', startTime: String(Date.now() - 24 * 60 * 60 * 1000), limit: '1000' })
+  ]);
+  const filters = Object.fromEntries(exchangeInfo.symbols.filter(x => PAPER_SYMBOLS.includes(x.symbol)).map(x => [x.symbol, { filters: x.filters.filter(f => ['LOT_SIZE', 'PRICE_FILTER', 'MIN_NOTIONAL', 'NOTIONAL'].includes(f.filterType)) }]));
+  const balance = (account.assets || []).find(x => x.asset === 'USDT');
+  const policy = { riskPerTrade: Number(policyRow.risk_per_trade), maxNotional: Number(policyRow.max_notional), leverage: Number(policyRow.leverage), maxOpenPositions: Number(policyRow.max_open_positions), maxDailyLoss: Number(policyRow.max_daily_loss) };
+  const dailyPnl = Array.isArray(income) ? income.reduce((total, row) => total + Number(row.income || 0), 0) : 0;
+  const riskGuard = evaluateRiskLimits(positions, dailyPnl, balance || {}, policy);
+  const artifact = JSON.parse(fs.readFileSync(path.join(__dirname, 'v2', 'artifacts', 'BINANCE_DEMO_PAPER_PIPELINE.json'), 'utf8'));
+  const candidate = (artifact.execution_candidates || []).find(x => x.client_order_id === candidateId);
+  if (!candidate) return { error: 'Execution candidate not found' };
+  const sizing = sizeCandidate(candidate, policy, balance || {}, filters[candidate.symbol]);
+  const precision = validateCandidatePrecision(candidate, sizing, filters[candidate.symbol]);
+  return { apiKey, secret, signed, candidate, sizing, precision, riskGuard, positions, policy };
+}
+app.post('/api/binance-demo/execute-candidate', auth, async (req, res) => {
   try {
-    const artifact = JSON.parse(fs.readFileSync(artifactPath, 'utf8'));
-    const candidate = (artifact.execution_candidates || []).find(x => x.client_order_id === candidateId);
-    if (!candidate) return res.status(404).json({ ok: false, error: 'Execution candidate not found' });
-    const enabled = process.env.DEMO_EXECUTION_ENABLED === 'true';
-    const permission = demoExecutionGate({ botEnabled: botStates.get(req.cookies.sid) === true, ordersEnabled: false, protectiveOrdersReady: false, riskStatus: 'UNVERIFIED_SERVER_RISK', demoExecutionEnabled: enabled });
-    const order = buildDemoEntryOrder(candidate, req.body?.sizing, req.body?.precisionValidation);
-    res.status(409).json({ ok: false, demoOnly: true, ...permission, order, ordersSent: false, withdrawalsSent: false });
-  } catch { res.status(503).json({ ok: false, error: 'V2 paper artifact unavailable' }); }
+    const candidateId = String(req.body?.clientOrderId || '');
+    const context = await loadServerExecutionCandidate(req.userId, candidateId);
+    if (context.error) return res.status(context.error === 'Execution candidate not found' ? 404 : 400).json({ ok: false, demoOnly: true, error: context.error, ordersSent: false, withdrawalsSent: false });
+    const { candidate, sizing, precision, riskGuard } = context;
+    const order = buildDemoEntryOrder(candidate, sizing, precision);
+    if (riskGuard.status !== 'ALLOWED') return res.status(409).json({ ok: false, demoOnly: true, reason: riskGuard.status, order, ordersSent: false, withdrawalsSent: false });
+    const permission = demoExecutionGate({ botEnabled: botStates.get(req.cookies.sid) === true, ordersEnabled: process.env.DEMO_EXECUTION_ENABLED === 'true', protectiveOrdersReady: false, riskStatus: 'ALLOWED', demoExecutionEnabled: process.env.DEMO_EXECUTION_ENABLED === 'true' });
+    if (!permission.allowed) return res.status(409).json({ ok: false, demoOnly: true, ...permission, order, ordersSent: false, withdrawalsSent: false });
+    return res.status(501).json({ ok: false, demoOnly: true, error: 'Live sender requires explicit E2E approval and protective-order verification', ordersSent: false, withdrawalsSent: false });
+  } catch (error) { res.status(502).json({ ok: false, demoOnly: true, error: error.message || 'Binance Demo execution failed', ordersSent: false, withdrawalsSent: false }); }
 });app.get('/api/v2/status', auth, (req, res) => {
   const artifactPath = path.join(__dirname, 'v2', 'artifacts', 'BINANCE_DEMO_PAPER_PIPELINE.json');
   try {
@@ -679,6 +709,7 @@ initDb().then(() => {
   console.error('DB init failed:', e);
   process.exit(1);
 });
+
 
 
 
