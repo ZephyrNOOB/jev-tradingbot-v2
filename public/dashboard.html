@@ -28,7 +28,7 @@
 
     <div class="card execution-policy"><div class="office-header"><div><h3 style="font-size:14px;margin-bottom:6px">DEMO EXECUTION POLICY</h3><p class="muted mono">Policy wajib tersimpan sebelum BOT ON · Demo only</p></div><span id="policyStatus" class="muted mono">NOT CONFIGURED</span></div><div class="form-row"><div class="field"><label>Risk / Trade (%)</label><input id="policyRisk" type="number" min="0.01" max="5" step="0.01" value="0.25"></div><div class="field"><label>Max Notional (USDT)</label><input id="policyNotional" type="number" min="1" max="100000" step="1" value="100"></div><div class="field"><label>Leverage</label><input id="policyLeverage" type="number" min="1" max="20" step="1" value="1"></div><div class="field"><label>Margin Mode</label><select id="policyMargin"><option value="isolated">Isolated</option><option value="cross">Cross</option></select></div><div class="field"><label>Max Open Positions</label><input id="policyPositions" type="number" min="1" max="4" step="1" value="1"></div><div class="field"><label>Max Daily Loss (%)</label><input id="policyDailyLoss" type="number" min="0.01" max="20" step="0.01" value="1"></div><button onclick="savePolicy()" style="height:38px;margin-top:auto">SAVE POLICY</button></div></div>
     <section class="market-charts" aria-labelledby="marketChartsTitle"><div class="charts-header"><div><h3 id="marketChartsTitle">LIVE MARKET CHARTS</h3><p class="muted mono">5M closed candles · read-only observer · refresh 5s</p></div><span id="chartsUpdated" class="muted mono">LIVE --:--:--</span></div><div id="pairCharts" class="pair-charts"></div></section>
-    <section class="card account-assets" aria-labelledby="accountAssetsTitle"><div class="office-header"><div><h3 id="accountAssetsTitle" style="font-size:14px;margin-bottom:6px">BINANCE DEMO ASSETS</h3><p class="muted mono">Read-only account balance · refresh 15s</p></div><span id="assetsUpdated" class="muted mono">WAITING</span></div><div id="assetsTable" class="table-wrap"><p class="muted mono">Loading account assets...</p></div></section>    <div class="card workflow-office"><div class="office-header"><div><h3 style="font-size:14px;margin-bottom:6px">V2 WORKFLOW OFFICE</h3><p class="muted mono">Read-only paper execution monitor · orders disabled</p></div><span class="office-live"><i></i> PAPER MODE</span></div><div class="workflow-track" id="workflowTrack"></div><p id="v2Status" class="muted mono" style="margin-top:14px">Loading paper status...</p><div id="v2Pairs" class="table-wrap"></div></div>
+    <section class="card execution-readiness" aria-labelledby="executionReadinessTitle"><div class="office-header"><div><h3 id="executionReadinessTitle" style="font-size:14px;margin-bottom:6px">EXECUTION READINESS</h3><p class="muted mono">Read-only Demo guard and recovery monitor</p></div><span id="readinessUpdated" class="muted mono">WAITING</span></div><div id="readinessTable" class="table-wrap"><p class="muted mono">Loading execution state...</p></div></section>    <section class="card account-assets" aria-labelledby="accountAssetsTitle"><div class="office-header"><div><h3 id="accountAssetsTitle" style="font-size:14px;margin-bottom:6px">BINANCE DEMO ASSETS</h3><p class="muted mono">Read-only account balance · refresh 15s</p></div><span id="assetsUpdated" class="muted mono">WAITING</span></div><div id="assetsTable" class="table-wrap"><p class="muted mono">Loading account assets...</p></div></section>    <div class="card workflow-office"><div class="office-header"><div><h3 style="font-size:14px;margin-bottom:6px">V2 WORKFLOW OFFICE</h3><p class="muted mono">Read-only paper execution monitor · orders disabled</p></div><span class="office-live"><i></i> PAPER MODE</span></div><div class="workflow-track" id="workflowTrack"></div><p id="v2Status" class="muted mono" style="margin-top:14px">Loading paper status...</p><div id="v2Pairs" class="table-wrap"></div></div>
 </div>
 <script>
 function csrfToken() { return document.cookie.split('; ').find(x => x.startsWith('csrf='))?.split('=')[1] || ''; }
@@ -85,7 +85,16 @@ async function refreshV2() {
   document.getElementById('v2Status').textContent = `Demo paper · ${t.structure_events} structure events · ${t.confirmed_5m} confirmed · ${t.selected} selected · orders disabled`;
   document.getElementById('v2Pairs').innerHTML = '<table><thead><tr><th>Pair</th><th>Events</th><th>Plans</th></tr></thead><tbody>' + Object.entries(v2.artifact.symbols).map(([symbol,x]) => `<tr><td>${symbol}</td><td>${x.recent_events.length}</td><td>${x.recent_events.filter(e => e.virtual_entry_sl_tp).length}</td></tr>`).join('') + '</tbody></table>';
 }
-async function loadPolicy(){
+async function refreshExecutionReadiness(){
+  const table=document.getElementById('readinessTable'), stamp=document.getElementById('readinessUpdated');
+  try {
+    const [bot, reconciliation] = await Promise.all([api('/bot/status'), api('/binance-demo/reconciliation')]);
+    const cycle=bot?.demoCycle, monitor=reconciliation?.monitoring||[];
+    const counts=monitor.reduce((a,x)=>(a[x.status]=(a[x.status]||0)+1,a),{});
+    table.innerHTML='<table><tbody><tr><th>DRY-RUN</th><td>'+ (cycle ? `${cycle.readyCount}/${cycle.candidateCount} READY · ${cycle.filledCount} FILLED` : 'WAITING') +'</td></tr><tr><th>PROTECTION</th><td>HEALTHY '+(counts.HEALTHY||0)+' · INCOMPLETE '+(counts.PROTECTION_INCOMPLETE||0)+' · UNSAFE '+(counts.ENTRY_FILLED_NO_PROTECTION||0)+'</td></tr><tr><th>RECONCILIATION</th><td>'+ (reconciliation?.status||'UNAVAILABLE') +'</td></tr></tbody></table>';
+    stamp.textContent='UPDATED '+new Date().toLocaleTimeString();
+  } catch(error) { table.innerHTML='<p class="neg mono">'+(error.message||'Execution state unavailable')+'</p>'; stamp.textContent='ERROR'; }
+}async function loadPolicy(){
   const p=await api('/execution-policy'); if(!p?.configured)return;
   policyRisk.value=p.riskPerTrade; policyNotional.value=p.maxNotional; policyLeverage.value=p.leverage; policyMargin.value=p.marginMode; policyPositions.value=p.maxOpenPositions; policyDailyLoss.value=p.maxDailyLoss; policyStatus.textContent='CONFIGURED'; policyStatus.className='pos';
 }
@@ -101,6 +110,7 @@ async function init() {
   const bot = await api('/bot/status');
   if (bot?.ok) renderBot(bot);
   await refreshV2();
+  await refreshExecutionReadiness();
   const keys = await api('/keys');
   if (keys) {
     const online = keys.some(k => k.status === 'connected');
@@ -141,7 +151,11 @@ setInterval(refreshAssets, 15_000);
 setInterval(refreshCharts, 5_000);
 setInterval(refreshBot, 60_000);
 setInterval(refreshV2, 5_000);
+setInterval(refreshExecutionReadiness, 15_000);
 setInterval(() => { const el = document.getElementById('chartsUpdated'); if (el) el.textContent = `LIVE ${new Date().toLocaleTimeString()}`; }, 1_000);
 </script>
 </body>
 </html>
+
+
+
