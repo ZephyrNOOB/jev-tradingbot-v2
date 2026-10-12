@@ -24,11 +24,8 @@
     <div class="page-header">
       <h2 class="page-title">DASHBOARD</h2>
       <div class="header-actions"><span id="userInfo" style="font-family:var(--mono);font-size:12px;color:var(--muted)"></span><span id="headerConnection" class="header-connection is-offline">CONNECTION OFFLINE</span><button id="botToggle" class="bot-toggle" onclick="toggleBot()">BOT OFF</button><span id="botRuntime" class="bot-runtime">PAPER STOPPED</span></div>
-    </div>
-
-    <div class="card execution-policy"><div class="office-header"><div><h3 style="font-size:14px;margin-bottom:6px">DEMO EXECUTION POLICY</h3><p class="muted mono">Policy wajib tersimpan sebelum BOT ON · Demo only</p></div><span id="policyStatus" class="muted mono">NOT CONFIGURED</span></div><div class="form-row"><div class="field"><label>Risk / Trade (%)</label><input id="policyRisk" type="number" min="0.01" max="5" step="0.01" value="0.25"></div><div class="field"><label>Max Notional (USDT)</label><input id="policyNotional" type="number" min="1" max="100000" step="1" value="100"></div><div class="field"><label>Leverage</label><input id="policyLeverage" type="number" min="1" max="20" step="1" value="1"></div><div class="field"><label>Margin Mode</label><select id="policyMargin"><option value="isolated">Isolated</option><option value="cross">Cross</option></select></div><div class="field"><label>Max Open Positions</label><input id="policyPositions" type="number" min="1" max="4" step="1" value="1"></div><div class="field"><label>Max Daily Loss (%)</label><input id="policyDailyLoss" type="number" min="0.01" max="20" step="0.01" value="1"></div><button onclick="savePolicy()" style="height:38px;margin-top:auto">SAVE POLICY</button></div></div>
-    <section class="market-charts" aria-labelledby="marketChartsTitle"><div class="charts-header"><div><h3 id="marketChartsTitle">LIVE MARKET CHARTS</h3><p class="muted mono">1H Bias · 15M Structure · 5M Execution · refresh 5s</p></div><span id="chartsUpdated" class="muted mono">LIVE --:--:--</span></div><div id="pairCharts" class="pair-charts"></div></section>
-    <section class="card account-assets" aria-labelledby="accountAssetsTitle"><div class="office-header"><div><h3 id="accountAssetsTitle" style="font-size:14px;margin-bottom:6px">BINANCE DEMO ASSETS</h3><p class="muted mono">Read-only account balance · refresh 15s</p></div><span id="assetsUpdated" class="muted mono">WAITING</span></div><div id="assetsTable" class="table-wrap"><p class="muted mono">Loading account assets...</p></div></section>    <div class="card workflow-office"><div class="office-header"><div><h3 style="font-size:14px;margin-bottom:6px">V2 WORKFLOW OFFICE</h3><p class="muted mono">V2 workflow monitor · Demo execution controlled by BOT ON/OFF</p></div><span class="office-live"><i></i> PAPER MODE</span></div><div class="workflow-track" id="workflowTrack"></div><p id="v2Status" class="muted mono" style="margin-top:14px">Loading paper status...</p><div id="v2Pairs" class="table-wrap"></div></div>
+    </div><section class="market-charts" aria-labelledby="marketChartsTitle"><div class="charts-header"><div><h3 id="marketChartsTitle">LIVE MARKET CHARTS</h3></div><span id="chartsUpdated" class="muted mono">LIVE --:--:--</span></div><div id="pairCharts" class="pair-charts"></div></section>
+        <div class="card workflow-office"><div class="office-header"><div><h3 style="font-size:14px;margin-bottom:6px">V2 WORKFLOW OFFICE</h3></div><span class="office-live"><i></i> PAPER MODE</span></div><div class="workflow-track" id="workflowTrack"></div><p id="v2Status" class="muted mono" style="margin-top:14px">Loading paper status...</p><div id="v2Pairs" class="table-wrap"></div></div><section class="card account-assets" aria-labelledby="accountAssetsTitle"><div class="office-header"><div><h3 id="accountAssetsTitle" style="font-size:14px;margin-bottom:6px">BINANCE DEMO ASSETS</h3></div></div><div id="assetsTable" class="table-wrap"><p class="muted mono">Loading account assets...</p></div></section>
 </div>
 <script>
 function csrfToken() { return document.cookie.split('; ').find(x => x.startsWith('csrf='))?.split('=')[1] || ''; }
@@ -63,14 +60,13 @@ async function refreshCharts() {
     document.getElementById('chartsUpdated').textContent = `LIVE ${new Date().toLocaleTimeString()}`;
   } finally { chartsRefreshing = false; }
 }async function refreshAssets(){
-  const table=document.getElementById('assetsTable'), stamp=document.getElementById('assetsUpdated');
+  const table=document.getElementById('assetsTable');
   try {
     const p=await api('/binance-demo/execution-preflight');
     if(!p?.ok) throw new Error(p?.error||'Unavailable');
     const rows=p.balances||[];
     table.innerHTML=rows.length?'<table><thead><tr><th>ASSET</th><th>WALLET</th><th>AVAILABLE</th><th>UNREALIZED PNL</th></tr></thead><tbody>'+rows.map(x=>`<tr><td>${x.asset}</td><td>${Number(x.walletBalance).toFixed(4)}</td><td>${Number(x.availableBalance).toFixed(4)}</td><td class="${x.unrealizedProfit>=0?'pos':'neg'}">${Number(x.unrealizedProfit).toFixed(4)}</td></tr>`).join('')+'</tbody></table>':'<p class="muted mono">No USDT/USDC asset returned</p>';
-    stamp.textContent='UPDATED '+new Date().toLocaleTimeString();
-  } catch(error) { table.innerHTML=`<p class="neg mono">${error.message}</p>`; stamp.textContent='ERROR'; }
+  } catch(error) { table.innerHTML=`<p class="neg mono">${error.message}</p>`; }
 }
 async function refreshV2() {
   const v2 = await api('/v2/status');
@@ -96,7 +92,7 @@ async function init() {
   const me = await api('/me');
   if (!me) return;
   document.getElementById('userInfo').textContent = me.username;
-  await loadPolicy();
+
   const bot = await api('/bot/status');
   if (bot?.ok) renderBot(bot);
   await refreshV2();
@@ -136,7 +132,7 @@ async function logout() {
 init();
 refreshCharts();
 refreshAssets();
-setInterval(refreshAssets, 15_000);
+setInterval(refreshAssets, 1_000);
 setInterval(refreshCharts, 5_000);
 setInterval(refreshBot, 60_000);
 setInterval(refreshV2, 5_000);
