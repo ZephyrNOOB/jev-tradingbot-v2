@@ -30,7 +30,7 @@ def main():
         h, m, q = rows(symbol, "1h"), rows(symbol, "15m"), rows(symbol, "5m")
         closed = lambda data: [x for x in data if x["close_time"] < server_time]
         h, m, q = closed(h), closed(m), closed(q)
-        bias = MarketBiasBot(h); events = MarketStructureBot(m).build(); confirm = ConfirmationBot(q, symbol); selection = SelectionBot(); qtimes = [x["close_time"] for x in q]; hs, ls = pivots(m)
+        bias = MarketBiasBot(h); events = MarketStructureBot(m, symbol).build(); confirm = ConfirmationBot(q, symbol); selection = SelectionBot(); qtimes = [x["close_time"] for x in q]; hs, ls = pivots(m)
         symbol_rows = []
         hs, ls = pivots(m)
         for event in events[-20:]:

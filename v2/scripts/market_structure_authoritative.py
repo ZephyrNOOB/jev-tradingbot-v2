@@ -170,7 +170,7 @@ def _pool(swings, side):
     return {"pool_id": f"POOL-{side}-{first['index']}-{second['index']}", "price": (first["price"] + second["price"]) / 2, "source_indices": [first["index"], second["index"]]}
 
 
-def build_contexts(candles, rows_1h=None, upto=None):
+def build_contexts(candles, rows_1h=None, upto=None, symbol=SYMBOL):
     rows = candles if upto is None else candles[: min(upto + 1, len(candles))]
     atrs = _atr(rows)
     confirmations = confirmed_pivots(rows)
@@ -248,7 +248,7 @@ def build_contexts(candles, rows_1h=None, upto=None):
         timestamp = row.get("close_ts", row.get("ts", i))
         context = {
             "index": i,
-            "event_id": f"{SYMBOL}-15m-{timestamp}",
+            "event_id": f"{symbol}-15m-{timestamp}",
             "candidate_timestamp": timestamp,
             "side": structure["side"] if structure else None,
             "state": state,
@@ -275,8 +275,8 @@ def build_contexts(candles, rows_1h=None, upto=None):
     return contexts, structure_events
 
 
-def build_events(candles, upto=None):
-    contexts, _ = build_contexts(candles, upto=upto)
+def build_events(candles, upto=None, symbol=SYMBOL):
+    contexts, _ = build_contexts(candles, upto=upto, symbol=symbol)
     events = []
     for index, context in contexts.items():
         structure = context["structure_event"]

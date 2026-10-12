@@ -80,10 +80,10 @@ class MarketBiasBot:
         return {'state':state,'valid':state in ('BULLISH','BEARISH'),'protected':protected,'source_indices':[x[0] for x in (hs[-2:],ls[-2:]) for x in x],'reason':'HH_HL' if bull else 'LH_LL' if bear else 'conflict'}
 
 class MarketStructureBot:
-    def __init__(self, bars): self.bars = bars
+    def __init__(self, bars, symbol="UNKNOWN"): self.bars = bars; self.symbol = symbol
     def build(self):
         events=[]
-        for raw in build_authoritative_events(self.bars):
+        for raw in build_authoritative_events(self.bars, symbol=self.symbol):
             direction='BULLISH' if raw.side=='LONG' else 'BEARISH' if raw.side=='SHORT' else raw.side
             continuation = ContinuationEvent(raw.event_id, direction, raw.broken_level, tuple(raw.source_indices), invalidation_level=raw.protected_level or raw.broken_level) if raw.kind == 'BOS' else None
             candidate = Event(event_id=raw.event_id, kind=raw.kind, side=raw.side or '', index=raw.index, state=raw.state, source_indices=raw.source_indices, previous_state=raw.previous_state or "", protected_level=raw.protected_level or 0.0, broken_level=raw.broken_level or 0.0, protected_swing_id=raw.protected_swing_id or '', parent_event_id=raw.parent_event_id or '', object_id=raw.object_id or raw.event_id, lifecycle='active', continuation_object=continuation, zone_low=raw.zone_low or 0.0, zone_high=raw.zone_high or 0.0, ob_source_index=raw.ob_source_index, ob_zone_low=raw.ob_zone_low or 0.0, ob_zone_high=raw.ob_zone_high or 0.0, ob_object_id=f'OB-{raw.event_id}' if raw.ob_source_index >= 0 else '', displacement_atr=raw.displacement_atr or 0.0)
