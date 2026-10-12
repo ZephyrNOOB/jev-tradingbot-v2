@@ -199,8 +199,6 @@ app.post('/api/logout', (req, res) => {
   sessions.delete(req.cookies.sid);
   run('DELETE FROM sessions WHERE sid_hash = ?', [sessionHash(req.cookies.sid || '')]);
   botStates.delete(req.cookies.sid);
-  const runner = botRunners.get(req.cookies.sid);
-  if (runner) { clearInterval(runner.timer); botRunners.delete(req.cookies.sid); }
   res.clearCookie('sid');
   res.json({ ok: true });
 });
@@ -272,8 +270,7 @@ async function runPaperCycle(sid) {
     runner.cycles += 1;
   } catch (error) {
     runner.error = error?.message || 'paper_cycle_failed';
-    botStates.set(sid, false);
-    stopPaperRunner(sid, runner.error);
+    runner.last_error_at = Date.now();
   } finally { runner.running = false; runner.last_finished_at = Date.now(); }
 }
 function startPaperRunner(sid) {
@@ -286,9 +283,9 @@ function startPaperRunner(sid) {
   runPaperCycle(sid);
   return runner;
 }app.get('/api/bot/status', auth, (req, res) => {
-  const runner = botRunners.get(req.cookies.sid);
+  const runner = botRunners.get('global');
   const observer = marketObservers.get('global');
-  res.json({ ok: true, enabled: botStates.get(req.cookies.sid) === true, observing: Boolean(observer?.timer), running: Boolean(runner?.running), cycles: runner?.cycles || 0, error: runner?.error || null, observer_error: observer?.error || null, last_started_at: runner?.last_started_at || null, last_finished_at: runner?.last_finished_at || null, last_polled_at: observer?.last_polled_at || null, watermark: observer?.watermark || {}, mode: 'paper_observation', demoCycle: demoCycleSummaries.get(req.cookies.sid) || null, ordersEnabled: false });
+  res.json({ ok: true, enabled: botStates.get(req.cookies.sid) === true, observing: Boolean(observer?.timer), running: Boolean(runner?.running), cycles: runner?.cycles || 0, error: runner?.error || null, observer_error: observer?.error || null, last_started_at: runner?.last_started_at || null, last_finished_at: runner?.last_finished_at || null, last_polled_at: observer?.last_polled_at || null, watermark: observer?.watermark || {}, mode: 'paper_observation', demoCycle: demoCycleSummaries.get('global') || null, ordersEnabled: false });
 });
 
 app.post('/api/bot/toggle', auth, (req, res) => {
@@ -296,10 +293,9 @@ app.post('/api/bot/toggle', auth, (req, res) => {
   if (enabled && !get('SELECT user_id FROM execution_policies WHERE user_id = ?', [req.userId])) return res.status(400).json({ ok:false, error:'Execution policy must be saved before BOT ON' });
   if (enabled && !get('SELECT id FROM api_keys WHERE user_id = ? AND exchange = ? AND status = ?', [req.userId, 'binanceTestnet', 'connected'])) return res.status(400).json({ ok:false, error:'Connected Binance Demo account required before BOT ON' });
   botStates.set(req.cookies.sid, enabled);
-  if (enabled) startPaperRunner(req.cookies.sid); else stopPaperRunner(req.cookies.sid);
-  const runner = botRunners.get(req.cookies.sid);
+  const runner = botRunners.get('global');
   const observer = marketObservers.get('global');
-  res.json({ ok: true, enabled, observing: Boolean(observer?.timer), running: Boolean(runner?.running), cycles: runner?.cycles || 0, mode: 'paper_observation', demoCycle: demoCycleSummaries.get(req.cookies.sid) || null, ordersEnabled: false });
+  res.json({ ok: true, enabled, observing: Boolean(observer?.timer), running: Boolean(runner?.running), cycles: runner?.cycles || 0, mode: 'paper_observation', demoCycle: demoCycleSummaries.get('global') || null, ordersEnabled: false });
 });
 app.get('/api/binance-demo/live-readiness', auth, async (req, res) => {
   const blockers = [];
@@ -470,6 +466,7 @@ const EXCHANGES = {
 const BINANCE_DEMO_FUTURES_BASE = 'https://demo-fapi.binance.com';
 const BINANCE_DATA_BASE = BINANCE_DEMO_FUTURES_BASE;
 startMarketObserver();
+startPaperRunner('global');
 
 app.get('/api/chart/candles', auth, async (req, res) => {
   const symbol = String(req.query.symbol || '').toUpperCase();
