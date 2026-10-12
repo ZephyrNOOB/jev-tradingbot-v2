@@ -81,7 +81,8 @@ async function refreshV2() {
   track.replaceChildren();
   rooms.forEach((r,i) => { const room = document.createElement('div'); room.className = 'workflow-room' + (r[3] !== 'WAITING' && r[3] !== 'OFF' ? ' room-active' : ''); room.innerHTML = `<div class="room-top"><span class="room-index">0${i + 1}</span><span class="room-status">${r[3]}</span></div><div class="room-icon">${r[1]}</div><h4>${r[0]}</h4><p>${r[2]}</p>`; if (i < rooms.length - 1) { const connector = document.createElement('span'); connector.className = 'room-connector'; connector.textContent = '›'; room.appendChild(connector); } track.appendChild(room); });
   document.getElementById('v2Status').textContent = `Demo · ${t.structure_events} structure events · ${t.confirmed_5m} confirmed · ${t.selected} selected`;
-  document.getElementById('v2Pairs').innerHTML = '<table><thead><tr><th>Pair</th><th>Events</th><th>Plans</th></tr></thead><tbody>' + Object.entries(v2.artifact.symbols).map(([symbol,x]) => `<tr><td>${symbol}</td><td>${x.recent_events.length}</td><td>${x.recent_events.filter(e => e.virtual_entry_sl_tp).length}</td></tr>`).join('') + '</tbody></table>';
+  const candleTime = ts => ts ? new Date(Number(ts)).toLocaleTimeString() : '--';
+  document.getElementById('v2Pairs').innerHTML = '<table><thead><tr><th>Pair</th><th>1H latest</th><th>15M latest</th><th>5M latest</th><th>Events</th><th>Active plan</th></tr></thead><tbody>' + Object.entries(v2.artifact.symbols).map(([symbol,x]) => `<tr><td>${symbol}</td><td>${candleTime(x.latest_closed_candle?.['1h'])}</td><td>${candleTime(x.latest_closed_candle?.['15m'])}</td><td>${candleTime(x.latest_closed_candle?.['5m'])}</td><td>${x.recent_events.length}</td><td>${x.recent_events.filter(e => e.virtual_entry_sl_tp).length}</td></tr>`).join('') + '</tbody></table>';
 }
 async function loadPolicy(){
   const p=await api('/execution-policy'); if(!p?.configured)return;
