@@ -409,6 +409,8 @@ async function loadServerExecutionCandidate(userId, candidateId) {
   const artifact = JSON.parse(fs.readFileSync(path.join(__dirname, 'v2', 'artifacts', 'BINANCE_DEMO_PAPER_PIPELINE.json'), 'utf8'));
   const candidate = (artifact.execution_candidates || []).find(x => x.client_order_id === candidateId);
   if (!candidate) return { error: 'Execution candidate not found' };
+  if (positions.some(position => position.symbol === candidate.symbol && Number(position.positionAmt) !== 0)) riskGuard.status = 'REJECTED_PAIR_POSITION_OPEN';
+
   const normalized = normalizeCandidatePrices(candidate, filters[candidate.symbol]);
   const sizing = sizeCandidate(normalized, policy, balance || {}, filters[candidate.symbol]);
   const precision = validateCandidatePrecision(normalized, sizing, filters[candidate.symbol]);
