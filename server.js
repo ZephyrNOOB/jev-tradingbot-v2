@@ -360,7 +360,8 @@ app.post('/api/binance-demo/execute-candidate', auth, (req, res) => {
     const artifact = JSON.parse(fs.readFileSync(artifactPath, 'utf8'));
     const candidate = (artifact.execution_candidates || []).find(x => x.client_order_id === candidateId);
     if (!candidate) return res.status(404).json({ ok: false, error: 'Execution candidate not found' });
-    const permission = demoExecutionGate({ botEnabled: botStates.get(req.cookies.sid) === true, ordersEnabled: process.env.DEMO_EXECUTION_ENABLED === 'true', protectiveOrdersReady: req.body?.protectiveOrdersReady === true, riskStatus: req.body?.riskStatus || 'ALLOWED', demoExecutionEnabled: process.env.DEMO_EXECUTION_ENABLED === 'true' });
+    const enabled = process.env.DEMO_EXECUTION_ENABLED === 'true';
+    const permission = demoExecutionGate({ botEnabled: botStates.get(req.cookies.sid) === true, ordersEnabled: false, protectiveOrdersReady: false, riskStatus: 'UNVERIFIED_SERVER_RISK', demoExecutionEnabled: enabled });
     const order = buildDemoEntryOrder(candidate, req.body?.sizing, req.body?.precisionValidation);
     res.status(409).json({ ok: false, demoOnly: true, ...permission, order, ordersSent: false, withdrawalsSent: false });
   } catch { res.status(503).json({ ok: false, error: 'V2 paper artifact unavailable' }); }
@@ -648,6 +649,9 @@ initDb().then(() => {
   console.error('DB init failed:', e);
   process.exit(1);
 });
+
+
+
 
 
 
