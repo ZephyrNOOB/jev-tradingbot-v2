@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { sizeCandidate, validateCandidatePrecision } from '../v2/scripts/execution_sizing.js';
 import { buildDemoEntryOrder, canSendDemoEntry } from '../v2/scripts/demo_entry_executor.js';
+import { buildProtectionOrders, verifyEntryFill } from '../v2/scripts/demo_protection.js';
 
 const filters = { filters: [
   { filterType: 'LOT_SIZE', minQty: '0.001', stepSize: '0.001' },
@@ -38,4 +39,13 @@ test('entry executor stays disabled before protection exists', () => {
   assert.equal(order.clientOrderId, 'jev_test_1');
   assert.equal(canSendDemoEntry({ botEnabled: true, ordersEnabled: false, protectiveOrdersReady: false }).reason, 'ORDERS_DISABLED');
   assert.equal(canSendDemoEntry({ botEnabled: true, ordersEnabled: true, protectiveOrdersReady: false }).allowed, false);
+});
+
+test('builds opposite-side SL/TP only after confirmed entry fill', () => {
+  const candidate = { client_order_id: 'jev_test_1', symbol: 'BTCUSDT', side: 'BUY', sl: 82898.20, tp: 83124.90 };
+  const plan = buildProtectionOrders(candidate, { status: 'SIZED', quantity: '0.002', price: '82960.40' }, 'VALID');
+  assert.equal(plan.status, 'READY_AFTER_ENTRY_FILL');
+  assert.deepEqual(plan.orders.map(order => [order.type, order.side]), [['STOP_MARKET', 'SELL'], ['TAKE_PROFIT_MARKET', 'SELL']]);
+  assert.equal(verifyEntryFill({ status: 'NEW' }).filled, false);
+  assert.deepEqual(verifyEntryFill({ status: 'FILLED', executedQty: '0.002', avgPrice: '82960.40' }), { filled: true, status: 'FILLED', quantity: '0.002', averagePrice: '82960.40' });
 });

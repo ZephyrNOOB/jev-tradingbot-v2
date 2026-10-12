@@ -9,6 +9,7 @@ import cookieParser from 'cookie-parser';
 import { execFile } from 'node:child_process';
 import { sizeCandidate, validateCandidatePrecision } from './v2/scripts/execution_sizing.js';
 import { buildDemoEntryOrder, canSendDemoEntry } from './v2/scripts/demo_entry_executor.js';
+import { buildProtectionOrders, verifyEntryFill } from './v2/scripts/demo_protection.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -315,6 +316,11 @@ app.get('/api/binance-demo/execution-preflight', auth, async (req, res) => {
     res.json({ ok: true, demoOnly: true, policy: executionPolicy, balances, openPositions, filters, candidates, ordersSent: false, withdrawalsSent: false });
   } catch { res.status(502).json({ ok: false, demoOnly: true, error: 'Demo execution preflight failed' }); }
 });
+app.post('/api/binance-demo/protection-plan', auth, (req, res) => {
+  const fill = verifyEntryFill(req.body?.exchangeOrder);
+  const plan = fill.filled ? buildProtectionOrders(req.body?.candidate, req.body?.sizing, req.body?.precisionValidation) : { status: 'WAITING_ENTRY_FILL', orders: [] };
+  res.status(plan.status === 'READY_AFTER_ENTRY_FILL' ? 200 : 409).json({ ok: plan.status === 'READY_AFTER_ENTRY_FILL', demoOnly: true, fill, plan, ordersSent: false, withdrawalsSent: false });
+});
 app.post('/api/binance-demo/execute-candidate', auth, (req, res) => {
   const candidateId = String(req.body?.clientOrderId || '');
   const artifactPath = path.join(__dirname, 'v2', 'artifacts', 'BINANCE_DEMO_PAPER_PIPELINE.json');
@@ -610,6 +616,8 @@ initDb().then(() => {
   console.error('DB init failed:', e);
   process.exit(1);
 });
+
+
 
 
 
