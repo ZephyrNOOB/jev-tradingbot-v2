@@ -301,7 +301,37 @@ app.post('/api/bot/toggle', auth, (req, res) => {
   const observer = marketObservers.get('global');
   res.json({ ok: true, enabled, observing: Boolean(observer?.timer), running: Boolean(runner?.running), cycles: runner?.cycles || 0, mode: 'paper_observation', demoCycle: demoCycleSummaries.get(req.cookies.sid) || null, ordersEnabled: false });
 });
-app.get('/api/binance-demo/execution-preflight', auth, async (req, res) => {
+app.get('/api/binance-demo/live-readiness', auth, async (req, res) => {
+  const blockers = [];
+  const keyRow = get("SELECT * FROM api_keys WHERE id = (SELECT id FROM api_keys WHERE user_id = ? AND exchange = 'binanceTestnet' AND status = 'connected' ORDER BY id DESC LIMIT 1)", [req.userId]);
+  const policy = get('SELECT risk_per_trade, max_notional, leverage, margin_mode, max_open_positions, max_daily_loss FROM execution_policies WHERE user_id = ?', [req.userId]);
+  if (!keyRow) blockers.push('CONNECTED_DEMO_KEY_REQUIRED');
+  if (!policy) blockers.push('EXECUTION_POLICY_REQUIRED');
+  if (process.env.DEMO_EXECUTION_ENABLED !== 'true') blockers.push('DEMO_EXECUTION_FLAG_DISABLED');
+  if (blockers.length) return res.json({ ok: true, ready: false, demoOnly: true, blockers, ordersSent: false, withdrawalsSent: false });
+  try {
+    const apiKey = decryptSecret(keyRow.api_key), secret = decryptSecret(keyRow.secret_key);
+    const signed = async (apiPath, params = {}) => {
+      const query = new URLSearchParams({ ...params, recvWindow: '5000', timestamp: String(Date.now()) });
+      const queryString = query.toString();
+      const response = await fetchBinance(EXCHANGES.binanceTestnet.base + apiPath + '?' + queryString + '&signature=' + binanceSignature(secret, queryString), { headers: { 'X-MBX-APIKEY': apiKey }, signal: AbortSignal.timeout(10000) });
+      const data = await response.json(); if (!response.ok) throw new Error(data?.msg || 'Binance Demo readiness failed'); return data;
+    };
+    const [exchangeInfo, account, positions] = await Promise.all([fetchBinance(EXCHANGES.binanceTestnet.base + '/fapi/v1/exchangeInfo').then(async r => { const d = await r.json(); if (!r.ok) throw new Error(d?.msg || 'exchangeInfo failed'); return d; }), signed('/fapi/v2/account'), signed('/fapi/v2/positionRisk')]);
+    const filters = Object.fromEntries(exchangeInfo.symbols.filter(x => PAPER_SYMBOLS.includes(x.symbol)).map(x => [x.symbol, { filters: x.filters.filter(f => ['LOT_SIZE', 'PRICE_FILTER', 'MIN_NOTIONAL', 'NOTIONAL'].includes(f.filterType)) }]));
+    const balances = (account.assets || []).filter(x => x.asset === 'USDT').map(x => ({ asset: x.asset, availableBalance: Number(x.availableBalance) }));
+    const executionPolicy = { riskPerTrade: Number(policy.risk_per_trade), maxNotional: Number(policy.max_notional), leverage: Number(policy.leverage), maxOpenPositions: Number(policy.max_open_positions), maxDailyLoss: Number(policy.max_daily_loss) };
+    const artifact = JSON.parse(fs.readFileSync(path.join(__dirname, 'v2', 'artifacts', 'BINANCE_DEMO_PAPER_PIPELINE.json'), 'utf8'));
+    const dailyPnl = Number(all('SELECT COALESCE(SUM(pnl), 0) AS pnl FROM trade_history WHERE user_id = ? AND ts >= ?', [req.userId, Date.now() - 24 * 60 * 60 * 1000])[0]?.pnl || 0);
+    const riskGuard = evaluateRiskLimits(positions, dailyPnl, balances[0] || {}, executionPolicy);
+    if (riskGuard.status !== 'ALLOWED') blockers.push(riskGuard.status);
+    const candidates = (artifact.execution_candidates || []).map(candidate => { const sizing = sizeCandidate(candidate, executionPolicy, balances[0] || {}, filters[candidate.symbol]); return { candidate, sizing, precision: validateCandidatePrecision(candidate, sizing, filters[candidate.symbol]) }; });
+    if (!candidates.some(x => x.sizing.status === 'SIZED' && x.precision === 'VALID')) blockers.push('NO_VALID_SERVER_SIZED_CANDIDATE');
+    blockers.push('PROTECTIVE_ORDER_VERIFICATION_REQUIRED');
+    blockers.push('POSITION_MONITORING_REQUIRED');
+    res.json({ ok: true, ready: blockers.length === 0, demoOnly: true, blockers, riskGuard, candidateCount: candidates.length, validCandidateCount: candidates.filter(x => x.sizing.status === 'SIZED' && x.precision === 'VALID').length, ordersSent: false, withdrawalsSent: false });
+  } catch (error) { res.status(502).json({ ok: false, ready: false, demoOnly: true, blockers: ['BINANCE_DEMO_READINESS_FAILED'], error: error.message, ordersSent: false, withdrawalsSent: false }); }
+});app.get('/api/binance-demo/execution-preflight', auth, async (req, res) => {
   const keyRow = get("SELECT * FROM api_keys WHERE id = (SELECT id FROM api_keys WHERE user_id = ? AND exchange = 'binanceTestnet' AND status = 'connected' ORDER BY id DESC LIMIT 1)", [req.userId]);
   const policy = get('SELECT risk_per_trade, max_notional, leverage, margin_mode, max_open_positions, max_daily_loss FROM execution_policies WHERE user_id = ?', [req.userId]);
   if (!keyRow || !policy) return res.status(400).json({ ok: false, error: 'Demo connection and execution policy are required' });
@@ -649,6 +679,7 @@ initDb().then(() => {
   console.error('DB init failed:', e);
   process.exit(1);
 });
+
 
 
 
