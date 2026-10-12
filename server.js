@@ -8,6 +8,7 @@ import bcrypt from 'bcryptjs';
 import cookieParser from 'cookie-parser';
 import { execFile } from 'node:child_process';
 import { sizeCandidate, validateCandidatePrecision } from './v2/scripts/execution_sizing.js';
+import { buildDemoEntryOrder, canSendDemoEntry } from './v2/scripts/demo_entry_executor.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -314,7 +315,18 @@ app.get('/api/binance-demo/execution-preflight', auth, async (req, res) => {
     res.json({ ok: true, demoOnly: true, policy: executionPolicy, balances, openPositions, filters, candidates, ordersSent: false, withdrawalsSent: false });
   } catch { res.status(502).json({ ok: false, demoOnly: true, error: 'Demo execution preflight failed' }); }
 });
-app.get('/api/v2/status', auth, (req, res) => {
+app.post('/api/binance-demo/execute-candidate', auth, (req, res) => {
+  const candidateId = String(req.body?.clientOrderId || '');
+  const artifactPath = path.join(__dirname, 'v2', 'artifacts', 'BINANCE_DEMO_PAPER_PIPELINE.json');
+  try {
+    const artifact = JSON.parse(fs.readFileSync(artifactPath, 'utf8'));
+    const candidate = (artifact.execution_candidates || []).find(x => x.client_order_id === candidateId);
+    if (!candidate) return res.status(404).json({ ok: false, error: 'Execution candidate not found' });
+    const permission = canSendDemoEntry({ botEnabled: botStates.get(req.cookies.sid) === true, ordersEnabled: false, protectiveOrdersReady: false });
+    const order = buildDemoEntryOrder(candidate, req.body?.sizing, req.body?.precisionValidation);
+    res.status(409).json({ ok: false, demoOnly: true, ...permission, order, ordersSent: false, withdrawalsSent: false });
+  } catch { res.status(503).json({ ok: false, error: 'V2 paper artifact unavailable' }); }
+});app.get('/api/v2/status', auth, (req, res) => {
   const artifactPath = path.join(__dirname, 'v2', 'artifacts', 'BINANCE_DEMO_PAPER_PIPELINE.json');
   try {
     const artifact = JSON.parse(fs.readFileSync(artifactPath, 'utf8'));
@@ -598,5 +610,6 @@ initDb().then(() => {
   console.error('DB init failed:', e);
   process.exit(1);
 });
+
 
 

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { sizeCandidate, validateCandidatePrecision } from '../v2/scripts/execution_sizing.js';
+import { buildDemoEntryOrder, canSendDemoEntry } from '../v2/scripts/demo_entry_executor.js';
 
 const filters = { filters: [
   { filterType: 'LOT_SIZE', minQty: '0.001', stepSize: '0.001' },
@@ -29,3 +30,12 @@ test('validates entry, SL, TP ticks and side geometry', () => {
   assert.equal(validateCandidatePrecision({ side: 'BUY', entry: 82960.40, sl: 83000.00, tp: 83124.90 }, sized, filters), 'REJECTED_PRICE_RELATION');
 });
 
+
+test('entry executor stays disabled before protection exists', () => {
+  const candidate = { client_order_id: 'jev_test_1', symbol: 'BTCUSDT', side: 'BUY' };
+  const order = buildDemoEntryOrder(candidate, { status: 'SIZED', quantity: '0.002', price: '82960.40' }, 'VALID');
+  assert.equal(order.status, 'READY_BUT_DISABLED');
+  assert.equal(order.clientOrderId, 'jev_test_1');
+  assert.equal(canSendDemoEntry({ botEnabled: true, ordersEnabled: false, protectiveOrdersReady: false }).reason, 'ORDERS_DISABLED');
+  assert.equal(canSendDemoEntry({ botEnabled: true, ordersEnabled: true, protectiveOrdersReady: false }).allowed, false);
+});
