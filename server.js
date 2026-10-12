@@ -10,6 +10,7 @@ import { execFile } from 'node:child_process';
 import { sizeCandidate, validateCandidatePrecision } from './v2/scripts/execution_sizing.js';
 import { buildDemoEntryOrder, canSendDemoEntry } from './v2/scripts/demo_entry_executor.js';
 import { buildProtectionOrders, verifyEntryFill } from './v2/scripts/demo_protection.js';
+import { reconcileDemoState } from './v2/scripts/demo_reconciliation.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -316,7 +317,25 @@ app.get('/api/binance-demo/execution-preflight', auth, async (req, res) => {
     res.json({ ok: true, demoOnly: true, policy: executionPolicy, balances, openPositions, filters, candidates, ordersSent: false, withdrawalsSent: false });
   } catch { res.status(502).json({ ok: false, demoOnly: true, error: 'Demo execution preflight failed' }); }
 });
-app.post('/api/binance-demo/protection-plan', auth, (req, res) => {
+app.get('/api/binance-demo/reconciliation', auth, async (req, res) => {
+  const keyRow = get("SELECT * FROM api_keys WHERE id = (SELECT id FROM api_keys WHERE user_id = ? AND exchange = 'binanceTestnet' AND status = 'connected' ORDER BY id DESC LIMIT 1)", [req.userId]);
+  if (!keyRow) return res.status(400).json({ ok: false, error: 'Connected Binance Demo key required' });
+  try {
+    const apiKey = decryptSecret(keyRow.api_key), secret = decryptSecret(keyRow.secret_key);
+    const signed = async (apiPath, params = {}) => {
+      const query = new URLSearchParams({ ...params, recvWindow: '5000', timestamp: String(Date.now()) });
+      const queryString = query.toString();
+      const response = await fetchBinance(EXCHANGES.binanceTestnet.base + apiPath + '?' + queryString + '&signature=' + binanceSignature(secret, queryString), { headers: { 'X-MBX-APIKEY': apiKey }, signal: AbortSignal.timeout(10000) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.msg || 'Binance Demo reconciliation failed');
+      return data;
+    };
+    const [positions, ordersBySymbol] = await Promise.all([signed('/fapi/v2/positionRisk'), Promise.all(PAPER_SYMBOLS.map(symbol => signed('/fapi/v1/openOrders', { symbol }))) ]);
+    const artifact = JSON.parse(fs.readFileSync(path.join(__dirname, 'v2', 'artifacts', 'BINANCE_DEMO_PAPER_PIPELINE.json'), 'utf8'));
+    const reconciliation = reconcileDemoState(artifact.execution_candidates || [], ordersBySymbol.flat(), positions);
+    res.json({ ok: true, demoOnly: true, observedAt: new Date().toISOString(), ordersSent: false, withdrawalsSent: false, ...reconciliation });
+  } catch (error) { res.status(502).json({ ok: false, demoOnly: true, error: error.message || 'Demo reconciliation failed' }); }
+});app.post('/api/binance-demo/protection-plan', auth, (req, res) => {
   const fill = verifyEntryFill(req.body?.exchangeOrder);
   const plan = fill.filled ? buildProtectionOrders(req.body?.candidate, req.body?.sizing, req.body?.precisionValidation) : { status: 'WAITING_ENTRY_FILL', orders: [] };
   res.status(plan.status === 'READY_AFTER_ENTRY_FILL' ? 200 : 409).json({ ok: plan.status === 'READY_AFTER_ENTRY_FILL', demoOnly: true, fill, plan, ordersSent: false, withdrawalsSent: false });
@@ -616,6 +635,7 @@ initDb().then(() => {
   console.error('DB init failed:', e);
   process.exit(1);
 });
+
 
 
 

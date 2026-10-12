@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { sizeCandidate, validateCandidatePrecision } from '../v2/scripts/execution_sizing.js';
 import { buildDemoEntryOrder, canSendDemoEntry } from '../v2/scripts/demo_entry_executor.js';
 import { buildProtectionOrders, verifyEntryFill } from '../v2/scripts/demo_protection.js';
+import { reconcileDemoState } from '../v2/scripts/demo_reconciliation.js';
 
 const filters = { filters: [
   { filterType: 'LOT_SIZE', minQty: '0.001', stepSize: '0.001' },
@@ -48,4 +49,13 @@ test('builds opposite-side SL/TP only after confirmed entry fill', () => {
   assert.deepEqual(plan.orders.map(order => [order.type, order.side]), [['STOP_MARKET', 'SELL'], ['TAKE_PROFIT_MARKET', 'SELL']]);
   assert.equal(verifyEntryFill({ status: 'NEW' }).filled, false);
   assert.deepEqual(verifyEntryFill({ status: 'FILLED', executedQty: '0.002', avgPrice: '82960.40' }), { filled: true, status: 'FILLED', quantity: '0.002', averagePrice: '82960.40' });
+});
+
+test('reconciles managed, unmanaged, and pending exchange state', () => {
+  const candidates = [{ client_order_id: 'jev_1', symbol: 'BTCUSDT' }];
+  const result = reconcileDemoState(candidates, [{ orderId: 7, clientOrderId: 'external_1', symbol: 'BTCUSDT' }], [{ symbol: 'BTCUSDT', positionAmt: '0' }, { symbol: 'ETHUSDT', positionAmt: '1' }]);
+  assert.equal(result.status, 'REVIEW_REQUIRED');
+  assert.equal(result.unmanagedOrders[0].status, 'UNMANAGED_ORDER');
+  assert.equal(result.unmanagedPositions[0].status, 'UNMANAGED_POSITION');
+  assert.equal(result.pendingCandidates[0].status, 'NOT_ON_EXCHANGE');
 });
