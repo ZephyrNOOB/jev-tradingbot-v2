@@ -7,6 +7,7 @@ import initSqlJs from 'sql.js';
 import bcrypt from 'bcryptjs';
 import cookieParser from 'cookie-parser';
 import { execFile } from 'node:child_process';
+import { sizeCandidate } from './v2/scripts/execution_sizing.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -307,7 +308,10 @@ app.get('/api/binance-demo/execution-preflight', auth, async (req, res) => {
     const filters = Object.fromEntries(exchangeInfo.symbols.filter(x => PAPER_SYMBOLS.includes(x.symbol)).map(x => [x.symbol, { status: x.status, quantityPrecision: x.quantityPrecision, pricePrecision: x.pricePrecision, filters: x.filters.filter(f => ['LOT_SIZE', 'PRICE_FILTER', 'MIN_NOTIONAL', 'NOTIONAL'].includes(f.filterType)) }]));
     const balances = (account.assets || []).filter(x => ['USDT', 'USDC'].includes(x.asset)).map(x => ({ asset: x.asset, walletBalance: Number(x.walletBalance), availableBalance: Number(x.availableBalance), unrealizedProfit: Number(x.unrealizedProfit) }));
     const openPositions = positions.filter(x => Number(x.positionAmt) !== 0).map(x => ({ symbol: x.symbol, positionAmt: Number(x.positionAmt), entryPrice: Number(x.entryPrice), unrealizedProfit: Number(x.unRealizedProfit), isolated: x.marginType === 'isolated' }));
-    res.json({ ok: true, demoOnly: true, policy: { riskPerTrade: Number(policy.risk_per_trade), maxNotional: Number(policy.max_notional), leverage: Number(policy.leverage), marginMode: policy.margin_mode, maxOpenPositions: Number(policy.max_open_positions), maxDailyLoss: Number(policy.max_daily_loss) }, balances, openPositions, filters, candidates: JSON.parse(fs.readFileSync(path.join(__dirname, 'v2', 'artifacts', 'BINANCE_DEMO_PAPER_PIPELINE.json'), 'utf8')).execution_candidates || [], ordersSent: false, withdrawalsSent: false });
+    const executionPolicy = { riskPerTrade: Number(policy.risk_per_trade), maxNotional: Number(policy.max_notional), leverage: Number(policy.leverage), marginMode: policy.margin_mode, maxOpenPositions: Number(policy.max_open_positions), maxDailyLoss: Number(policy.max_daily_loss) };
+    const artifact = JSON.parse(fs.readFileSync(path.join(__dirname, 'v2', 'artifacts', 'BINANCE_DEMO_PAPER_PIPELINE.json'), 'utf8'));
+    const candidates = (artifact.execution_candidates || []).map(candidate => ({ ...candidate, sizing: sizeCandidate(candidate, executionPolicy, balances.find(x => x.asset === 'USDT') || {}, filters[candidate.symbol]) }));
+    res.json({ ok: true, demoOnly: true, policy: executionPolicy, balances, openPositions, filters, candidates, ordersSent: false, withdrawalsSent: false });
   } catch { res.status(502).json({ ok: false, demoOnly: true, error: 'Demo execution preflight failed' }); }
 });
 app.get('/api/v2/status', auth, (req, res) => {
@@ -594,3 +598,4 @@ initDb().then(() => {
   console.error('DB init failed:', e);
   process.exit(1);
 });
+
