@@ -30,6 +30,18 @@ def select_execution_candidates(candidates):
         selected[candidate["symbol"]] = candidate
     return list(selected.values())
 
+def collapse_active_plans(observations, candidates):
+    """Keep one active plan per pair; mark replaced plans without deleting audit rows."""
+    active = select_execution_candidates(candidates)
+    active_ids = {candidate["client_order_id"] for candidate in active}
+    for symbol_data in observations.values():
+        for row in symbol_data["recent_events"]:
+            candidate_id = row.get("client_order_id")
+            if row.get("virtual_entry_sl_tp") and candidate_id not in active_ids:
+                row["virtual_entry_sl_tp"] = False
+                row["virtual_order"] = False
+                row["plan_status"] = "ELIMINATED_REPLACED"
+    return active
 def main():
     server_time = int(get("/fapi/v1/time")["serverTime"])
     observations = {}; plan_candidates = []; totals = {"bias_ready": 0, "structure_events": 0, "confirmed_5m": 0, "selected": 0, "paper_plans": 0, "gate_rejections": 0}
@@ -75,12 +87,14 @@ def main():
                             else:
                                 row.update({"virtual_order": True, "virtual_entry_sl_tp": True, "paper_plan": {"setup_id": plan.setup_id, "side": plan.side, "entry": plan.entry, "sl": plan.sl, "tp": plan.tp, "rr": plan.rr, "entry_reason": plan.entry_reason, "sl_reason": plan.sl_reason, "tp_reason": plan.tp_reason, "evidence": plan.evidence}})
                                 client_order_id = "jev_" + hashlib.sha256(f"{symbol}:{plan.evidence['event_id']}".encode()).hexdigest()[:24]
+                                row["client_order_id"] = client_order_id
                                 plan_candidates.append({"client_order_id": client_order_id, "symbol": symbol, "side": "BUY" if plan.side == "BULLISH" else "SELL", "setup_id": plan.setup_id, "entry": plan.entry, "sl": plan.sl, "tp": plan.tp, "rr": plan.rr, "status": "PENDING_POLICY_SIZING", "evidence": plan.evidence})
                                 totals["paper_plans"] += 1
             symbol_rows.append(row)
         observations[symbol] = {"closed_counts": {"1h": len(h), "15m": len(m), "5m": len(q)}, "recent_events": symbol_rows}
 
-    execution_candidates = select_execution_candidates(plan_candidates)
+    execution_candidates = collapse_active_plans(observations, plan_candidates)
+    totals["selected_events"] = totals["selected"]\n    totals["selected"] = len(execution_candidates)\n    totals["paper_plans"] = len(execution_candidates)
 
     out = {"name": "BINANCE_DEMO_PAPER_PIPELINE", "status": "PASS", "environment": "demo-fapi", "server_time": server_time, "symbols": observations, "execution_candidates": execution_candidates, "totals": totals, "orders_sent": False, "withdrawals_sent": False, "virtual_entry_sl_tp": totals["paper_plans"] > 0, "next_action": "Validate policy sizing and Binance filters before Demo execution."}
     (ART / "BINANCE_DEMO_PAPER_PIPELINE.json").write_text(json.dumps(out, indent=2) + "\n"); print(json.dumps(out, indent=2))
