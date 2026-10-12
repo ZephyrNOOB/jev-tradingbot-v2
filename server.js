@@ -11,6 +11,7 @@ import { sizeCandidate, validateCandidatePrecision } from './v2/scripts/executio
 import { buildDemoEntryOrder, canSendDemoEntry } from './v2/scripts/demo_entry_executor.js';
 import { buildProtectionOrders, verifyEntryFill } from './v2/scripts/demo_protection.js';
 import { reconcileDemoState } from './v2/scripts/demo_reconciliation.js';
+import { evaluateRiskLimits } from './v2/scripts/demo_risk_guard.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -313,8 +314,10 @@ app.get('/api/binance-demo/execution-preflight', auth, async (req, res) => {
     const openPositions = positions.filter(x => Number(x.positionAmt) !== 0).map(x => ({ symbol: x.symbol, positionAmt: Number(x.positionAmt), entryPrice: Number(x.entryPrice), unrealizedProfit: Number(x.unRealizedProfit), isolated: x.marginType === 'isolated' }));
     const executionPolicy = { riskPerTrade: Number(policy.risk_per_trade), maxNotional: Number(policy.max_notional), leverage: Number(policy.leverage), marginMode: policy.margin_mode, maxOpenPositions: Number(policy.max_open_positions), maxDailyLoss: Number(policy.max_daily_loss) };
     const artifact = JSON.parse(fs.readFileSync(path.join(__dirname, 'v2', 'artifacts', 'BINANCE_DEMO_PAPER_PIPELINE.json'), 'utf8'));
-    const candidates = (artifact.execution_candidates || []).map(candidate => { const sizing = sizeCandidate(candidate, executionPolicy, balances.find(x => x.asset === 'USDT') || {}, filters[candidate.symbol]); return { ...candidate, sizing, precisionValidation: validateCandidatePrecision(candidate, sizing, filters[candidate.symbol]) }; });
-    res.json({ ok: true, demoOnly: true, policy: executionPolicy, balances, openPositions, filters, candidates, ordersSent: false, withdrawalsSent: false });
+    const dailyPnl = all('SELECT COALESCE(SUM(pnl), 0) AS pnl FROM trade_history WHERE user_id = ? AND ts >= ?', [req.userId, Date.now() - 24 * 60 * 60 * 1000])[0]?.pnl || 0;
+    const riskGuard = evaluateRiskLimits(openPositions, Number(dailyPnl), balances.find(x => x.asset === 'USDT') || {}, executionPolicy);
+    const candidates = (artifact.execution_candidates || []).map(candidate => { const sizing = sizeCandidate(candidate, executionPolicy, balances.find(x => x.asset === 'USDT') || {}, filters[candidate.symbol]); return { ...candidate, sizing, precisionValidation: validateCandidatePrecision(candidate, sizing, filters[candidate.symbol]), riskGuard }; });
+    res.json({ ok: true, demoOnly: true, policy: executionPolicy, balances, openPositions, dailyPnl: Number(dailyPnl), riskGuard, filters, candidates, ordersSent: false, withdrawalsSent: false });
   } catch { res.status(502).json({ ok: false, demoOnly: true, error: 'Demo execution preflight failed' }); }
 });
 app.get('/api/binance-demo/reconciliation', auth, async (req, res) => {
@@ -347,7 +350,7 @@ app.post('/api/binance-demo/execute-candidate', auth, (req, res) => {
     const artifact = JSON.parse(fs.readFileSync(artifactPath, 'utf8'));
     const candidate = (artifact.execution_candidates || []).find(x => x.client_order_id === candidateId);
     if (!candidate) return res.status(404).json({ ok: false, error: 'Execution candidate not found' });
-    const permission = canSendDemoEntry({ botEnabled: botStates.get(req.cookies.sid) === true, ordersEnabled: false, protectiveOrdersReady: false });
+    const permission = canSendDemoEntry({ botEnabled: botStates.get(req.cookies.sid) === true, ordersEnabled: false, protectiveOrdersReady: false, riskStatus: req.body?.riskStatus || 'ALLOWED' });
     const order = buildDemoEntryOrder(candidate, req.body?.sizing, req.body?.precisionValidation);
     res.status(409).json({ ok: false, demoOnly: true, ...permission, order, ordersSent: false, withdrawalsSent: false });
   } catch { res.status(503).json({ ok: false, error: 'V2 paper artifact unavailable' }); }
@@ -635,6 +638,8 @@ initDb().then(() => {
   console.error('DB init failed:', e);
   process.exit(1);
 });
+
+
 
 
 

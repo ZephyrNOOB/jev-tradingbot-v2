@@ -4,6 +4,7 @@ import { sizeCandidate, validateCandidatePrecision } from '../v2/scripts/executi
 import { buildDemoEntryOrder, canSendDemoEntry } from '../v2/scripts/demo_entry_executor.js';
 import { buildProtectionOrders, verifyEntryFill } from '../v2/scripts/demo_protection.js';
 import { reconcileDemoState } from '../v2/scripts/demo_reconciliation.js';
+import { evaluateRiskLimits } from '../v2/scripts/demo_risk_guard.js';
 
 const filters = { filters: [
   { filterType: 'LOT_SIZE', minQty: '0.001', stepSize: '0.001' },
@@ -58,4 +59,11 @@ test('reconciles managed, unmanaged, and pending exchange state', () => {
   assert.equal(result.unmanagedOrders[0].status, 'UNMANAGED_ORDER');
   assert.equal(result.unmanagedPositions[0].status, 'UNMANAGED_POSITION');
   assert.equal(result.pendingCandidates[0].status, 'NOT_ON_EXCHANGE');
+});
+
+test('blocks new entries at position and daily-loss limits', () => {
+  const policy = { maxOpenPositions: 1, maxDailyLoss: 1 };
+  assert.equal(evaluateRiskLimits([{ positionAmt: '1' }], -5, { availableBalance: 100 }, policy).status, 'REJECTED_MAX_OPEN_POSITIONS');
+  assert.equal(evaluateRiskLimits([], -1, { availableBalance: 100 }, policy).status, 'REJECTED_MAX_DAILY_LOSS');
+  assert.equal(evaluateRiskLimits([], -0.5, { availableBalance: 100 }, policy).status, 'ALLOWED');
 });
