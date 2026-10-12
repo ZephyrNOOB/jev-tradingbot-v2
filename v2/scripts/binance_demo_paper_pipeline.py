@@ -91,7 +91,7 @@ def main():
                                 plan_candidates.append({"client_order_id": client_order_id, "symbol": symbol, "side": "BUY" if plan.side == "BULLISH" else "SELL", "setup_id": plan.setup_id, "entry": plan.entry, "sl": plan.sl, "tp": plan.tp, "rr": plan.rr, "status": "PENDING_POLICY_SIZING", "evidence": plan.evidence})
                                 totals["paper_plans"] += 1
             symbol_rows.append(row)
-        observations[symbol] = {"closed_counts": {"1h": len(h), "15m": len(m), "5m": len(q)}, "recent_events": symbol_rows}
+        observations[symbol] = {"closed_counts": {"1h": len(h), "15m": len(m), "5m": len(q)}, "latest_closed_candle": {"1h": h[-1]["close_time"], "15m": m[-1]["close_time"], "5m": q[-1]["close_time"]}, "recent_events": symbol_rows}
 
     execution_candidates = collapse_active_plans(observations, plan_candidates)
     totals["selected_events"] = totals["selected"]
