@@ -91,3 +91,10 @@ test('demo execution requires explicit enable flag after all safety gates', () =
   assert.equal(demoExecutionGate({ botEnabled: true, ordersEnabled: true, protectiveOrdersReady: true, riskStatus: 'ALLOWED', demoExecutionEnabled: false }).reason, 'DEMO_EXECUTION_FLAG_DISABLED');
   assert.equal(demoExecutionGate({ botEnabled: true, ordersEnabled: true, protectiveOrdersReady: true, riskStatus: 'ALLOWED', demoExecutionEnabled: true }).allowed, true);
 });
+
+test('normalizes candidate prices to Binance tick before execution', () => {
+  const f = { filters: [{ filterType: 'PRICE_FILTER', tickSize: '0.10' }] };
+  const normalized = normalizeCandidatePrices({ side: 'BUY', entry: 83073.05, sl: 83005.29095, tp: 83258.7 }, f);
+  assert.deepEqual([normalized.entry, normalized.sl, normalized.tp], [83073.00, 83005.20, 83258.70]);
+});
+

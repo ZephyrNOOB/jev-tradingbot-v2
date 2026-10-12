@@ -40,6 +40,14 @@ export function sizeCandidate(candidate, policy, balance, symbolFilters) {
 }
 
 
+export function normalizeCandidatePrices(candidate, symbolFilters) {
+  const tickText = String(filter(symbolFilters, 'PRICE_FILTER').tickSize);
+  const tick = Number(tickText);
+  const places = decimalPlaces(tickText);
+  const round = value => Number((Math.floor(Number(value) / tick + 1e-9) * tick).toFixed(places));
+  return { ...candidate, entry: round(candidate.entry), sl: round(candidate.sl), tp: round(candidate.tp) };
+}
+
 export function validateCandidatePrecision(candidate, sizing, symbolFilters) {
   if (sizing.status !== 'SIZED') return sizing.status;
   const tick = Number(filter(symbolFilters, 'PRICE_FILTER').tickSize);
@@ -50,4 +58,6 @@ export function validateCandidatePrecision(candidate, sizing, symbolFilters) {
   if (!['BUY', 'SELL'].includes(candidate.side) || (long ? !(candidate.sl < candidate.entry && candidate.tp > candidate.entry) : !(candidate.sl > candidate.entry && candidate.tp < candidate.entry))) return 'REJECTED_PRICE_RELATION';
   return 'VALID';
 }
+
+
 

@@ -7,7 +7,7 @@ import initSqlJs from 'sql.js';
 import bcrypt from 'bcryptjs';
 import cookieParser from 'cookie-parser';
 import { execFile } from 'node:child_process';
-import { sizeCandidate, validateCandidatePrecision } from './v2/scripts/execution_sizing.js';
+import { sizeCandidate, validateCandidatePrecision, normalizeCandidatePrices } from './v2/scripts/execution_sizing.js';
 import { buildDemoEntryOrder, canSendDemoEntry, demoExecutionGate } from './v2/scripts/demo_entry_executor.js';
 import { buildProtectionOrders, verifyEntryFill } from './v2/scripts/demo_protection.js';
 import { reconcileDemoState } from './v2/scripts/demo_reconciliation.js';
@@ -352,7 +352,7 @@ app.get('/api/binance-demo/live-readiness', auth, async (req, res) => {
     const artifact = JSON.parse(fs.readFileSync(path.join(__dirname, 'v2', 'artifacts', 'BINANCE_DEMO_PAPER_PIPELINE.json'), 'utf8'));
     const dailyPnl = Array.isArray(income) ? income.reduce((total, row) => total + Number(row.income || 0), 0) : 0;
     const riskGuard = evaluateRiskLimits(openPositions, Number(dailyPnl), balances.find(x => x.asset === 'USDT') || {}, executionPolicy);
-    const candidates = (artifact.execution_candidates || []).map(candidate => { const sizing = sizeCandidate(candidate, executionPolicy, balances.find(x => x.asset === 'USDT') || {}, filters[candidate.symbol]); return { ...candidate, sizing, precisionValidation: validateCandidatePrecision(candidate, sizing, filters[candidate.symbol]), riskGuard }; });
+    const candidates = (artifact.execution_candidates || []).map(candidate => { const normalized = normalizeCandidatePrices(candidate, filters[candidate.symbol]); const sizing = sizeCandidate(normalized, executionPolicy, balances.find(x => x.asset === 'USDT') || {}, filters[candidate.symbol]); return { ...candidate, normalized, sizing, precisionValidation: validateCandidatePrecision(normalized, sizing, filters[candidate.symbol]), riskGuard }; });
     res.json({ ok: true, demoOnly: true, policy: executionPolicy, balances, openPositions, dailyPnl: Number(dailyPnl), riskGuard, filters, candidates, ordersSent: false, withdrawalsSent: false });
   } catch { res.status(502).json({ ok: false, demoOnly: true, error: 'Demo execution preflight failed' }); }
 });
@@ -409,9 +409,10 @@ async function loadServerExecutionCandidate(userId, candidateId) {
   const artifact = JSON.parse(fs.readFileSync(path.join(__dirname, 'v2', 'artifacts', 'BINANCE_DEMO_PAPER_PIPELINE.json'), 'utf8'));
   const candidate = (artifact.execution_candidates || []).find(x => x.client_order_id === candidateId);
   if (!candidate) return { error: 'Execution candidate not found' };
-  const sizing = sizeCandidate(candidate, policy, balance || {}, filters[candidate.symbol]);
-  const precision = validateCandidatePrecision(candidate, sizing, filters[candidate.symbol]);
-  return { apiKey, secret, signed, candidate, sizing, precision, riskGuard, positions, policy };
+  const normalized = normalizeCandidatePrices(candidate, filters[candidate.symbol]);
+  const sizing = sizeCandidate(normalized, policy, balance || {}, filters[candidate.symbol]);
+  const precision = validateCandidatePrecision(normalized, sizing, filters[candidate.symbol]);
+  return { apiKey, secret, signed, candidate: normalized, sizing, precision, riskGuard, positions, policy };
 }
 app.post('/api/binance-demo/execute-candidate', auth, async (req, res) => {
   try {
@@ -733,6 +734,7 @@ initDb().then(() => {
   console.error('DB init failed:', e);
   process.exit(1);
 });
+
 
 
 
