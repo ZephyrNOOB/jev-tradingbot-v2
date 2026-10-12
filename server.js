@@ -299,7 +299,8 @@ app.get('/api/binance-demo/execution-preflight', auth, async (req, res) => {
     const signed = async (apiPath, params = {}) => {
       const query = new URLSearchParams({ ...params, recvWindow: '5000', timestamp: String(Date.now()) });
       const queryString = query.toString();
-      const r = await fetchBinance(EXCHANGES.binanceTestnet.base + apiPath + '?' + queryString + '&signature=' + binanceSignature(secret, queryString), { headers: { 'X-MBX-APIKEY': apiKey } });
+      const controller = new AbortController(); const timeout = setTimeout(() => controller.abort(), 10000);
+      let r; try { r = await fetchBinance(EXCHANGES.binanceTestnet.base + apiPath + '?' + queryString + '&signature=' + binanceSignature(secret, queryString), { headers: { 'X-MBX-APIKEY': apiKey }, signal: controller.signal }); } finally { clearTimeout(timeout); }
       const data = await r.json(); if (!r.ok) throw new Error(data?.msg || 'Binance Demo request failed'); return data;
     };
     const [exchangeInfo, account, positions] = await Promise.all([fetchBinance(EXCHANGES.binanceTestnet.base + '/fapi/v1/exchangeInfo').then(async r => { const d = await r.json(); if (!r.ok) throw new Error(d?.msg || 'exchangeInfo failed'); return d; }), signed('/fapi/v2/account'), signed('/fapi/v2/positionRisk')]);
