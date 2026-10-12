@@ -317,12 +317,12 @@ app.get('/api/binance-demo/live-readiness', auth, async (req, res) => {
       const response = await fetchBinance(EXCHANGES.binanceTestnet.base + apiPath + '?' + queryString + '&signature=' + binanceSignature(secret, queryString), { headers: { 'X-MBX-APIKEY': apiKey }, signal: AbortSignal.timeout(10000) });
       const data = await response.json(); if (!response.ok) throw new Error(data?.msg || 'Binance Demo readiness failed'); return data;
     };
-    const [exchangeInfo, account, positions] = await Promise.all([fetchBinance(EXCHANGES.binanceTestnet.base + '/fapi/v1/exchangeInfo').then(async r => { const d = await r.json(); if (!r.ok) throw new Error(d?.msg || 'exchangeInfo failed'); return d; }), signed('/fapi/v2/account'), signed('/fapi/v2/positionRisk')]);
+    const [exchangeInfo, account, positions, income] = await Promise.all([fetchBinance(EXCHANGES.binanceTestnet.base + '/fapi/v1/exchangeInfo').then(async r => { const d = await r.json(); if (!r.ok) throw new Error(d?.msg || 'exchangeInfo failed'); return d; }), signed('/fapi/v2/account'), signed('/fapi/v2/positionRisk'), signed('/fapi/v1/income', { incomeType: 'REALIZED_PNL', startTime: String(Date.now() - 24 * 60 * 60 * 1000), limit: '1000' })]);
     const filters = Object.fromEntries(exchangeInfo.symbols.filter(x => PAPER_SYMBOLS.includes(x.symbol)).map(x => [x.symbol, { filters: x.filters.filter(f => ['LOT_SIZE', 'PRICE_FILTER', 'MIN_NOTIONAL', 'NOTIONAL'].includes(f.filterType)) }]));
     const balances = (account.assets || []).filter(x => x.asset === 'USDT').map(x => ({ asset: x.asset, availableBalance: Number(x.availableBalance) }));
     const executionPolicy = { riskPerTrade: Number(policy.risk_per_trade), maxNotional: Number(policy.max_notional), leverage: Number(policy.leverage), maxOpenPositions: Number(policy.max_open_positions), maxDailyLoss: Number(policy.max_daily_loss) };
     const artifact = JSON.parse(fs.readFileSync(path.join(__dirname, 'v2', 'artifacts', 'BINANCE_DEMO_PAPER_PIPELINE.json'), 'utf8'));
-    const dailyPnl = Number(all('SELECT COALESCE(SUM(pnl), 0) AS pnl FROM trade_history WHERE user_id = ? AND ts >= ?', [req.userId, Date.now() - 24 * 60 * 60 * 1000])[0]?.pnl || 0);
+    const dailyPnl = Array.isArray(income) ? income.reduce((total, row) => total + Number(row.income || 0), 0) : 0;
     const riskGuard = evaluateRiskLimits(positions, dailyPnl, balances[0] || {}, executionPolicy);
     if (riskGuard.status !== 'ALLOWED') blockers.push(riskGuard.status);
     const candidates = (artifact.execution_candidates || []).map(candidate => { const sizing = sizeCandidate(candidate, executionPolicy, balances[0] || {}, filters[candidate.symbol]); return { candidate, sizing, precision: validateCandidatePrecision(candidate, sizing, filters[candidate.symbol]) }; });
@@ -344,13 +344,13 @@ app.get('/api/binance-demo/live-readiness', auth, async (req, res) => {
       let r; try { r = await fetchBinance(EXCHANGES.binanceTestnet.base + apiPath + '?' + queryString + '&signature=' + binanceSignature(secret, queryString), { headers: { 'X-MBX-APIKEY': apiKey }, signal: controller.signal }); } finally { clearTimeout(timeout); }
       const data = await r.json(); if (!r.ok) throw new Error(data?.msg || 'Binance Demo request failed'); return data;
     };
-    const [exchangeInfo, account, positions] = await Promise.all([fetchBinance(EXCHANGES.binanceTestnet.base + '/fapi/v1/exchangeInfo').then(async r => { const d = await r.json(); if (!r.ok) throw new Error(d?.msg || 'exchangeInfo failed'); return d; }), signed('/fapi/v2/account'), signed('/fapi/v2/positionRisk')]);
+    const [exchangeInfo, account, positions, income] = await Promise.all([fetchBinance(EXCHANGES.binanceTestnet.base + '/fapi/v1/exchangeInfo').then(async r => { const d = await r.json(); if (!r.ok) throw new Error(d?.msg || 'exchangeInfo failed'); return d; }), signed('/fapi/v2/account'), signed('/fapi/v2/positionRisk'), signed('/fapi/v1/income', { incomeType: 'REALIZED_PNL', startTime: String(Date.now() - 24 * 60 * 60 * 1000), limit: '1000' })]);
     const filters = Object.fromEntries(exchangeInfo.symbols.filter(x => PAPER_SYMBOLS.includes(x.symbol)).map(x => [x.symbol, { status: x.status, quantityPrecision: x.quantityPrecision, pricePrecision: x.pricePrecision, filters: x.filters.filter(f => ['LOT_SIZE', 'PRICE_FILTER', 'MIN_NOTIONAL', 'NOTIONAL'].includes(f.filterType)) }]));
     const balances = (account.assets || []).filter(x => ['USDT', 'USDC'].includes(x.asset)).map(x => ({ asset: x.asset, walletBalance: Number(x.walletBalance), availableBalance: Number(x.availableBalance), unrealizedProfit: Number(x.unrealizedProfit) }));
     const openPositions = positions.filter(x => Number(x.positionAmt) !== 0).map(x => ({ symbol: x.symbol, positionAmt: Number(x.positionAmt), entryPrice: Number(x.entryPrice), unrealizedProfit: Number(x.unRealizedProfit), isolated: x.marginType === 'isolated' }));
     const executionPolicy = { riskPerTrade: Number(policy.risk_per_trade), maxNotional: Number(policy.max_notional), leverage: Number(policy.leverage), marginMode: policy.margin_mode, maxOpenPositions: Number(policy.max_open_positions), maxDailyLoss: Number(policy.max_daily_loss) };
     const artifact = JSON.parse(fs.readFileSync(path.join(__dirname, 'v2', 'artifacts', 'BINANCE_DEMO_PAPER_PIPELINE.json'), 'utf8'));
-    const dailyPnl = all('SELECT COALESCE(SUM(pnl), 0) AS pnl FROM trade_history WHERE user_id = ? AND ts >= ?', [req.userId, Date.now() - 24 * 60 * 60 * 1000])[0]?.pnl || 0;
+    const dailyPnl = Array.isArray(income) ? income.reduce((total, row) => total + Number(row.income || 0), 0) : 0;
     const riskGuard = evaluateRiskLimits(openPositions, Number(dailyPnl), balances.find(x => x.asset === 'USDT') || {}, executionPolicy);
     const candidates = (artifact.execution_candidates || []).map(candidate => { const sizing = sizeCandidate(candidate, executionPolicy, balances.find(x => x.asset === 'USDT') || {}, filters[candidate.symbol]); return { ...candidate, sizing, precisionValidation: validateCandidatePrecision(candidate, sizing, filters[candidate.symbol]), riskGuard }; });
     res.json({ ok: true, demoOnly: true, policy: executionPolicy, balances, openPositions, dailyPnl: Number(dailyPnl), riskGuard, filters, candidates, ordersSent: false, withdrawalsSent: false });
@@ -679,6 +679,8 @@ initDb().then(() => {
   console.error('DB init failed:', e);
   process.exit(1);
 });
+
+
 
 
 
