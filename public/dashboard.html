@@ -28,7 +28,7 @@
 
     <div class="card execution-policy"><div class="office-header"><div><h3 style="font-size:14px;margin-bottom:6px">DEMO EXECUTION POLICY</h3><p class="muted mono">Policy wajib tersimpan sebelum BOT ON · Demo only</p></div><span id="policyStatus" class="muted mono">NOT CONFIGURED</span></div><div class="form-row"><div class="field"><label>Risk / Trade (%)</label><input id="policyRisk" type="number" min="0.01" max="5" step="0.01" value="0.25"></div><div class="field"><label>Max Notional (USDT)</label><input id="policyNotional" type="number" min="1" max="100000" step="1" value="100"></div><div class="field"><label>Leverage</label><input id="policyLeverage" type="number" min="1" max="20" step="1" value="1"></div><div class="field"><label>Margin Mode</label><select id="policyMargin"><option value="isolated">Isolated</option><option value="cross">Cross</option></select></div><div class="field"><label>Max Open Positions</label><input id="policyPositions" type="number" min="1" max="4" step="1" value="1"></div><div class="field"><label>Max Daily Loss (%)</label><input id="policyDailyLoss" type="number" min="0.01" max="20" step="0.01" value="1"></div><button onclick="savePolicy()" style="height:38px;margin-top:auto">SAVE POLICY</button></div></div>
     <section class="market-charts" aria-labelledby="marketChartsTitle"><div class="charts-header"><div><h3 id="marketChartsTitle">LIVE MARKET CHARTS</h3><p class="muted mono">5M closed candles · read-only observer · refresh 5s</p></div><span id="chartsUpdated" class="muted mono">LIVE --:--:--</span></div><div id="pairCharts" class="pair-charts"></div></section>
-    <section class="card candidate-readiness" aria-labelledby="candidateReadinessTitle"><div class="office-header"><div><h3 id="candidateReadinessTitle" style="font-size:14px;margin-bottom:6px">SERVER-SIDE CANDIDATE CHECK</h3><p class="muted mono">BTCUSDT · no order action</p></div><span id="candidateUpdated" class="muted mono">WAITING</span></div><div id="candidateTable" class="table-wrap"><p class="muted mono">Loading candidate validation...</p></div></section>    <section class="card execution-readiness" aria-labelledby="executionReadinessTitle"><div class="office-header"><div><h3 id="executionReadinessTitle" style="font-size:14px;margin-bottom:6px">EXECUTION READINESS</h3><p class="muted mono">Read-only Demo guard and recovery monitor</p></div><span id="readinessUpdated" class="muted mono">WAITING</span></div><div id="readinessTable" class="table-wrap"><p class="muted mono">Loading execution state...</p></div></section>    <section class="card account-assets" aria-labelledby="accountAssetsTitle"><div class="office-header"><div><h3 id="accountAssetsTitle" style="font-size:14px;margin-bottom:6px">BINANCE DEMO ASSETS</h3><p class="muted mono">Read-only account balance · refresh 15s</p></div><span id="assetsUpdated" class="muted mono">WAITING</span></div><div id="assetsTable" class="table-wrap"><p class="muted mono">Loading account assets...</p></div></section>    <div class="card workflow-office"><div class="office-header"><div><h3 style="font-size:14px;margin-bottom:6px">V2 WORKFLOW OFFICE</h3><p class="muted mono">Read-only paper execution monitor · orders disabled</p></div><span class="office-live"><i></i> PAPER MODE</span></div><div class="workflow-track" id="workflowTrack"></div><p id="v2Status" class="muted mono" style="margin-top:14px">Loading paper status...</p><div id="v2Pairs" class="table-wrap"></div></div>
+    <section class="card account-assets" aria-labelledby="accountAssetsTitle"><div class="office-header"><div><h3 id="accountAssetsTitle" style="font-size:14px;margin-bottom:6px">BINANCE DEMO ASSETS</h3><p class="muted mono">Read-only account balance · refresh 15s</p></div><span id="assetsUpdated" class="muted mono">WAITING</span></div><div id="assetsTable" class="table-wrap"><p class="muted mono">Loading account assets...</p></div></section>    <div class="card workflow-office"><div class="office-header"><div><h3 style="font-size:14px;margin-bottom:6px">V2 WORKFLOW OFFICE</h3><p class="muted mono">V2 workflow monitor · Demo execution controlled by BOT ON/OFF</p></div><span class="office-live"><i></i> PAPER MODE</span></div><div class="workflow-track" id="workflowTrack"></div><p id="v2Status" class="muted mono" style="margin-top:14px">Loading paper status...</p><div id="v2Pairs" class="table-wrap"></div></div>
 </div>
 <script>
 function csrfToken() { return document.cookie.split('; ').find(x => x.startsWith('csrf='))?.split('=')[1] || ''; }
@@ -82,30 +82,10 @@ async function refreshV2() {
   const track = document.getElementById('workflowTrack');
   track.replaceChildren();
   rooms.forEach((r,i) => { const room = document.createElement('div'); room.className = 'workflow-room' + (r[3] !== 'WAITING' && r[3] !== 'OFF' ? ' room-active' : ''); room.innerHTML = `<div class="room-top"><span class="room-index">0${i + 1}</span><span class="room-status">${r[3]}</span></div><div class="room-icon">${r[1]}</div><h4>${r[0]}</h4><p>${r[2]}</p>`; if (i < rooms.length - 1) { const connector = document.createElement('span'); connector.className = 'room-connector'; connector.textContent = '›'; room.appendChild(connector); } track.appendChild(room); });
-  document.getElementById('v2Status').textContent = `Demo paper · ${t.structure_events} structure events · ${t.confirmed_5m} confirmed · ${t.selected} selected · orders disabled`;
+  document.getElementById('v2Status').textContent = `Demo · ${t.structure_events} structure events · ${t.confirmed_5m} confirmed · ${t.selected} selected`;
   document.getElementById('v2Pairs').innerHTML = '<table><thead><tr><th>Pair</th><th>Events</th><th>Plans</th></tr></thead><tbody>' + Object.entries(v2.artifact.symbols).map(([symbol,x]) => `<tr><td>${symbol}</td><td>${x.recent_events.length}</td><td>${x.recent_events.filter(e => e.virtual_entry_sl_tp).length}</td></tr>`).join('') + '</tbody></table>';
 }
-async function refreshCandidateReadiness(){
-  const table=document.getElementById('candidateTable'), stamp=document.getElementById('candidateUpdated');
-  try {
-    const p=await api('/binance-demo/execution-preflight');
-    if(!p?.ok) throw new Error(p?.error||'Preflight unavailable');
-    const candidate=(p.candidates||[]).find(x=>x.symbol==='BTCUSDT');
-    if(!candidate) throw new Error('No BTCUSDT candidate');
-    const s=candidate.sizing||{}, r=candidate.riskGuard||{};
-    table.innerHTML='<table><tbody><tr><th>CANDIDATE</th><td>'+candidate.client_order_id+'</td></tr><tr><th>ENTRY / SL / TP</th><td>'+Number(candidate.entry).toFixed(2)+' / '+Number(candidate.sl).toFixed(2)+' / '+Number(candidate.tp).toFixed(2)+'</td></tr><tr><th>SIZING</th><td>'+ (s.status||'UNKNOWN')+' · qty '+(s.quantity||'--')+' · notional '+(s.notional||'--')+'</td></tr><tr><th>PRECISION</th><td>'+ (candidate.precisionValidation||'UNKNOWN')+'</td></tr><tr><th>RISK</th><td>'+ (r.status||'UNKNOWN')+'</td></tr></tbody></table>';
-    stamp.textContent='UPDATED '+new Date().toLocaleTimeString();
-  } catch(error) { table.innerHTML='<p class="neg mono">'+(error.message||'Preflight unavailable')+'</p>'; stamp.textContent='ERROR'; }
-}async function refreshExecutionReadiness(){
-  const table=document.getElementById('readinessTable'), stamp=document.getElementById('readinessUpdated');
-  try {
-    const [bot, reconciliation] = await Promise.all([api('/bot/status'), api('/binance-demo/reconciliation')]);
-    const cycle=bot?.demoCycle, monitor=reconciliation?.monitoring||[];
-    const counts=monitor.reduce((a,x)=>(a[x.status]=(a[x.status]||0)+1,a),{});
-    table.innerHTML='<table><tbody><tr><th>DRY-RUN</th><td>'+ (cycle ? `${cycle.readyCount}/${cycle.candidateCount} READY · ${cycle.filledCount} FILLED` : 'WAITING') +'</td></tr><tr><th>PROTECTION</th><td>HEALTHY '+(counts.HEALTHY||0)+' · INCOMPLETE '+(counts.PROTECTION_INCOMPLETE||0)+' · UNSAFE '+(counts.ENTRY_FILLED_NO_PROTECTION||0)+'</td></tr><tr><th>RECONCILIATION</th><td>'+ (reconciliation?.status||'UNAVAILABLE') +'</td></tr></tbody></table>';
-    stamp.textContent='UPDATED '+new Date().toLocaleTimeString();
-  } catch(error) { table.innerHTML='<p class="neg mono">'+(error.message||'Execution state unavailable')+'</p>'; stamp.textContent='ERROR'; }
-}async function loadPolicy(){
+async function loadPolicy(){
   const p=await api('/execution-policy'); if(!p?.configured)return;
   policyRisk.value=p.riskPerTrade; policyNotional.value=p.maxNotional; policyLeverage.value=p.leverage; policyMargin.value=p.marginMode; policyPositions.value=p.maxOpenPositions; policyDailyLoss.value=p.maxDailyLoss; policyStatus.textContent='CONFIGURED'; policyStatus.className='pos';
 }
@@ -121,8 +101,6 @@ async function init() {
   const bot = await api('/bot/status');
   if (bot?.ok) renderBot(bot);
   await refreshV2();
-  await refreshExecutionReadiness();
-  await refreshCandidateReadiness();
   const keys = await api('/keys');
   if (keys) {
     const online = keys.some(k => k.status === 'connected');
@@ -163,12 +141,12 @@ setInterval(refreshAssets, 15_000);
 setInterval(refreshCharts, 5_000);
 setInterval(refreshBot, 60_000);
 setInterval(refreshV2, 5_000);
-setInterval(refreshExecutionReadiness, 15_000);
-setInterval(refreshCandidateReadiness, 15_000);
 setInterval(() => { const el = document.getElementById('chartsUpdated'); if (el) el.textContent = `LIVE ${new Date().toLocaleTimeString()}`; }, 1_000);
 </script>
 </body>
 </html>
+
+
 
 
 
