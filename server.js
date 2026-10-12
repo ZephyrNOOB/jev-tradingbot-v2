@@ -418,12 +418,36 @@ app.post('/api/binance-demo/execute-candidate', auth, async (req, res) => {
     const candidateId = String(req.body?.clientOrderId || '');
     const context = await loadServerExecutionCandidate(req.userId, candidateId);
     if (context.error) return res.status(context.error === 'Execution candidate not found' ? 404 : 400).json({ ok: false, demoOnly: true, error: context.error, ordersSent: false, withdrawalsSent: false });
-    const { candidate, sizing, precision, riskGuard } = context;
+    const { candidate, sizing, precision, riskGuard, signed } = context;
     const order = buildDemoEntryOrder(candidate, sizing, precision);
     if (riskGuard.status !== 'ALLOWED') return res.status(409).json({ ok: false, demoOnly: true, reason: riskGuard.status, order, ordersSent: false, withdrawalsSent: false });
-    const permission = demoExecutionGate({ botEnabled: botStates.get(req.cookies.sid) === true, ordersEnabled: process.env.DEMO_EXECUTION_ENABLED === 'true', protectiveOrdersReady: false, riskStatus: 'ALLOWED', demoExecutionEnabled: process.env.DEMO_EXECUTION_ENABLED === 'true' });
+    const enabled = process.env.DEMO_EXECUTION_ENABLED === 'true';
+    const permission = demoExecutionGate({ botEnabled: botStates.get(req.cookies.sid) === true, ordersEnabled: enabled, protectiveOrdersReady: true, riskStatus: 'ALLOWED', demoExecutionEnabled: enabled });
     if (!permission.allowed) return res.status(409).json({ ok: false, demoOnly: true, ...permission, order, ordersSent: false, withdrawalsSent: false });
-    return res.status(501).json({ ok: false, demoOnly: true, error: 'Live sender requires explicit E2E approval and protective-order verification', ordersSent: false, withdrawalsSent: false });
+    let existing = null;
+    try { existing = await signed('GET', '/fapi/v1/order', { symbol: candidate.symbol, origClientOrderId: candidate.client_order_id }); } catch {}
+    if (existing?.status === 'FILLED') return res.json({ ok: true, demoOnly: true, idempotent: true, status: 'ENTRY_ALREADY_FILLED', entry: existing, ordersSent: true, withdrawalsSent: false });
+    if (existing && ['NEW', 'PARTIALLY_FILLED'].includes(existing.status)) return res.status(409).json({ ok: false, demoOnly: true, status: 'ENTRY_ALREADY_OPEN', entry: existing, ordersSent: true, withdrawalsSent: false });
+    const entry = await signed('POST', '/fapi/v1/order', { symbol: candidate.symbol, side: candidate.side, type: 'LIMIT', timeInForce: 'GTC', quantity: sizing.quantity, price: sizing.price, newClientOrderId: candidate.client_order_id });
+    let current = entry;
+    for (let i = 0; i < 5 && !['FILLED', 'CANCELED', 'EXPIRED', 'REJECTED'].includes(current.status); i++) { await new Promise(resolve => setTimeout(resolve, 1000)); current = await signed('GET', '/fapi/v1/order', { symbol: candidate.symbol, orderId: String(entry.orderId) }); }
+    if (current.status !== 'FILLED') {
+      const canceled = await signed('DELETE', '/fapi/v1/order', { symbol: candidate.symbol, orderId: String(entry.orderId) });
+      return res.status(409).json({ ok: false, demoOnly: true, status: 'ENTRY_NOT_FILLED_CANCELED', entry: canceled, ordersSent: true, withdrawalsSent: false });
+    }
+    const protectionOrders = buildProtectionOrders(candidate, sizing, precision).orders;
+    const protection = [];
+    try {
+      for (const protective of protectionOrders) protection.push(await signed('POST', '/fapi/v1/order', { symbol: protective.symbol, side: protective.side, type: protective.type, stopPrice: protective.stopPrice, closePosition: protective.closePosition, workingType: protective.workingType, newClientOrderId: protective.clientOrderId }));
+    } catch (error) {
+      await Promise.all(protection.map(order => signed('DELETE', '/fapi/v1/order', { symbol: candidate.symbol, orderId: String(order.orderId) }).catch(() => null)));
+      return res.status(502).json({ ok: false, demoOnly: true, status: 'PROTECTION_FAILED', entry: current, error: error.message, ordersSent: true, withdrawalsSent: false });
+    }
+    const openOrders = await signed('GET', '/fapi/v1/openOrders', { symbol: candidate.symbol });
+    const protectedIds = new Set(openOrders.map(order => order.clientOrderId));
+    const protectionVerified = protectionOrders.every(order => protectedIds.has(order.clientOrderId));
+    if (!protectionVerified) return res.status(502).json({ ok: false, demoOnly: true, status: 'PROTECTION_VERIFICATION_FAILED', entry: current, protection, ordersSent: true, withdrawalsSent: false });
+    res.json({ ok: true, demoOnly: true, status: 'FILLED_PROTECTED', entry: current, protection, protectionVerified: true, ordersSent: true, withdrawalsSent: false });
   } catch (error) { res.status(502).json({ ok: false, demoOnly: true, error: error.message || 'Binance Demo execution failed', ordersSent: false, withdrawalsSent: false }); }
 });app.get('/api/v2/status', auth, (req, res) => {
   const artifactPath = path.join(__dirname, 'v2', 'artifacts', 'BINANCE_DEMO_PAPER_PIPELINE.json');
@@ -709,6 +733,8 @@ initDb().then(() => {
   console.error('DB init failed:', e);
   process.exit(1);
 });
+
+
 
 
 
