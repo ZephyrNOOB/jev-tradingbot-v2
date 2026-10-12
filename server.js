@@ -8,7 +8,7 @@ import bcrypt from 'bcryptjs';
 import cookieParser from 'cookie-parser';
 import { execFile } from 'node:child_process';
 import { sizeCandidate, validateCandidatePrecision } from './v2/scripts/execution_sizing.js';
-import { buildDemoEntryOrder, canSendDemoEntry } from './v2/scripts/demo_entry_executor.js';
+import { buildDemoEntryOrder, canSendDemoEntry, demoExecutionGate } from './v2/scripts/demo_entry_executor.js';
 import { buildProtectionOrders, verifyEntryFill } from './v2/scripts/demo_protection.js';
 import { reconcileDemoState } from './v2/scripts/demo_reconciliation.js';
 import { evaluateRiskLimits } from './v2/scripts/demo_risk_guard.js';
@@ -360,7 +360,7 @@ app.post('/api/binance-demo/execute-candidate', auth, (req, res) => {
     const artifact = JSON.parse(fs.readFileSync(artifactPath, 'utf8'));
     const candidate = (artifact.execution_candidates || []).find(x => x.client_order_id === candidateId);
     if (!candidate) return res.status(404).json({ ok: false, error: 'Execution candidate not found' });
-    const permission = canSendDemoEntry({ botEnabled: botStates.get(req.cookies.sid) === true, ordersEnabled: false, protectiveOrdersReady: false, riskStatus: req.body?.riskStatus || 'ALLOWED' });
+    const permission = demoExecutionGate({ botEnabled: botStates.get(req.cookies.sid) === true, ordersEnabled: process.env.DEMO_EXECUTION_ENABLED === 'true', protectiveOrdersReady: req.body?.protectiveOrdersReady === true, riskStatus: req.body?.riskStatus || 'ALLOWED', demoExecutionEnabled: process.env.DEMO_EXECUTION_ENABLED === 'true' });
     const order = buildDemoEntryOrder(candidate, req.body?.sizing, req.body?.precisionValidation);
     res.status(409).json({ ok: false, demoOnly: true, ...permission, order, ordersSent: false, withdrawalsSent: false });
   } catch { res.status(503).json({ ok: false, error: 'V2 paper artifact unavailable' }); }
@@ -648,6 +648,7 @@ initDb().then(() => {
   console.error('DB init failed:', e);
   process.exit(1);
 });
+
 
 
 

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { sizeCandidate, validateCandidatePrecision } from '../v2/scripts/execution_sizing.js';
-import { buildDemoEntryOrder, canSendDemoEntry } from '../v2/scripts/demo_entry_executor.js';
+import { buildDemoEntryOrder, canSendDemoEntry, demoExecutionGate } from '../v2/scripts/demo_entry_executor.js';
 import { buildProtectionOrders, verifyEntryFill } from '../v2/scripts/demo_protection.js';
 import { reconcileDemoState } from '../v2/scripts/demo_reconciliation.js';
 import { evaluateRiskLimits } from '../v2/scripts/demo_risk_guard.js';
@@ -85,4 +85,9 @@ test('recovery plans only missing protection orders and stays plan-only', () => 
   assert.equal(partial.status, 'PLAN_ONLY');
   assert.deepEqual(partial.orders.map(order => order.clientOrderId), ['jev_1_tp']);
   assert.equal(buildRecoveryPlan(candidate, sizing, 'VALID', { status: 'HEALTHY', hasSl: true, hasTp: true }).status, 'NO_ACTION');
+});
+
+test('demo execution requires explicit enable flag after all safety gates', () => {
+  assert.equal(demoExecutionGate({ botEnabled: true, ordersEnabled: true, protectiveOrdersReady: true, riskStatus: 'ALLOWED', demoExecutionEnabled: false }).reason, 'DEMO_EXECUTION_FLAG_DISABLED');
+  assert.equal(demoExecutionGate({ botEnabled: true, ordersEnabled: true, protectiveOrdersReady: true, riskStatus: 'ALLOWED', demoExecutionEnabled: true }).allowed, true);
 });

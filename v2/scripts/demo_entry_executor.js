@@ -15,3 +15,9 @@ export function canSendDemoEntry({ botEnabled, ordersEnabled, protectiveOrdersRe
   return { allowed: true };
 }
 
+export function demoExecutionGate(input) {
+  const permission = canSendDemoEntry(input);
+  if (!permission.allowed) return permission;
+  if (input.demoExecutionEnabled !== true) return { allowed: false, reason: 'DEMO_EXECUTION_FLAG_DISABLED' };
+  return { allowed: true };
+}
