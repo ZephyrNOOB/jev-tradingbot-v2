@@ -6,6 +6,7 @@ import { buildProtectionOrders, verifyEntryFill } from '../v2/scripts/demo_prote
 import { reconcileDemoState } from '../v2/scripts/demo_reconciliation.js';
 import { evaluateRiskLimits } from '../v2/scripts/demo_risk_guard.js';
 import { monitorProtectionState } from '../v2/scripts/demo_monitoring.js';
+import { buildRecoveryPlan } from '../v2/scripts/demo_recovery.js';
 
 const filters = { filters: [
   { filterType: 'LOT_SIZE', minQty: '0.001', stepSize: '0.001' },
@@ -75,4 +76,13 @@ test('marks filled positions without complete protection as unsafe', () => {
   assert.equal(monitorProtectionState(candidates, [], position)[0].status, 'ENTRY_FILLED_NO_PROTECTION');
   assert.equal(monitorProtectionState(candidates, [{ clientOrderId: 'jev_1_sl', status: 'NEW' }], position)[0].status, 'PROTECTION_INCOMPLETE');
   assert.equal(monitorProtectionState(candidates, [{ clientOrderId: 'jev_1_sl', status: 'NEW' }, { clientOrderId: 'jev_1_tp', status: 'NEW' }], position)[0].status, 'HEALTHY');
+});
+
+test('recovery plans only missing protection orders and stays plan-only', () => {
+  const candidate = { client_order_id: 'jev_1', symbol: 'BTCUSDT', side: 'BUY', sl: 82898.20, tp: 83124.90 };
+  const sizing = { status: 'SIZED', quantity: '0.002', price: '82960.40' };
+  const partial = buildRecoveryPlan(candidate, sizing, 'VALID', { status: 'PROTECTION_INCOMPLETE', hasSl: true, hasTp: false });
+  assert.equal(partial.status, 'PLAN_ONLY');
+  assert.deepEqual(partial.orders.map(order => order.clientOrderId), ['jev_1_tp']);
+  assert.equal(buildRecoveryPlan(candidate, sizing, 'VALID', { status: 'HEALTHY', hasSl: true, hasTp: true }).status, 'NO_ACTION');
 });

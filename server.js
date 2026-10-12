@@ -13,6 +13,7 @@ import { buildProtectionOrders, verifyEntryFill } from './v2/scripts/demo_protec
 import { reconcileDemoState } from './v2/scripts/demo_reconciliation.js';
 import { evaluateRiskLimits } from './v2/scripts/demo_risk_guard.js';
 import { monitorProtectionState } from './v2/scripts/demo_monitoring.js';
+import { buildRecoveryPlan } from './v2/scripts/demo_recovery.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -340,6 +341,9 @@ app.get('/api/binance-demo/reconciliation', auth, async (req, res) => {
     const monitoring = monitorProtectionState(artifact.execution_candidates || [], ordersBySymbol.flat(), positions);
     res.json({ ok: true, demoOnly: true, observedAt: new Date().toISOString(), ordersSent: false, withdrawalsSent: false, monitoring, ...reconciliation });
   } catch (error) { res.status(502).json({ ok: false, demoOnly: true, error: error.message || 'Demo reconciliation failed' }); }
+});app.post('/api/binance-demo/recovery-plan', auth, (req, res) => {
+  const plan = buildRecoveryPlan(req.body?.candidate, req.body?.sizing, req.body?.precisionValidation, req.body?.monitoring);
+  res.status(plan.status === 'PLAN_ONLY' || plan.status === 'NO_ACTION' ? 200 : 409).json({ ok: plan.status === 'PLAN_ONLY' || plan.status === 'NO_ACTION', demoOnly: true, plan, ordersSent: false, withdrawalsSent: false });
 });app.post('/api/binance-demo/protection-plan', auth, (req, res) => {
   const fill = verifyEntryFill(req.body?.exchangeOrder);
   const plan = fill.filled ? buildProtectionOrders(req.body?.candidate, req.body?.sizing, req.body?.precisionValidation) : { status: 'WAITING_ENTRY_FILL', orders: [] };
@@ -640,6 +644,7 @@ initDb().then(() => {
   console.error('DB init failed:', e);
   process.exit(1);
 });
+
 
 
 
