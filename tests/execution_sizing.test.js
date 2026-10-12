@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { sizeCandidate } from '../v2/scripts/execution_sizing.js';
+import { sizeCandidate, validateCandidatePrecision } from '../v2/scripts/execution_sizing.js';
 
 const filters = { filters: [
   { filterType: 'LOT_SIZE', minQty: '0.001', stepSize: '0.001' },
@@ -20,4 +20,12 @@ test('rejects quantity below Binance minimum', () => {
   assert.equal(result.status, 'REJECTED_BELOW_MIN_QTY');
 });
 
+
+
+test('validates entry, SL, TP ticks and side geometry', () => {
+  const sized = { status: 'SIZED', quantity: '0.002', price: '82960.40' };
+  assert.equal(validateCandidatePrecision({ side: 'BUY', entry: 82960.45, sl: 82898.28, tp: 83124.90 }, sized, filters), 'REJECTED_ENTRY_TICK');
+  assert.equal(validateCandidatePrecision({ side: 'BUY', entry: 82960.40, sl: 82898.20, tp: 83124.90 }, sized, filters), 'VALID');
+  assert.equal(validateCandidatePrecision({ side: 'BUY', entry: 82960.40, sl: 83000.00, tp: 83124.90 }, sized, filters), 'REJECTED_PRICE_RELATION');
+});
 

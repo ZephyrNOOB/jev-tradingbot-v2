@@ -21,6 +21,7 @@ export function sizeCandidate(candidate, policy, balance, symbolFilters) {
   const tickText = String(priceFilter.tickSize);
   const step = Number(stepText);
   const minQty = Number(lot.minQty);
+  const maxQty = Number(lot.maxQty || Infinity);
   const tick = Number(tickText);
   const minNotional = Number(notionalFilter.minNotional || notionalFilter.notional || 0);
   const maxExposure = Math.min(Number(policy.maxNotional), available * Number(policy.leverage));
@@ -33,7 +34,20 @@ export function sizeCandidate(candidate, policy, balance, symbolFilters) {
   const places = decimalPlaces(stepText);
   const pricePlaces = decimalPlaces(tickText);
   if (quantity < minQty) return { status: 'REJECTED_BELOW_MIN_QTY', quantity: quantity.toFixed(places), price: price.toFixed(pricePlaces) };
+  if (quantity > maxQty) return { status: 'REJECTED_ABOVE_MAX_QTY', quantity: quantity.toFixed(places), price: price.toFixed(pricePlaces) };
   if (minNotional > 0 && notional < minNotional) return { status: 'REJECTED_BELOW_MIN_NOTIONAL', quantity: quantity.toFixed(places), price: price.toFixed(pricePlaces), notional: notional.toFixed(8), minNotional };
   return { status: 'SIZED', quantity: quantity.toFixed(places), price: price.toFixed(pricePlaces), notional: notional.toFixed(8), riskCapital: risk.toFixed(8) };
+}
+
+
+export function validateCandidatePrecision(candidate, sizing, symbolFilters) {
+  if (sizing.status !== 'SIZED') return sizing.status;
+  const tick = Number(filter(symbolFilters, 'PRICE_FILTER').tickSize);
+  const aligned = value => Number.isFinite(Number(value)) && Math.abs(Number(value) / tick - Math.round(Number(value) / tick)) < 1e-8;
+  if (![candidate.entry, candidate.sl, candidate.tp].every(aligned)) return 'REJECTED_PRICE_TICK';
+  if (Number(candidate.entry) !== Number(sizing.price)) return 'REJECTED_ENTRY_TICK';
+  const long = candidate.side === 'BUY';
+  if (!['BUY', 'SELL'].includes(candidate.side) || (long ? !(candidate.sl < candidate.entry && candidate.tp > candidate.entry) : !(candidate.sl > candidate.entry && candidate.tp < candidate.entry))) return 'REJECTED_PRICE_RELATION';
+  return 'VALID';
 }
 
