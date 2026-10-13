@@ -12,6 +12,11 @@ export function buildProtectionOrders(candidate, sizing, precisionValidation) {
   };
 }
 
+export function buildEmergencyCloseOrder(candidate, quantity) {
+  if (!candidate?.client_order_id || !candidate.symbol || !['BUY', 'SELL'].includes(candidate.side) || !(Number(quantity) > 0)) return null;
+  return { clientOrderId: `${candidate.client_order_id}_emergency_close`, symbol: candidate.symbol, side: candidate.side === 'BUY' ? 'SELL' : 'BUY', type: 'MARKET', quantity: String(quantity), reduceOnly: 'true' };
+}
+
 export function verifyEntryFill(exchangeOrder) {
   if (!exchangeOrder || exchangeOrder.status !== 'FILLED') return { filled: false, status: exchangeOrder?.status || 'MISSING' };
   const quantity = Number(exchangeOrder.executedQty);

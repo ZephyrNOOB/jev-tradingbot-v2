@@ -23,12 +23,52 @@ def rows(symbol, interval, limit=500):
     raw = get(f"/fapi/v1/klines?symbol={symbol}&interval={interval}&limit={limit}")
     return [{"open": float(x[1]), "high": float(x[2]), "low": float(x[3]), "close": float(x[4]), "volume": float(x[5]), "taker_buy_volume": float(x[9]), "open_time": int(x[0]), "close_time": int(x[6])} for x in raw]
 
-def select_execution_candidates(candidates):
-    """Keep newest valid candidate per pair; older plans remain in observations."""
-    selected = {}
+def rank_and_approve_candidates(candidates, latest_structure_event_ids):
+    """Rank current candidates by structure/confirmation freshness; reject ties."""
+    groups = {}
     for candidate in candidates:
-        selected[candidate["symbol"]] = candidate
-    return list(selected.values())
+        latest = latest_structure_event_ids.get(candidate["symbol"])
+        if not latest:
+            candidate["status"] = "INVALIDATED_NO_ACTIVE_STRUCTURE"
+            continue
+        if candidate.get("structure_event_id") != latest:
+            candidate["status"] = "INVALIDATED_STRUCTURE_UPDATED"
+            continue
+        groups.setdefault(candidate["symbol"], []).append(candidate)
+    approved = []
+    for symbol, group in groups.items():
+        scored = [(int(c.get("structure_index", -1)), int(c.get("confirmation_index", -1)), c) for c in group]
+        best_key = max((x[:2] for x in scored), default=None)
+        winners = [x[2] for x in scored if x[:2] == best_key]
+        if len(winners) != 1:
+            for candidate in group:
+                candidate["status"] = "REJECTED_AMBIGUOUS_CANDIDATE"
+            continue
+        winners[0]["status"] = "APPROVED_FOR_EXECUTION"
+        approved.append(winners[0])
+        for candidate in group:
+            if candidate is not winners[0]:
+                candidate["status"] = "REJECTED_LOWER_STRUCTURE_RANK"
+    return approved
+
+
+def select_execution_candidates(candidates):
+    """Compatibility wrapper; caller must use rank_and_approve_candidates first."""
+    return [c for c in candidates if c.get("status") == "APPROVED_FOR_EXECUTION"]
+
+def invalidate_stale_candidates(candidates, latest_structure_event_ids):
+    """Remove plans whose pair has no current structure event or whose event changed."""
+    active = []
+    for candidate in candidates:
+        latest = latest_structure_event_ids.get(candidate["symbol"])
+        if not latest:
+            candidate["status"] = "INVALIDATED_NO_ACTIVE_STRUCTURE"
+        elif candidate.get("structure_event_id") != latest:
+            candidate["status"] = "INVALIDATED_STRUCTURE_UPDATED"
+        else:
+            active.append(candidate)
+    return active
+
 
 def collapse_active_plans(observations, candidates):
     """Keep one active plan per pair; mark replaced plans without deleting audit rows."""
@@ -44,12 +84,12 @@ def collapse_active_plans(observations, candidates):
     return active
 def main():
     server_time = int(get("/fapi/v1/time")["serverTime"])
-    observations = {}; plan_candidates = []; totals = {"bias_ready": 0, "structure_events": 0, "confirmed_5m": 0, "selected": 0, "paper_plans": 0, "gate_rejections": 0}
+    observations = {}; plan_candidates = []; latest_structure_event_ids = {}; totals = {"bias_ready": 0, "structure_events": 0, "confirmed_5m": 0, "selected": 0, "paper_plans": 0, "gate_rejections": 0}
     for symbol in SYMBOLS:
         h, m, q = rows(symbol, "1h"), rows(symbol, "15m"), rows(symbol, "5m")
         closed = lambda data: [x for x in data if x["close_time"] < server_time]
         h, m, q = closed(h), closed(m), closed(q)
-        bias = MarketBiasBot(h); events = MarketStructureBot(m, symbol).build(); confirm = ConfirmationBot(q, symbol); selection = SelectionBot(); qtimes = [x["close_time"] for x in q]; hs, ls = pivots(m)
+        bias = MarketBiasBot(h); events = MarketStructureBot(m, symbol).build(); latest_structure_event_ids[symbol] = events[-1].event_id if events else None; confirm = ConfirmationBot(q, symbol); selection = SelectionBot(); qtimes = [x["close_time"] for x in q]; hs, ls = pivots(m)
         symbol_rows = []
         hs, ls = pivots(m)
         for event in events[-20:]:
@@ -88,17 +128,19 @@ def main():
                                 row.update({"virtual_order": True, "virtual_entry_sl_tp": True, "paper_plan": {"setup_id": plan.setup_id, "side": plan.side, "entry": plan.entry, "sl": plan.sl, "tp": plan.tp, "rr": plan.rr, "entry_reason": plan.entry_reason, "sl_reason": plan.sl_reason, "tp_reason": plan.tp_reason, "evidence": plan.evidence}})
                                 client_order_id = "jev_" + hashlib.sha256(f"{symbol}:{plan.evidence['event_id']}".encode()).hexdigest()[:24]
                                 row["client_order_id"] = client_order_id
-                                plan_candidates.append({"client_order_id": client_order_id, "symbol": symbol, "side": "BUY" if plan.side == "BULLISH" else "SELL", "setup_id": plan.setup_id, "entry": plan.entry, "sl": plan.sl, "tp": plan.tp, "rr": plan.rr, "status": "READY_FOR_DEMO_EXECUTION", "evidence": plan.evidence})
+                                plan_candidates.append({"client_order_id": client_order_id, "symbol": symbol, "structure_event_id": event.event_id, "structure_index": event.index, "confirmation_index": c["index"], "side": "BUY" if plan.side == "BULLISH" else "SELL", "setup_id": plan.setup_id, "entry": plan.entry, "sl": plan.sl, "tp": plan.tp, "rr": plan.rr, "status": "READY_FOR_DEMO_EXECUTION", "evidence": plan.evidence})
                                 totals["paper_plans"] += 1
             symbol_rows.append(row)
         observations[symbol] = {"closed_counts": {"1h": len(h), "15m": len(m), "5m": len(q)}, "latest_closed_candle": {"1h": h[-1]["close_time"], "15m": m[-1]["close_time"], "5m": q[-1]["close_time"]}, "recent_events": symbol_rows}
 
+    plan_candidates = invalidate_stale_candidates(plan_candidates, latest_structure_event_ids)
+    rank_and_approve_candidates(plan_candidates, latest_structure_event_ids)
     execution_candidates = collapse_active_plans(observations, plan_candidates)
     totals["selected_events"] = totals["selected"]
     totals["selected"] = len(execution_candidates)
     totals["paper_plans"] = len(execution_candidates)
 
-    out = {"name": "BINANCE_DEMO_PAPER_PIPELINE", "status": "PASS", "environment": "demo-fapi", "server_time": server_time, "symbols": observations, "execution_candidates": execution_candidates, "totals": totals, "execution_status": "PAPER_ONLY", "virtual_entry_sl_tp": totals["paper_plans"] > 0, "next_action": "Demo executor may process READY_FOR_DEMO_EXECUTION candidates."}
+    out = {"name": "BINANCE_DEMO_PAPER_PIPELINE", "status": "PASS", "environment": "demo-fapi", "server_time": server_time, "symbols": observations, "latest_structure_event_ids": latest_structure_event_ids, "execution_candidates": execution_candidates, "totals": totals, "execution_status": "PAPER_ONLY", "virtual_entry_sl_tp": totals["paper_plans"] > 0, "next_action": "Demo executor may process READY_FOR_DEMO_EXECUTION candidates."}
     (ART / "BINANCE_DEMO_PAPER_PIPELINE.json").write_text(json.dumps(out, indent=2) + "\n"); print(json.dumps(out, indent=2))
 
 if __name__ == "__main__": main()

@@ -127,13 +127,18 @@ Status: COMPLETE
 
 Baseline run: `v2/artifacts/ARCHITECTURE_V2_BACKTEST.json` covers 105,119 closed 5M bars, 35,040 15M bars, and 8,760 1H bars with 1,090 funding records. Funnel: 9,790 structure events → 1,470 confirmed 5M events → 395 selected → 277 planned/executed. Chronological holdout: 83 trades, net PnL `171.56262907493908`; deterministic replay and no-lookahead checks PASS. This remains diagnostic evidence only; no setup promotion or production performance claim.
 
-## Stage 7 — Evidence review (closed, no promotion)
+## Stage 7 — Demo reconciliation and safety monitoring
 
-Status: CLOSED — EXPERIMENT ONLY
+Status: COMPLETE — READ-ONLY, NO ORDER SUBMISSION
 
-Stage 7 hypotheses were not proven superior to the locked V2 baseline. No experiment changed production behavior, setup selection, market-structure contracts, or the V2 workflow.
+- Reconciliation uses only fresh, approved, structure-current candidates.
+- Unmanaged exchange orders and positions produce `REVIEW_REQUIRED`.
+- Missing or partial protective orders produce explicit safety blockers.
+- No order or setup decision is created by this stage.
 
 The active architecture remains the Stage 6-locked V2 paper workflow:
+
+Stage 8 is implemented as a guarded Demo execution path, but remains blocked until a fresh approved candidate exists and the user provides explicit immediate approval in the execution request.
 
 ```text
 1H Bias → 15M MarketStructureBot → 5M ConfirmationBot → SelectionBot → fvg_context / ob_context → virtual Entry/SL/TP → Paper Observer

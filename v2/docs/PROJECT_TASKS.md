@@ -256,11 +256,18 @@ Acceptance: `v2/artifacts/STAGE6_SMC_SETUP_ACCEPTANCE.json` (`passed: true`).
 
 Validation: no-lookahead PASS; deterministic replay PASS; funnel/trade-count match PASS; provenance and MAE/MFE PASS; 83-trade chronological holdout recorded. Results remain diagnostic only; no setup family promoted.
 
-## Stage 7 — Evidence review (closed, no promotion)
+## Stage 7 — Demo reconciliation and safety monitoring
 
-Status: CLOSED — EXPERIMENT ONLY
+Status: COMPLETE — READ-ONLY, NO ORDER SUBMISSION
 
-Stage 7 was evaluation only. Its unproven hypotheses were not promoted and have no effect on the active V2 architecture or runtime.
+Stage 7 reconciles fresh approved candidates against Binance Demo positions/orders and emits explicit protection blockers. It does not submit orders or alter setup decisions.
+
+## Stage 8 — Controlled Demo execution
+
+Status: IMPLEMENTED — BLOCKED UNTIL EXPLICIT APPROVAL
+
+Execution revalidates candidate freshness, approval, structure event, sizing, precision, account state, and protection flow. The automatic runner never supplies user approval; first order requires `explicitApproval: true` in a direct execution request.
+
 
 Active V2 workflow:
 

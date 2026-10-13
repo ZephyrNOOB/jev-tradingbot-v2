@@ -1,3 +1,9 @@
+export function readinessBlockers(monitoring = []) {
+  return monitoring.some(item => ['ENTRY_FILLED_NO_PROTECTION', 'PROTECTION_INCOMPLETE'].includes(item.status))
+    ? ['PROTECTIVE_ORDER_VERIFICATION_REQUIRED', 'POSITION_MONITORING_REQUIRED']
+    : [];
+}
+
 export function monitorProtectionState(candidates = [], openOrders = [], positions = []) {
   return candidates.map(candidate => {
     const position = positions.find(item => item.symbol === candidate.symbol && Number(item.positionAmt) !== 0);

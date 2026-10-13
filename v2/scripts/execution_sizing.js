@@ -4,7 +4,7 @@ const decimalPlaces = value => {
 };
 const roundDown = (value, step) => {
   const places = decimalPlaces(step);
-  return Number((Math.floor((value + Number.EPSILON) / step) * step).toFixed(places));
+  return Number((Math.floor(Number(value) / Number(step) + 1e-9) * Number(step)).toFixed(places));
 };
 const filter = (filters, type) => (filters?.filters || []).find(item => item.filterType === type) || {};
 
@@ -27,11 +27,13 @@ export function sizeCandidate(candidate, settings, balance, symbolFilters) {
     return { status: Number.isFinite(tradeAmount) && tradeAmount > 0 ? 'REJECTED_INVALID_INPUT' : 'TRADE_AMOUNT_NOT_CONFIGURED' };
   }
   if (tradeAmount > available) return { status: 'TRADE_AMOUNT_EXCEEDS_AVAILABLE_BALANCE', tradeAmount: tradeAmount.toFixed(8), availableBalance: available.toFixed(8) };
-  const quantity = roundDown(tradeAmount / entry, step);
   const price = roundDown(entry, tick);
-  const notional = quantity * price;
   const places = decimalPlaces(stepText);
   const pricePlaces = decimalPlaces(tickText);
+  let quantity = roundDown(tradeAmount / price, step);
+  if (minNotional > 0 && quantity * price < minNotional) quantity = Math.ceil((minNotional / price) / step - Number.EPSILON) * step;
+  quantity = Number(quantity.toFixed(places));
+  const notional = quantity * price;
   if (quantity < minQty) return { status: 'REJECTED_BELOW_MIN_QTY', quantity: quantity.toFixed(places), price: price.toFixed(pricePlaces) };
   if (quantity > maxQty) return { status: 'REJECTED_ABOVE_MAX_QTY', quantity: quantity.toFixed(places), price: price.toFixed(pricePlaces) };
   if (minNotional > 0 && notional < minNotional) return { status: 'REJECTED_BELOW_MIN_NOTIONAL', quantity: quantity.toFixed(places), price: price.toFixed(pricePlaces), notional: notional.toFixed(8), minNotional };
@@ -50,8 +52,8 @@ export function validateCandidatePrecision(candidate, sizing, symbolFilters) {
   if (sizing.status !== 'SIZED') return sizing.status;
   const tick = Number(filter(symbolFilters, 'PRICE_FILTER').tickSize);
   const aligned = value => Number.isFinite(Number(value)) && Math.abs(Number(value) / tick - Math.round(Number(value) / tick)) < 1e-8;
-  if (![candidate.entry, candidate.sl, candidate.tp].every(aligned)) return 'REJECTED_PRICE_TICK';
   if (Number(candidate.entry) !== Number(sizing.price)) return 'REJECTED_ENTRY_TICK';
+  if (![candidate.entry, candidate.sl, candidate.tp].every(aligned)) return 'REJECTED_PRICE_TICK';
   if (!['BUY', 'SELL'].includes(candidate.side)) return 'REJECTED_INVALID_CANDIDATE';
   return 'VALID';
 }

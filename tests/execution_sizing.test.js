@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { sizeCandidate, validateCandidatePrecision } from '../v2/scripts/execution_sizing.js';
+import { sizeCandidate, validateCandidatePrecision, normalizeCandidatePrices } from '../v2/scripts/execution_sizing.js';
 import { buildDemoEntryOrder, canSendDemoEntry, demoExecutionGate } from '../v2/scripts/demo_entry_executor.js';
-import { buildProtectionOrders, verifyEntryFill } from '../v2/scripts/demo_protection.js';
+import { buildProtectionOrders, verifyEntryFill, buildEmergencyCloseOrder } from '../v2/scripts/demo_protection.js';
 import { reconcileDemoState } from '../v2/scripts/demo_reconciliation.js';
-import { monitorProtectionState } from '../v2/scripts/demo_monitoring.js';
+import { monitorProtectionState, readinessBlockers } from '../v2/scripts/demo_monitoring.js';
 import { buildRecoveryPlan } from '../v2/scripts/demo_recovery.js';
 
 const filters = { filters: [
@@ -20,8 +20,24 @@ test('sizes valid candidate and rounds Binance quantity and price', () => {
   assert.equal(result.price, '82960.40');
 });
 
+test('raises quantity to the next step when configured amount hits min notional after rounding', () => {
+  const result = sizeCandidate({ symbol: 'BTCUSDT', entry: 83656.05, sl: 83786.50 }, { tradeAmountUsdt: 50 }, { availableBalance: 1000 }, { filters: [
+    { filterType: 'LOT_SIZE', minQty: '0.0001', stepSize: '0.0001' },
+    { filterType: 'PRICE_FILTER', tickSize: '0.10' },
+    { filterType: 'MIN_NOTIONAL', notional: '50' }
+  ] });
+  assert.equal(result.status, 'SIZED');
+  assert.equal(result.quantity, '0.0006');
+  assert.ok(Number(result.notional) >= 50);
+});
+
 test('rejects quantity below Binance minimum', () => {
-  const result = sizeCandidate({ symbol: 'BTCUSDT', entry: 82960.45, sl: 80000 }, { tradeAmountUsdt: 200 }, { availableBalance: 100 }, filters);
+  const minQtyFilters = { filters: [
+    { filterType: 'LOT_SIZE', minQty: '0.010', stepSize: '0.001' },
+    { filterType: 'PRICE_FILTER', tickSize: '0.10' },
+    { filterType: 'MIN_NOTIONAL', notional: '100' }
+  ] };
+  const result = sizeCandidate({ symbol: 'BTCUSDT', entry: 82960.45, sl: 80000 }, { tradeAmountUsdt: 100 }, { availableBalance: 1000 }, minQtyFilters);
   assert.equal(result.status, 'REJECTED_BELOW_MIN_QTY');
 });
 
@@ -29,7 +45,7 @@ test('rejects quantity below Binance minimum', () => {
 
 test('validates entry, SL, TP ticks and side geometry', () => {
   const sized = { status: 'SIZED', quantity: '0.002', price: '82960.40' };
-  assert.equal(validateCandidatePrecision({ side: 'BUY', entry: 82960.45, sl: 82898.28, tp: 83124.90 }, sized, filters), 'REJECTED_ENTRY_TICK');
+  assert.equal(validateCandidatePrecision({ side: 'BUY', entry: 82960.45, sl: 82898.20, tp: 83124.90 }, sized, filters), 'REJECTED_ENTRY_TICK');
   assert.equal(validateCandidatePrecision({ side: 'BUY', entry: 82960.40, sl: 82898.20, tp: 83124.90 }, sized, filters), 'VALID');
   assert.equal(validateCandidatePrecision({ side: 'BUY', entry: 82960.40, sl: 83000.00, tp: 83124.90 }, sized, filters), 'VALID');
 });
@@ -42,6 +58,11 @@ test('entry executor stays disabled before protection exists', () => {
   assert.equal(order.clientOrderId, 'jev_test_1');
   assert.equal(canSendDemoEntry({ botEnabled: true, ordersEnabled: false, protectiveOrdersReady: false }).reason, 'ORDERS_DISABLED');
   assert.equal(canSendDemoEntry({ botEnabled: true, ordersEnabled: true, protectiveOrdersReady: false }).allowed, false);
+});
+
+test('builds emergency close order for filled entry without protection', () => {
+  const order = buildEmergencyCloseOrder({ client_order_id: 'jev_test_1', symbol: 'BTCUSDT', side: 'BUY' }, '0.002');
+  assert.deepEqual(order, { clientOrderId: 'jev_test_1_emergency_close', symbol: 'BTCUSDT', side: 'SELL', type: 'MARKET', quantity: '0.002', reduceOnly: 'true' });
 });
 
 test('builds opposite-side SL/TP only after confirmed entry fill', () => {
@@ -72,6 +93,12 @@ test('marks filled positions without complete protection as unsafe', () => {
   assert.equal(monitorProtectionState(candidates, [{ clientOrderId: 'jev_1_sl', status: 'NEW' }, { clientOrderId: 'jev_1_tp', status: 'NEW' }], position)[0].status, 'HEALTHY');
 });
 
+test('readiness reports protection blockers only for unsafe open positions', () => {
+  assert.deepEqual(readinessBlockers([{ status: 'NO_OPEN_POSITION' }]), []);
+  assert.deepEqual(readinessBlockers([{ status: 'HEALTHY' }]), []);
+  assert.deepEqual(readinessBlockers([{ status: 'ENTRY_FILLED_NO_PROTECTION' }]), ['PROTECTIVE_ORDER_VERIFICATION_REQUIRED', 'POSITION_MONITORING_REQUIRED']);
+});
+
 test('recovery plans only missing protection orders and stays plan-only', () => {
   const candidate = { client_order_id: 'jev_1', symbol: 'BTCUSDT', side: 'BUY', sl: 82898.20, tp: 83124.90 };
   const sizing = { status: 'SIZED', quantity: '0.002', price: '82960.40' };
@@ -83,6 +110,10 @@ test('recovery plans only missing protection orders and stays plan-only', () => 
 
 test('demo execution requires explicit enable flag after all safety gates', () => {
   assert.equal(demoExecutionGate({ botEnabled: true, ordersEnabled: true, protectiveOrdersReady: true, riskStatus: 'ALLOWED', demoExecutionEnabled: false }).reason, 'DEMO_EXECUTION_FLAG_DISABLED');
+  assert.equal(demoExecutionGate({ botEnabled: true, ordersEnabled: true, protectiveOrdersReady: true, riskStatus: 'ALLOWED', demoExecutionEnabled: true }).allowed, true);
+});
+
+test('stage 8 gate remains valid before explicit approval is passed to executor', () => {
   assert.equal(demoExecutionGate({ botEnabled: true, ordersEnabled: true, protectiveOrdersReady: true, riskStatus: 'ALLOWED', demoExecutionEnabled: true }).allowed, true);
 });
 
