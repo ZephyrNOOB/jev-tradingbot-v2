@@ -44,8 +44,11 @@ const sessions = new Map();
 const botStates = new Map();
 const botRunners = new Map();
 const demoCycleSummaries = new Map();
+const demoExecutionSummaries = new Map();
+const executionAttempts = new Map();
 const marketObservers = new Map();
 const PAPER_INTERVAL_MS = 60_000;
+const EXECUTION_INTERVAL_MS = 5_000;
 const PAPER_STALE_AFTER_MS = 15 * 60_000;
 const PAPER_POLL_TIMEOUT_MS = 10_000;
 const PAPER_SYMBOLS = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XAUUSDT'];
@@ -285,7 +288,7 @@ function startPaperRunner(sid) {
 }app.get('/api/bot/status', auth, (req, res) => {
   const runner = botRunners.get('global');
   const observer = marketObservers.get('global');
-  res.json({ ok: true, enabled: botStates.get(req.cookies.sid) === true, observing: Boolean(observer?.timer), running: Boolean(runner?.running), cycles: runner?.cycles || 0, error: runner?.error || null, observer_error: observer?.error || null, last_started_at: runner?.last_started_at || null, last_finished_at: runner?.last_finished_at || null, last_polled_at: observer?.last_polled_at || null, watermark: observer?.watermark || {}, mode: 'paper_observation', demoCycle: demoCycleSummaries.get('global') || null, ordersEnabled: false });
+  res.json({ ok: true, enabled: botStates.get(req.cookies.sid) === true, observing: Boolean(observer?.timer), running: Boolean(runner?.running), cycles: runner?.cycles || 0, error: runner?.error || null, observer_error: observer?.error || null, last_started_at: runner?.last_started_at || null, last_finished_at: runner?.last_finished_at || null, last_polled_at: observer?.last_polled_at || null, watermark: observer?.watermark || {}, mode: 'paper_observation', demoCycle: demoCycleSummaries.get('global') || null, demoExecution: demoExecutionSummaries.get(req.cookies.sid) || null, ordersEnabled: process.env.DEMO_EXECUTION_ENABLED === 'true' });
 });
 
 app.post('/api/bot/toggle', auth, (req, res) => {
@@ -293,9 +296,10 @@ app.post('/api/bot/toggle', auth, (req, res) => {
   if (enabled && !get('SELECT user_id FROM execution_policies WHERE user_id = ?', [req.userId])) return res.status(400).json({ ok:false, error:'Execution policy must be saved before BOT ON' });
   if (enabled && !get('SELECT id FROM api_keys WHERE user_id = ? AND exchange = ? AND status = ?', [req.userId, 'binanceTestnet', 'connected'])) return res.status(400).json({ ok:false, error:'Connected Binance Demo account required before BOT ON' });
   botStates.set(req.cookies.sid, enabled);
+  if (enabled) startExecutionRunner(req.cookies.sid); else stopExecutionRunner(req.cookies.sid);
   const runner = botRunners.get('global');
   const observer = marketObservers.get('global');
-  res.json({ ok: true, enabled, observing: Boolean(observer?.timer), running: Boolean(runner?.running), cycles: runner?.cycles || 0, mode: 'paper_observation', demoCycle: demoCycleSummaries.get('global') || null, ordersEnabled: false });
+  res.json({ ok: true, enabled, observing: Boolean(observer?.timer), running: Boolean(runner?.running), cycles: runner?.cycles || 0, mode: 'paper_observation', demoCycle: demoCycleSummaries.get('global') || null, demoExecution: demoExecutionSummaries.get(req.cookies.sid) || null, ordersEnabled: process.env.DEMO_EXECUTION_ENABLED === 'true' });
 });
 app.get('/api/binance-demo/live-readiness', auth, async (req, res) => {
   const blockers = [];
@@ -412,7 +416,7 @@ async function loadServerExecutionCandidate(userId, candidateId) {
   const precision = validateCandidatePrecision(normalized, sizing, filters[candidate.symbol]);
   return { apiKey, secret, signed, candidate: normalized, sizing, precision, riskGuard, positions, policy };
 }
-app.post('/api/binance-demo/execute-candidate', auth, async (req, res) => {
+async function executeDemoCandidate(req, res) {
   try {
     const candidateId = String(req.body?.clientOrderId || '');
     const context = await loadServerExecutionCandidate(req.userId, candidateId);
@@ -448,7 +452,50 @@ app.post('/api/binance-demo/execute-candidate', auth, async (req, res) => {
     if (!protectionVerified) return res.status(502).json({ ok: false, demoOnly: true, status: 'PROTECTION_VERIFICATION_FAILED', entry: current, protection, ordersSent: true, withdrawalsSent: false });
     res.json({ ok: true, demoOnly: true, status: 'FILLED_PROTECTED', entry: current, protection, protectionVerified: true, ordersSent: true, withdrawalsSent: false });
   } catch (error) { res.status(502).json({ ok: false, demoOnly: true, error: error.message || 'Binance Demo execution failed', ordersSent: false, withdrawalsSent: false }); }
-});app.get('/api/v2/status', auth, (req, res) => {
+}
+app.post('/api/binance-demo/execute-candidate', auth, executeDemoCandidate);
+
+async function runExecutionCycle(sid) {
+  if (botStates.get(sid) !== true) return;
+  let artifact;
+  try { artifact = JSON.parse(fs.readFileSync(path.join(__dirname, 'v2', 'artifacts', 'BINANCE_DEMO_PAPER_PIPELINE.json'), 'utf8')); } catch (error) {
+    demoExecutionSummaries.set(sid, { status: 'ARTIFACT_UNAVAILABLE', error: error.message, updatedAt: new Date().toISOString() });
+    return;
+  }
+  for (const candidate of (artifact.execution_candidates || [])) {
+    if (botStates.get(sid) !== true) return;
+    const key = sid + ":" + candidate.client_order_id;
+    if (!candidate.client_order_id || executionAttempts.has(key)) continue;
+    executionAttempts.set(key, true);
+    let payload;
+    const response = { statusCode: 200, status(code) { this.statusCode = code; return this; }, json(body) { payload = body; return this; } };
+    await executeDemoCandidate({ userId: sessions.get(sid), cookies: { sid }, body: { clientOrderId: candidate.client_order_id } }, response);
+    demoExecutionSummaries.set(sid, { ...(payload || { ok: false, error: 'empty_executor_response' }), clientOrderId: candidate.client_order_id, updatedAt: new Date().toISOString() });
+    if (!payload?.ordersSent && payload?.status !== 'ENTRY_NOT_FILLED_CANCELED') executionAttempts.delete(key);
+  }
+}
+
+function startExecutionRunner(sid) {
+  const key = "execution:" + sid;
+  if (botRunners.get(key)?.timer) return botRunners.get(key);
+  const runner = { timer: null, running: false };
+  const tick = async () => {
+    if (runner.running || botStates.get(sid) !== true) return;
+    runner.running = true;
+    try { await runExecutionCycle(sid); } finally { runner.running = false; }
+  };
+  runner.timer = setInterval(tick, EXECUTION_INTERVAL_MS);
+  botRunners.set(key, runner);
+  tick();
+  return runner;
+}
+
+function stopExecutionRunner(sid) {
+  const key = "execution:" + sid;
+  const runner = botRunners.get(key);
+  if (runner?.timer) clearInterval(runner.timer);
+  botRunners.delete(key);
+}app.get('/api/v2/status', auth, (req, res) => {
   const artifactPath = path.join(__dirname, 'v2', 'artifacts', 'BINANCE_DEMO_PAPER_PIPELINE.json');
   try {
     const artifact = JSON.parse(fs.readFileSync(artifactPath, 'utf8'));
