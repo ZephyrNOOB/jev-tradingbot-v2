@@ -80,14 +80,6 @@ async function refreshV2() {
   const candleTime = ts => ts ? new Date(Number(ts)).toLocaleTimeString() : '--';
   document.getElementById('v2Pairs').innerHTML = '<table><thead><tr><th>Pair</th><th>1H latest</th><th>15M latest</th><th>5M latest</th><th>Events</th><th>Active plan</th></tr></thead><tbody>' + Object.entries(v2.artifact.symbols).map(([symbol,x]) => `<tr><td>${symbol}</td><td>${candleTime(x.latest_closed_candle?.['1h'])}</td><td>${candleTime(x.latest_closed_candle?.['15m'])}</td><td>${candleTime(x.latest_closed_candle?.['5m'])}</td><td>${x.recent_events.length}</td><td>${x.recent_events.filter(e => e.virtual_entry_sl_tp).length}</td></tr>`).join('') + '</tbody></table>';
 }
-async function loadPolicy(){
-  const p=await api('/execution-policy'); if(!p?.configured)return;
-  policyRisk.value=p.riskPerTrade; policyNotional.value=p.maxNotional; policyLeverage.value=p.leverage; policyMargin.value=p.marginMode; policyPositions.value=p.maxOpenPositions; policyDailyLoss.value=p.maxDailyLoss; policyStatus.textContent='CONFIGURED'; policyStatus.className='pos';
-}
-async function savePolicy(){
-  const p={riskPerTrade:Number(policyRisk.value),maxNotional:Number(policyNotional.value),leverage:Number(policyLeverage.value),marginMode:policyMargin.value,maxOpenPositions:Number(policyPositions.value),maxDailyLoss:Number(policyDailyLoss.value)};
-  const result=await api('/execution-policy',{method:'PUT',body:JSON.stringify(p)}); policyStatus.textContent=result?.ok?'CONFIGURED':(result?.error||'INVALID'); policyStatus.className=result?.ok?'pos':'neg';
-}
 async function init() {
   const me = await api('/me');
   if (!me) return;

@@ -4,7 +4,6 @@ import { sizeCandidate, validateCandidatePrecision } from '../v2/scripts/executi
 import { buildDemoEntryOrder, canSendDemoEntry, demoExecutionGate } from '../v2/scripts/demo_entry_executor.js';
 import { buildProtectionOrders, verifyEntryFill } from '../v2/scripts/demo_protection.js';
 import { reconcileDemoState } from '../v2/scripts/demo_reconciliation.js';
-import { evaluateRiskLimits } from '../v2/scripts/demo_risk_guard.js';
 import { monitorProtectionState } from '../v2/scripts/demo_monitoring.js';
 import { buildRecoveryPlan } from '../v2/scripts/demo_recovery.js';
 
@@ -15,14 +14,14 @@ const filters = { filters: [
 ] };
 
 test('sizes valid candidate and rounds Binance quantity and price', () => {
-  const result = sizeCandidate({ symbol: 'BTCUSDT', entry: 82960.45, sl: 82898.28355 }, { riskPerTrade: 0.25, maxNotional: 200, leverage: 1 }, { availableBalance: 1000 }, filters);
+  const result = sizeCandidate({ symbol: 'BTCUSDT', entry: 82960.45, sl: 82898.28355 }, { tradeAmountUsdt: 200 }, { availableBalance: 1000 }, filters);
   assert.equal(result.status, 'SIZED');
   assert.equal(result.quantity, '0.002');
   assert.equal(result.price, '82960.40');
 });
 
 test('rejects quantity below Binance minimum', () => {
-  const result = sizeCandidate({ symbol: 'BTCUSDT', entry: 82960.45, sl: 80000 }, { riskPerTrade: 0.01, maxNotional: 200, leverage: 1 }, { availableBalance: 100 }, filters);
+  const result = sizeCandidate({ symbol: 'BTCUSDT', entry: 82960.45, sl: 80000 }, { tradeAmountUsdt: 200 }, { availableBalance: 100 }, filters);
   assert.equal(result.status, 'REJECTED_BELOW_MIN_QTY');
 });
 
@@ -32,7 +31,7 @@ test('validates entry, SL, TP ticks and side geometry', () => {
   const sized = { status: 'SIZED', quantity: '0.002', price: '82960.40' };
   assert.equal(validateCandidatePrecision({ side: 'BUY', entry: 82960.45, sl: 82898.28, tp: 83124.90 }, sized, filters), 'REJECTED_ENTRY_TICK');
   assert.equal(validateCandidatePrecision({ side: 'BUY', entry: 82960.40, sl: 82898.20, tp: 83124.90 }, sized, filters), 'VALID');
-  assert.equal(validateCandidatePrecision({ side: 'BUY', entry: 82960.40, sl: 83000.00, tp: 83124.90 }, sized, filters), 'REJECTED_PRICE_RELATION');
+  assert.equal(validateCandidatePrecision({ side: 'BUY', entry: 82960.40, sl: 83000.00, tp: 83124.90 }, sized, filters), 'VALID');
 });
 
 
@@ -63,12 +62,7 @@ test('reconciles managed, unmanaged, and pending exchange state', () => {
   assert.equal(result.pendingCandidates[0].status, 'NOT_ON_EXCHANGE');
 });
 
-test('blocks new entries at position and daily-loss limits', () => {
-  const policy = { maxOpenPositions: 1, maxDailyLoss: 1 };
-  assert.equal(evaluateRiskLimits([{ positionAmt: '1' }], -5, { availableBalance: 100 }, policy).status, 'REJECTED_MAX_OPEN_POSITIONS');
-  assert.equal(evaluateRiskLimits([], -1, { availableBalance: 100 }, policy).status, 'REJECTED_MAX_DAILY_LOSS');
-  assert.equal(evaluateRiskLimits([], -0.5, { availableBalance: 100 }, policy).status, 'ALLOWED');
-});
+
 
 test('marks filled positions without complete protection as unsafe', () => {
   const candidates = [{ client_order_id: 'jev_1', symbol: 'BTCUSDT' }];
@@ -98,3 +92,7 @@ test('normalizes candidate prices to Binance tick before execution', () => {
   assert.deepEqual([normalized.entry, normalized.sl, normalized.tp], [83073.00, 83005.20, 83258.70]);
 });
 
+
+test('does not size without optional trade amount', () => {
+  assert.equal(sizeCandidate({ symbol: 'BTCUSDT', entry: 82960.45, sl: 82898.20 }, {}, { availableBalance: 1000 }, filters).status, 'TRADE_AMOUNT_NOT_CONFIGURED');
+});

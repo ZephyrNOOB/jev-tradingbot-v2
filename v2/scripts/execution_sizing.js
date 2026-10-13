@@ -8,11 +8,10 @@ const roundDown = (value, step) => {
 };
 const filter = (filters, type) => (filters?.filters || []).find(item => item.filterType === type) || {};
 
-export function sizeCandidate(candidate, policy, balance, symbolFilters) {
+export function sizeCandidate(candidate, settings, balance, symbolFilters) {
   const entry = Number(candidate.entry);
-  const stopDistance = Math.abs(entry - Number(candidate.sl));
   const available = Number(balance?.availableBalance);
-  const risk = available * Number(policy.riskPerTrade) / 100;
+  const tradeAmount = Number(settings?.tradeAmountUsdt);
   const lot = filter(symbolFilters, 'LOT_SIZE');
   const priceFilter = filter(symbolFilters, 'PRICE_FILTER');
   const notionalFilter = filter(symbolFilters, 'NOTIONAL').minNotional
@@ -24,11 +23,11 @@ export function sizeCandidate(candidate, policy, balance, symbolFilters) {
   const maxQty = Number(lot.maxQty || Infinity);
   const tick = Number(tickText);
   const minNotional = Number(notionalFilter.minNotional || notionalFilter.notional || 0);
-  const maxExposure = Math.min(Number(policy.maxNotional), available * Number(policy.leverage));
-  if (![entry, stopDistance, available, risk, step, minQty, tick].every(Number.isFinite) || stopDistance <= 0 || available <= 0) {
-    return { status: 'REJECTED_INVALID_INPUT' };
+  if (!Number.isFinite(entry) || !Number.isFinite(available) || !Number.isFinite(tradeAmount) || tradeAmount <= 0 || !Number.isFinite(step) || !Number.isFinite(minQty) || !Number.isFinite(tick) || entry <= 0 || available <= 0) {
+    return { status: Number.isFinite(tradeAmount) && tradeAmount > 0 ? 'REJECTED_INVALID_INPUT' : 'TRADE_AMOUNT_NOT_CONFIGURED' };
   }
-  const quantity = roundDown(Math.min(risk / stopDistance, maxExposure / entry), step);
+  if (tradeAmount > available) return { status: 'TRADE_AMOUNT_EXCEEDS_AVAILABLE_BALANCE', tradeAmount: tradeAmount.toFixed(8), availableBalance: available.toFixed(8) };
+  const quantity = roundDown(tradeAmount / entry, step);
   const price = roundDown(entry, tick);
   const notional = quantity * price;
   const places = decimalPlaces(stepText);
@@ -36,9 +35,8 @@ export function sizeCandidate(candidate, policy, balance, symbolFilters) {
   if (quantity < minQty) return { status: 'REJECTED_BELOW_MIN_QTY', quantity: quantity.toFixed(places), price: price.toFixed(pricePlaces) };
   if (quantity > maxQty) return { status: 'REJECTED_ABOVE_MAX_QTY', quantity: quantity.toFixed(places), price: price.toFixed(pricePlaces) };
   if (minNotional > 0 && notional < minNotional) return { status: 'REJECTED_BELOW_MIN_NOTIONAL', quantity: quantity.toFixed(places), price: price.toFixed(pricePlaces), notional: notional.toFixed(8), minNotional };
-  return { status: 'SIZED', quantity: quantity.toFixed(places), price: price.toFixed(pricePlaces), notional: notional.toFixed(8), riskCapital: risk.toFixed(8) };
+  return { status: 'SIZED', quantity: quantity.toFixed(places), price: price.toFixed(pricePlaces), notional: notional.toFixed(8), tradeAmountUsdt: tradeAmount.toFixed(8) };
 }
-
 
 export function normalizeCandidatePrices(candidate, symbolFilters) {
   const tickText = String(filter(symbolFilters, 'PRICE_FILTER').tickSize);
@@ -54,10 +52,6 @@ export function validateCandidatePrecision(candidate, sizing, symbolFilters) {
   const aligned = value => Number.isFinite(Number(value)) && Math.abs(Number(value) / tick - Math.round(Number(value) / tick)) < 1e-8;
   if (![candidate.entry, candidate.sl, candidate.tp].every(aligned)) return 'REJECTED_PRICE_TICK';
   if (Number(candidate.entry) !== Number(sizing.price)) return 'REJECTED_ENTRY_TICK';
-  const long = candidate.side === 'BUY';
-  if (!['BUY', 'SELL'].includes(candidate.side) || (long ? !(candidate.sl < candidate.entry && candidate.tp > candidate.entry) : !(candidate.sl > candidate.entry && candidate.tp < candidate.entry))) return 'REJECTED_PRICE_RELATION';
+  if (!['BUY', 'SELL'].includes(candidate.side)) return 'REJECTED_INVALID_CANDIDATE';
   return 'VALID';
 }
-
-
-

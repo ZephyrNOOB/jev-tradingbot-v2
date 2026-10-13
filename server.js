@@ -11,7 +11,6 @@ import { sizeCandidate, validateCandidatePrecision, normalizeCandidatePrices } f
 import { buildDemoEntryOrder, canSendDemoEntry, demoExecutionGate } from './v2/scripts/demo_entry_executor.js';
 import { buildProtectionOrders, verifyEntryFill } from './v2/scripts/demo_protection.js';
 import { reconcileDemoState } from './v2/scripts/demo_reconciliation.js';
-import { evaluateRiskLimits } from './v2/scripts/demo_risk_guard.js';
 import { monitorProtectionState } from './v2/scripts/demo_monitoring.js';
 import { buildRecoveryPlan } from './v2/scripts/demo_recovery.js';
 import { summarizeDemoDryRun } from './v2/scripts/demo_cycle.js';
@@ -144,7 +143,7 @@ async function initDb() {
   migrateApiKeys();
   run('CREATE TABLE IF NOT EXISTS trade_history (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, inst_id TEXT, side TEXT, pos_side TEXT, size REAL, price REAL, fee REAL, funding_rate REAL, slippage REAL, pnl REAL, ts INTEGER, raw_json TEXT)');
   run('CREATE TABLE IF NOT EXISTS sessions (sid_hash TEXT PRIMARY KEY, user_id INTEGER NOT NULL, expires_at INTEGER NOT NULL)');
-  run('CREATE TABLE IF NOT EXISTS execution_policies (user_id INTEGER PRIMARY KEY, risk_per_trade REAL NOT NULL, max_notional REAL NOT NULL, leverage REAL NOT NULL, margin_mode TEXT NOT NULL, max_open_positions INTEGER NOT NULL, max_daily_loss REAL NOT NULL, updated_at TEXT NOT NULL)');
+  run('CREATE TABLE IF NOT EXISTS trade_amounts (user_id INTEGER PRIMARY KEY, amount_usdt REAL NOT NULL, updated_at TEXT NOT NULL)');
 }
 
 function migrateApiKeys() {
@@ -206,18 +205,20 @@ app.post('/api/logout', (req, res) => {
   res.json({ ok: true });
 });
 
-function parseExecutionPolicy(body) {
-  const p = { riskPerTrade: Number(body?.riskPerTrade), maxNotional: Number(body?.maxNotional), leverage: Number(body?.leverage), marginMode: String(body?.marginMode || ''), maxOpenPositions: Number(body?.maxOpenPositions), maxDailyLoss: Number(body?.maxDailyLoss) };
-  return Number.isFinite(p.riskPerTrade) && p.riskPerTrade > 0 && p.riskPerTrade <= 5 && Number.isFinite(p.maxNotional) && p.maxNotional > 0 && p.maxNotional <= 100000 && Number.isFinite(p.leverage) && p.leverage >= 1 && p.leverage <= 20 && ['isolated','cross'].includes(p.marginMode) && Number.isInteger(p.maxOpenPositions) && p.maxOpenPositions >= 1 && p.maxOpenPositions <= 4 && Number.isFinite(p.maxDailyLoss) && p.maxDailyLoss > 0 && p.maxDailyLoss <= 20 ? p : null;
+function parseTradeAmount(body) {
+  const amountUsdt = Number(body?.amountUsdt);
+  return Number.isFinite(amountUsdt) && amountUsdt > 0 ? amountUsdt : null;
 }
-app.get('/api/execution-policy', auth, (req, res) => {
-  const row = get('SELECT * FROM execution_policies WHERE user_id = ?', [req.userId]);
-  res.json(row ? { ok:true, configured:true, riskPerTrade:Number(row.risk_per_trade), maxNotional:Number(row.max_notional), leverage:Number(row.leverage), marginMode:row.margin_mode, maxOpenPositions:Number(row.max_open_positions), maxDailyLoss:Number(row.max_daily_loss), updatedAt:row.updated_at } : {ok:true, configured:false});
+app.get('/api/trade-amount', auth, (req, res) => {
+  const row = get('SELECT amount_usdt, updated_at FROM trade_amounts WHERE user_id = ?', [req.userId]);
+  res.json(row ? { ok: true, configured: true, amountUsdt: Number(row.amount_usdt), updatedAt: row.updated_at } : { ok: true, configured: false, warning: 'Trade amount is optional' });
 });
-app.put('/api/execution-policy', auth, (req,res) => {
-  const p=parseExecutionPolicy(req.body); if(!p) return res.status(400).json({ok:false,error:'Invalid execution policy'}); run('INSERT OR REPLACE INTO execution_policies VALUES (?,?,?,?,?,?,?,?)',[req.userId,p.riskPerTrade,p.maxNotional,p.leverage,p.marginMode,p.maxOpenPositions,p.maxDailyLoss,new Date().toISOString()]); res.json({ok:true,configured:true,...p});
-});
-app.get('/api/me', auth, (req, res) => {
+app.put('/api/trade-amount', auth, (req, res) => {
+  const amountUsdt = parseTradeAmount(req.body);
+  if (!amountUsdt) return res.status(400).json({ ok: false, error: 'Enter a positive USDT amount' });
+  run('INSERT OR REPLACE INTO trade_amounts VALUES (?,?,?)', [req.userId, amountUsdt, new Date().toISOString()]);
+  res.json({ ok: true, configured: true, amountUsdt });
+});app.get('/api/me', auth, (req, res) => {
   const u = get('SELECT id, username FROM users WHERE id = ?', [req.userId]);
   res.json(u || {});
 });
@@ -293,7 +294,6 @@ function startPaperRunner(sid) {
 
 app.post('/api/bot/toggle', auth, (req, res) => {
   const enabled = req.body?.enabled === true;
-  if (enabled && !get('SELECT user_id FROM execution_policies WHERE user_id = ?', [req.userId])) return res.status(400).json({ ok:false, error:'Execution policy must be saved before BOT ON' });
   if (enabled && !get('SELECT id FROM api_keys WHERE user_id = ? AND exchange = ? AND status = ?', [req.userId, 'binanceTestnet', 'connected'])) return res.status(400).json({ ok:false, error:'Connected Binance Demo account required before BOT ON' });
   botStates.set(req.cookies.sid, enabled);
   if (enabled) startExecutionRunner(req.cookies.sid); else stopExecutionRunner(req.cookies.sid);
@@ -304,9 +304,8 @@ app.post('/api/bot/toggle', auth, (req, res) => {
 app.get('/api/binance-demo/live-readiness', auth, async (req, res) => {
   const blockers = [];
   const keyRow = get("SELECT * FROM api_keys WHERE id = (SELECT id FROM api_keys WHERE user_id = ? AND exchange = 'binanceTestnet' AND status = 'connected' ORDER BY id DESC LIMIT 1)", [req.userId]);
-  const policy = get('SELECT risk_per_trade, max_notional, leverage, margin_mode, max_open_positions, max_daily_loss FROM execution_policies WHERE user_id = ?', [req.userId]);
+  const tradeAmount = get('SELECT amount_usdt FROM trade_amounts WHERE user_id = ?', [req.userId]);
   if (!keyRow) blockers.push('CONNECTED_DEMO_KEY_REQUIRED');
-  if (!policy) blockers.push('EXECUTION_POLICY_REQUIRED');
   if (process.env.DEMO_EXECUTION_ENABLED !== 'true') blockers.push('DEMO_EXECUTION_FLAG_DISABLED');
   if (blockers.length) return res.json({ ok: true, ready: false, demoOnly: true, blockers, ordersSent: false, withdrawalsSent: false });
   try {
@@ -320,21 +319,19 @@ app.get('/api/binance-demo/live-readiness', auth, async (req, res) => {
     const [exchangeInfo, account, positions, income] = await Promise.all([fetchBinance(EXCHANGES.binanceTestnet.base + '/fapi/v1/exchangeInfo').then(async r => { const d = await r.json(); if (!r.ok) throw new Error(d?.msg || 'exchangeInfo failed'); return d; }), signed('/fapi/v2/account'), signed('/fapi/v2/positionRisk'), signed('/fapi/v1/income', { incomeType: 'REALIZED_PNL', startTime: String(Date.now() - 24 * 60 * 60 * 1000), limit: '1000' })]);
     const filters = Object.fromEntries(exchangeInfo.symbols.filter(x => PAPER_SYMBOLS.includes(x.symbol)).map(x => [x.symbol, { filters: x.filters.filter(f => ['LOT_SIZE', 'PRICE_FILTER', 'MIN_NOTIONAL', 'NOTIONAL'].includes(f.filterType)) }]));
     const balances = (account.assets || []).filter(x => x.asset === 'USDT').map(x => ({ asset: x.asset, availableBalance: Number(x.availableBalance) }));
-    const executionPolicy = { riskPerTrade: Number(policy.risk_per_trade), maxNotional: Number(policy.max_notional), leverage: Number(policy.leverage), maxOpenPositions: Number(policy.max_open_positions), maxDailyLoss: Number(policy.max_daily_loss) };
+    const executionPolicy = { tradeAmountUsdt: Number(tradeAmount?.amount_usdt) };
     const artifact = JSON.parse(fs.readFileSync(path.join(__dirname, 'v2', 'artifacts', 'BINANCE_DEMO_PAPER_PIPELINE.json'), 'utf8'));
     const dailyPnl = Array.isArray(income) ? income.reduce((total, row) => total + Number(row.income || 0), 0) : 0;
-    const riskGuard = evaluateRiskLimits(positions, dailyPnl, balances[0] || {}, executionPolicy);
-    if (riskGuard.status !== 'ALLOWED') blockers.push(riskGuard.status);
-    const candidates = (artifact.execution_candidates || []).map(candidate => { const sizing = sizeCandidate(candidate, executionPolicy, balances[0] || {}, filters[candidate.symbol]); return { candidate, sizing, precision: validateCandidatePrecision(candidate, sizing, filters[candidate.symbol]) }; });
+        const candidates = (artifact.execution_candidates || []).map(candidate => { const sizing = sizeCandidate(candidate, executionPolicy, balances[0] || {}, filters[candidate.symbol]); return { candidate, sizing, precision: validateCandidatePrecision(candidate, sizing, filters[candidate.symbol]) }; });
     if (!candidates.some(x => x.sizing.status === 'SIZED' && x.precision === 'VALID')) blockers.push('NO_VALID_SERVER_SIZED_CANDIDATE');
     blockers.push('PROTECTIVE_ORDER_VERIFICATION_REQUIRED');
     blockers.push('POSITION_MONITORING_REQUIRED');
-    res.json({ ok: true, ready: blockers.length === 0, demoOnly: true, blockers, riskGuard, candidateCount: candidates.length, validCandidateCount: candidates.filter(x => x.sizing.status === 'SIZED' && x.precision === 'VALID').length, ordersSent: false, withdrawalsSent: false });
+    res.json({ ok: true, ready: blockers.length === 0, demoOnly: true, blockers, candidateCount: candidates.length, validCandidateCount: candidates.filter(x => x.sizing.status === 'SIZED' && x.precision === 'VALID').length, ordersSent: false, withdrawalsSent: false });
   } catch (error) { res.status(502).json({ ok: false, ready: false, demoOnly: true, blockers: ['BINANCE_DEMO_READINESS_FAILED'], error: error.message, ordersSent: false, withdrawalsSent: false }); }
 });app.get('/api/binance-demo/execution-preflight', auth, async (req, res) => {
   const keyRow = get("SELECT * FROM api_keys WHERE id = (SELECT id FROM api_keys WHERE user_id = ? AND exchange = 'binanceTestnet' AND status = 'connected' ORDER BY id DESC LIMIT 1)", [req.userId]);
-  const policy = get('SELECT risk_per_trade, max_notional, leverage, margin_mode, max_open_positions, max_daily_loss FROM execution_policies WHERE user_id = ?', [req.userId]);
-  if (!keyRow || !policy) return res.status(400).json({ ok: false, error: 'Demo connection and execution policy are required' });
+  const tradeAmount = get('SELECT amount_usdt FROM trade_amounts WHERE user_id = ?', [req.userId]);
+  if (!keyRow) return res.status(400).json({ ok: false, error: 'Connected Binance Demo key required' });
   try {
     const apiKey = decryptSecret(keyRow.api_key), secret = decryptSecret(keyRow.secret_key);
     const signed = async (apiPath, params = {}) => {
@@ -348,12 +345,11 @@ app.get('/api/binance-demo/live-readiness', auth, async (req, res) => {
     const filters = Object.fromEntries(exchangeInfo.symbols.filter(x => PAPER_SYMBOLS.includes(x.symbol)).map(x => [x.symbol, { status: x.status, quantityPrecision: x.quantityPrecision, pricePrecision: x.pricePrecision, filters: x.filters.filter(f => ['LOT_SIZE', 'PRICE_FILTER', 'MIN_NOTIONAL', 'NOTIONAL'].includes(f.filterType)) }]));
     const balances = (account.assets || []).filter(x => ['USDT', 'USDC'].includes(x.asset)).map(x => ({ asset: x.asset, walletBalance: Number(x.walletBalance), availableBalance: Number(x.availableBalance), unrealizedProfit: Number(x.unrealizedProfit) }));
     const openPositions = positions.filter(x => Number(x.positionAmt) !== 0).map(x => ({ symbol: x.symbol, positionAmt: Number(x.positionAmt), entryPrice: Number(x.entryPrice), unrealizedProfit: Number(x.unRealizedProfit), isolated: x.marginType === 'isolated' }));
-    const executionPolicy = { riskPerTrade: Number(policy.risk_per_trade), maxNotional: Number(policy.max_notional), leverage: Number(policy.leverage), marginMode: policy.margin_mode, maxOpenPositions: Number(policy.max_open_positions), maxDailyLoss: Number(policy.max_daily_loss) };
+    const executionPolicy = { tradeAmountUsdt: Number(tradeAmount?.amount_usdt) };
     const artifact = JSON.parse(fs.readFileSync(path.join(__dirname, 'v2', 'artifacts', 'BINANCE_DEMO_PAPER_PIPELINE.json'), 'utf8'));
     const dailyPnl = Array.isArray(income) ? income.reduce((total, row) => total + Number(row.income || 0), 0) : 0;
-    const riskGuard = evaluateRiskLimits(openPositions, Number(dailyPnl), balances.find(x => x.asset === 'USDT') || {}, executionPolicy);
-    const candidates = (artifact.execution_candidates || []).map(candidate => { const normalized = normalizeCandidatePrices(candidate, filters[candidate.symbol]); const sizing = sizeCandidate(normalized, executionPolicy, balances.find(x => x.asset === 'USDT') || {}, filters[candidate.symbol]); return { ...candidate, normalized, sizing, precisionValidation: validateCandidatePrecision(normalized, sizing, filters[candidate.symbol]), riskGuard }; });
-    res.json({ ok: true, demoOnly: true, policy: executionPolicy, balances, openPositions, dailyPnl: Number(dailyPnl), riskGuard, filters, candidates, ordersSent: false, withdrawalsSent: false });
+        const candidates = (artifact.execution_candidates || []).map(candidate => { const normalized = normalizeCandidatePrices(candidate, filters[candidate.symbol]); const sizing = sizeCandidate(normalized, executionPolicy, balances.find(x => x.asset === 'USDT') || {}, filters[candidate.symbol]); return { ...candidate, normalized, sizing, precisionValidation: validateCandidatePrecision(normalized, sizing, filters[candidate.symbol]) }; });
+    res.json({ ok: true, demoOnly: true, tradeAmountUsdt: executionPolicy.tradeAmountUsdt, balances, openPositions, dailyPnl: Number(dailyPnl), filters, candidates, ordersSent: false, withdrawalsSent: false });
   } catch { res.status(502).json({ ok: false, demoOnly: true, error: 'Demo execution preflight failed' }); }
 });
 app.get('/api/binance-demo/reconciliation', auth, async (req, res) => {
@@ -385,8 +381,8 @@ app.get('/api/binance-demo/reconciliation', auth, async (req, res) => {
 });
 async function loadServerExecutionCandidate(userId, candidateId) {
   const keyRow = get("SELECT * FROM api_keys WHERE id = (SELECT id FROM api_keys WHERE user_id = ? AND exchange = 'binanceTestnet' AND status = 'connected' ORDER BY id DESC LIMIT 1)", [userId]);
-  const policyRow = get('SELECT risk_per_trade, max_notional, leverage, margin_mode, max_open_positions, max_daily_loss FROM execution_policies WHERE user_id = ?', [userId]);
-  if (!keyRow || !policyRow) return { error: 'Connected Binance Demo key and execution policy required' };
+  const tradeAmountRow = get('SELECT amount_usdt FROM trade_amounts WHERE user_id = ?', [userId]);
+  if (!keyRow) return { error: 'Connected Binance Demo key required' };
   const apiKey = decryptSecret(keyRow.api_key), secret = decryptSecret(keyRow.secret_key);
   const signed = async (apiPath, params = {}) => {
     const query = new URLSearchParams({ ...params, recvWindow: '5000', timestamp: String(Date.now()) });
@@ -403,27 +399,25 @@ async function loadServerExecutionCandidate(userId, candidateId) {
   ]);
   const filters = Object.fromEntries(exchangeInfo.symbols.filter(x => PAPER_SYMBOLS.includes(x.symbol)).map(x => [x.symbol, { filters: x.filters.filter(f => ['LOT_SIZE', 'PRICE_FILTER', 'MIN_NOTIONAL', 'NOTIONAL'].includes(f.filterType)) }]));
   const balance = (account.assets || []).find(x => x.asset === 'USDT');
-  const policy = { riskPerTrade: Number(policyRow.risk_per_trade), maxNotional: Number(policyRow.max_notional), leverage: Number(policyRow.leverage), maxOpenPositions: Number(policyRow.max_open_positions), maxDailyLoss: Number(policyRow.max_daily_loss) };
+  const settings = { tradeAmountUsdt: Number(tradeAmountRow?.amount_usdt) };
   const dailyPnl = Array.isArray(income) ? income.reduce((total, row) => total + Number(row.income || 0), 0) : 0;
-  const riskGuard = evaluateRiskLimits(positions, dailyPnl, balance || {}, policy);
-  const artifact = JSON.parse(fs.readFileSync(path.join(__dirname, 'v2', 'artifacts', 'BINANCE_DEMO_PAPER_PIPELINE.json'), 'utf8'));
+    const artifact = JSON.parse(fs.readFileSync(path.join(__dirname, 'v2', 'artifacts', 'BINANCE_DEMO_PAPER_PIPELINE.json'), 'utf8'));
   const candidate = (artifact.execution_candidates || []).find(x => x.client_order_id === candidateId);
   if (!candidate) return { error: 'Execution candidate not found' };
-  if (positions.some(position => position.symbol === candidate.symbol && Number(position.positionAmt) !== 0)) riskGuard.status = 'REJECTED_PAIR_POSITION_OPEN';
 
   const normalized = normalizeCandidatePrices(candidate, filters[candidate.symbol]);
-  const sizing = sizeCandidate(normalized, policy, balance || {}, filters[candidate.symbol]);
+  const sizing = sizeCandidate(normalized, settings, balance || {}, filters[candidate.symbol]);
   const precision = validateCandidatePrecision(normalized, sizing, filters[candidate.symbol]);
-  return { apiKey, secret, signed, candidate: normalized, sizing, precision, riskGuard, positions, policy };
+  return { apiKey, secret, signed, candidate: normalized, sizing, precision, positions, settings };
 }
 async function executeDemoCandidate(req, res) {
   try {
     const candidateId = String(req.body?.clientOrderId || '');
     const context = await loadServerExecutionCandidate(req.userId, candidateId);
     if (context.error) return res.status(context.error === 'Execution candidate not found' ? 404 : 400).json({ ok: false, demoOnly: true, error: context.error, ordersSent: false, withdrawalsSent: false });
-    const { candidate, sizing, precision, riskGuard, signed } = context;
+    const { candidate, sizing, precision, signed } = context;
     const order = buildDemoEntryOrder(candidate, sizing, precision);
-    if (riskGuard.status !== 'ALLOWED') return res.status(409).json({ ok: false, demoOnly: true, reason: riskGuard.status, order, ordersSent: false, withdrawalsSent: false });
+    if (sizing.status !== 'SIZED') return res.status(409).json({ ok: false, demoOnly: true, reason: sizing.status, order, ordersSent: false, withdrawalsSent: false });
     const enabled = process.env.DEMO_EXECUTION_ENABLED === 'true';
     const permission = demoExecutionGate({ botEnabled: botStates.get(req.cookies.sid) === true, ordersEnabled: enabled, protectiveOrdersReady: true, riskStatus: 'ALLOWED', demoExecutionEnabled: enabled });
     if (!permission.allowed) return res.status(409).json({ ok: false, demoOnly: true, ...permission, order, ordersSent: false, withdrawalsSent: false });
