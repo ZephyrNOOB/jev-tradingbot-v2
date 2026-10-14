@@ -2,7 +2,7 @@
   "name": "BINANCE_DEMO_PAPER_PIPELINE",
   "status": "PASS",
   "environment": "demo-fapi",
-  "server_time": 1791956830433,
+  "server_time": 1791957070391,
   "symbols": {
     "BTCUSDT": {
       "closed_counts": {
@@ -13,7 +13,7 @@
       "latest_closed_candle": {
         "1h": 1791953999999,
         "15m": 1791956699999,
-        "5m": 1791956699999
+        "5m": 1791956999999
       },
       "recent_events": [
         {
@@ -367,7 +367,7 @@
       "latest_closed_candle": {
         "1h": 1791953999999,
         "15m": 1791956699999,
-        "5m": 1791956699999
+        "5m": 1791956999999
       },
       "recent_events": [
         {
@@ -747,7 +747,7 @@
       "latest_closed_candle": {
         "1h": 1791953999999,
         "15m": 1791956699999,
-        "5m": 1791956699999
+        "5m": 1791956999999
       },
       "recent_events": [
         {
@@ -1101,7 +1101,7 @@
       "latest_closed_candle": {
         "1h": 1791953999999,
         "15m": 1791956699999,
-        "5m": 1791956699999
+        "5m": 1791956999999
       },
       "recent_events": [
         {
@@ -1512,11 +1512,11 @@
       "symbol": "ETHUSDT",
       "structure_event_id": "FVG-LONG-488",
       "structure_index": 488,
-      "confirmation_index": 472,
-      "created_at_ms": 1791956830433,
+      "confirmation_index": 471,
+      "created_at_ms": 1791957070391,
       "side": "BUY",
       "protected_level": null,
-      "current_close": 2504.28,
+      "current_close": 2505.94,
       "poi_type": "FVG",
       "poi_state": "PARTIAL_MITIGATION",
       "setup_id": "fvg_context",
@@ -1544,11 +1544,11 @@
       "symbol": "XAUUSDT",
       "structure_event_id": "FVG-SHORT-491",
       "structure_index": 491,
-      "confirmation_index": 482,
-      "created_at_ms": 1791956830433,
+      "confirmation_index": 481,
+      "created_at_ms": 1791957070391,
       "side": "SELL",
       "protected_level": null,
-      "current_close": 4166.0,
+      "current_close": 4163.58,
       "poi_type": "FVG",
       "poi_state": "PARTIAL_MITIGATION",
       "setup_id": "fvg_context",
