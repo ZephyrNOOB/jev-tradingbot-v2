@@ -112,10 +112,12 @@ async function refreshCharts() {
         if (!result?.ok) throw new Error(result?.error || 'Unavailable');
         const key = `${symbol}-${interval}`;
         const view = charts.get(key) || createChart(document.getElementById(`chart-${key}`));
+        const visibleRange = view.chart.timeScale().getVisibleLogicalRange();
         view.candles.setData(chartData(result.candles));
         view.volume.setData(volumeData(result.candles));
         await smcOverlay(view, result.candles, symbol, interval);
-        view.chart.timeScale().fitContent();
+        if (visibleRange) view.chart.timeScale().setVisibleLogicalRange(visibleRange);
+        else view.chart.timeScale().fitContent();
         charts.set(key, view);
         state.textContent = `LIVE ${ticker.prices[symbol]} · ${interval.toUpperCase()}`;
       } catch { state.textContent = 'ERROR'; }
