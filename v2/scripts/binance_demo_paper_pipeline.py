@@ -85,6 +85,12 @@ def invalidate_stale_candidates(candidates, latest_structure_event_ids, structur
             continue
         events = structure_events.get(symbol, [])
         candidate_index = int(candidate.get("structure_index", -1))
+        newer_confirmed = any(
+            int(event.get("structure_index", -1)) > candidate_index
+            and event.get("confirmation") == "CONFIRMED"
+            and event.get("lifecycle_state") not in ("MITIGATED", "FULL_MITIGATION", "INVALIDATED", "EXPIRED")
+            for event in events
+        )
         opposite = any(
             int(event.get("structure_index", -1)) > candidate_index
             and event.get("confirmation") == "CONFIRMED"
@@ -95,6 +101,8 @@ def invalidate_stale_candidates(candidates, latest_structure_event_ids, structur
         )
         if opposite:
             candidate["status"] = "INVALIDATED_OPPOSITE_STRUCTURE"
+        elif newer_confirmed:
+            candidate["status"] = "INVALIDATED_STRUCTURE_REPLACED"
         else:
             active.append(candidate)
     return active
@@ -119,7 +127,7 @@ def main():
         h, m, q = rows(symbol, "1h"), rows(symbol, "15m"), rows(symbol, "5m")
         closed = lambda data: [x for x in data if x["close_time"] < server_time]
         h, m, q = closed(h), closed(m), closed(q)
-        bias = MarketBiasBot(h); events = MarketStructureBot(m, symbol).build(); latest_structure_event_ids[symbol] = events[-1].event_id if events else None; confirm = ConfirmationBot(q, symbol); selection = SelectionBot(); qtimes = [x["close_time"] for x in q]; hs, ls = pivots(m)
+        bias = MarketBiasBot(h); events = MarketStructureBot(m, symbol).build(); latest_structure_event_ids[symbol] = next((event.event_id for event in reversed(events) if event.kind in ("BOS", "CHoCH_MSS")), None); confirm = ConfirmationBot(q, symbol); selection = SelectionBot(); qtimes = [x["close_time"] for x in q]; hs, ls = pivots(m)
         symbol_rows = []
         hs, ls = pivots(m)
         for event in events[-20:]:
