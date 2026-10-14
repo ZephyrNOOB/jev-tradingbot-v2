@@ -6,9 +6,7 @@ export function validateCandidateFreshness(artifact, candidate, now = Date.now()
   if (age < 0 || age > CANDIDATE_FRESHNESS) return { ok: false, reason: 'ARTIFACT_STALE' };
   if (artifact.status !== 'PASS') return { ok: false, reason: 'PIPELINE_NOT_PASS' };
   if (candidate?.status !== 'APPROVED_FOR_EXECUTION') return { ok: false, reason: 'CANDIDATE_NOT_APPROVED' };
-  const latest = artifact.latest_structure_event_ids?.[candidate.symbol];
-  if (!latest) return { ok: false, reason: 'NO_ACTIVE_STRUCTURE' };
-  if (candidate.structure_event_id !== latest) return { ok: false, reason: 'STRUCTURE_EVENT_STALE' };
+  if (!candidate?.structure_event_id) return { ok: false, reason: 'NO_ACTIVE_STRUCTURE' };
   return { ok: true, ageMs: age };
 }
 

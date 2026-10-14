@@ -1,4 +1,5 @@
 import hashlib
+import time
 """Read-only paper pipeline on latest Binance Demo closed candles."""
 import json
 import urllib.request
@@ -31,8 +32,7 @@ def rank_and_approve_candidates(candidates, latest_structure_event_ids):
         if not latest:
             candidate["status"] = "INVALIDATED_NO_ACTIVE_STRUCTURE"
             continue
-        if candidate.get("structure_event_id") != latest:
-            candidate["status"] = "INVALIDATED_STRUCTURE_UPDATED"
+        if candidate.get("status") == "INVALIDATED_OPPOSITE_STRUCTURE":
             continue
         groups.setdefault(candidate["symbol"], []).append(candidate)
     approved = []
@@ -56,15 +56,45 @@ def select_execution_candidates(candidates):
     """Compatibility wrapper; caller must use rank_and_approve_candidates first."""
     return [c for c in candidates if c.get("status") == "APPROVED_FOR_EXECUTION"]
 
-def invalidate_stale_candidates(candidates, latest_structure_event_ids):
-    """Remove plans whose pair has no current structure event or whose event changed."""
+CANDIDATE_FRESHNESS_MS = 15 * 60 * 1000
+
+def invalidate_stale_candidates(candidates, latest_structure_event_ids, structure_events=None, now_ms=None):
+    """Expire old plans and invalidate only evidenced thesis breaks."""
     active = []
+    now_ms = int(now_ms if now_ms is not None else time.time() * 1000)
+    structure_events = structure_events or {}
     for candidate in candidates:
-        latest = latest_structure_event_ids.get(candidate["symbol"])
-        if not latest:
+        symbol = candidate["symbol"]
+        created_at = candidate.get("created_at_ms")
+        if created_at is None or now_ms - int(created_at) > CANDIDATE_FRESHNESS_MS:
+            candidate["status"] = "EXPIRED_FRESHNESS"
+            continue
+        if not latest_structure_event_ids.get(symbol):
             candidate["status"] = "INVALIDATED_NO_ACTIVE_STRUCTURE"
-        elif candidate.get("structure_event_id") != latest:
-            candidate["status"] = "INVALIDATED_STRUCTURE_UPDATED"
+            continue
+        protected = candidate.get("protected_level")
+        current_close = candidate.get("current_close")
+        side = candidate.get("side")
+        broken = protected is not None and current_close is not None and ((side == "BUY" and float(current_close) < float(protected)) or (side == "SELL" and float(current_close) > float(protected)))
+        if broken:
+            candidate["status"] = "INVALIDATED_PROTECTED_LEVEL"
+            continue
+        poi_state = candidate.get("poi_state")
+        if poi_state in ("MITIGATED", "FULL_MITIGATION", "INVALIDATED", "EXPIRED"):
+            candidate["status"] = "INVALIDATED_POI_MITIGATED" if poi_state in ("MITIGATED", "FULL_MITIGATION") else f"INVALIDATED_POI_{poi_state}"
+            continue
+        events = structure_events.get(symbol, [])
+        candidate_index = int(candidate.get("structure_index", -1))
+        opposite = any(
+            int(event.get("structure_index", -1)) > candidate_index
+            and event.get("confirmation") == "CONFIRMED"
+            and event.get("side") in ("LONG", "SHORT")
+            and event.get("side") != ("LONG" if candidate.get("side") == "BUY" else "SHORT")
+            and event.get("kind") in ("BOS", "CHoCH_MSS")
+            for event in events
+        )
+        if opposite:
+            candidate["status"] = "INVALIDATED_OPPOSITE_STRUCTURE"
         else:
             active.append(candidate)
     return active
@@ -102,7 +132,7 @@ def main():
             if b.get("valid"): totals["bias_ready"] += 1
             if decision["state"] == "SELECTED": totals["selected"] += 1
             else: totals["gate_rejections"] += 1
-            row = {"event_id": event.event_id, "kind": event.kind, "side": event.side, "bias": b.get("state"), "confirmation": c["state"], "selection": decision["state"], "selected_setup": decision.get("selected"), "virtual_order": False}
+            row = {"event_id": event.event_id, "kind": event.kind, "side": event.side, "structure_index": event.index, "bias": b.get("state"), "confirmation": c["state"], "lifecycle_state": c.get("lifecycle_state"), "zone_bounds": c.get("zone_bounds"), "touch_event_id": c.get("touch_event_id"), "selection": decision["state"], "selected_setup": decision.get("selected"), "virtual_order": False}
             if decision["state"] == "SELECTED":
                 entry_index = c["index"] + 1
                 if entry_index >= len(q):
@@ -128,12 +158,13 @@ def main():
                                 row.update({"virtual_order": True, "virtual_entry_sl_tp": True, "paper_plan": {"setup_id": plan.setup_id, "side": plan.side, "entry": plan.entry, "sl": plan.sl, "tp": plan.tp, "rr": plan.rr, "entry_reason": plan.entry_reason, "sl_reason": plan.sl_reason, "tp_reason": plan.tp_reason, "evidence": plan.evidence}})
                                 client_order_id = "jev_" + hashlib.sha256(f"{symbol}:{plan.evidence['event_id']}".encode()).hexdigest()[:24]
                                 row["client_order_id"] = client_order_id
-                                plan_candidates.append({"client_order_id": client_order_id, "symbol": symbol, "structure_event_id": event.event_id, "structure_index": event.index, "confirmation_index": c["index"], "side": "BUY" if plan.side == "BULLISH" else "SELL", "setup_id": plan.setup_id, "entry": plan.entry, "sl": plan.sl, "tp": plan.tp, "rr": plan.rr, "status": "READY_FOR_DEMO_EXECUTION", "evidence": plan.evidence})
+                                plan_candidates.append({"client_order_id": client_order_id, "symbol": symbol, "structure_event_id": event.event_id, "structure_index": event.index, "confirmation_index": c["index"], "created_at_ms": server_time, "side": "BUY" if plan.side == "BULLISH" else "SELL", "protected_level": event.protected_level or None, "current_close": q[-1]["close"], "poi_type": plan.setup_id.split("_")[0].upper(), "poi_state": c.get("lifecycle_state"), "setup_id": plan.setup_id, "entry": plan.entry, "sl": plan.sl, "tp": plan.tp, "rr": plan.rr, "status": "READY_FOR_DEMO_EXECUTION", "evidence": plan.evidence})
                                 totals["paper_plans"] += 1
             symbol_rows.append(row)
         observations[symbol] = {"closed_counts": {"1h": len(h), "15m": len(m), "5m": len(q)}, "latest_closed_candle": {"1h": h[-1]["close_time"], "15m": m[-1]["close_time"], "5m": q[-1]["close_time"]}, "recent_events": symbol_rows}
 
-    plan_candidates = invalidate_stale_candidates(plan_candidates, latest_structure_event_ids)
+    structure_events = {symbol: rows_data["recent_events"] for symbol, rows_data in observations.items()}
+    plan_candidates = invalidate_stale_candidates(plan_candidates, latest_structure_event_ids, structure_events, server_time)
     rank_and_approve_candidates(plan_candidates, latest_structure_event_ids)
     execution_candidates = collapse_active_plans(observations, plan_candidates)
     totals["selected_events"] = totals["selected"]

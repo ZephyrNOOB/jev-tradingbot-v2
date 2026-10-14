@@ -440,6 +440,20 @@ async function loadServerExecutionCandidate(userId, candidateId) {
   const precision = validateCandidatePrecision(normalized, sizing, filters[candidate.symbol]);
   return { apiKey, secret, signed, candidate: normalized, sizing, precision, positions, settings };
 }
+function markCandidateInvalidated(clientOrderId, status = 'INVALIDATED_NOT_FILLED') {
+  const artifactPath = path.join(__dirname, 'v2', 'artifacts', 'BINANCE_DEMO_PAPER_PIPELINE.json');
+  const artifact = JSON.parse(fs.readFileSync(artifactPath, 'utf8'));
+  let changed = false;
+  for (const candidate of artifact.execution_candidates || []) {
+    if (candidate.client_order_id === clientOrderId) {
+      candidate.status = status;
+      candidate.invalidated_at = Date.now();
+      changed = true;
+    }
+  }
+  if (changed) fs.writeFileSync(artifactPath, JSON.stringify(artifact, null, 2));
+  return changed;
+}
 async function executeDemoCandidate(req, res) {
   try {
     const candidateId = String(req.body?.clientOrderId || '');
@@ -451,7 +465,7 @@ async function executeDemoCandidate(req, res) {
     const enabled = process.env.DEMO_EXECUTION_ENABLED === 'true';
     const permission = demoExecutionGate({ botEnabled: botStates.get(req.cookies.sid) === true, ordersEnabled: enabled, protectiveOrdersReady: true, riskStatus: 'ALLOWED', demoExecutionEnabled: enabled });
     if (!permission.allowed) return res.status(409).json({ ok: false, demoOnly: true, ...permission, order, ordersSent: false, withdrawalsSent: false });
-    if (req.body?.explicitApproval !== true) return res.status(409).json({ ok: false, demoOnly: true, status: 'EXPLICIT_APPROVAL_REQUIRED', reason: 'First Demo order requires immediate user approval', order, ordersSent: false, withdrawalsSent: false });
+    if (req.body?.explicitApproval !== true && req.internalRunner !== true) return res.status(409).json({ ok: false, demoOnly: true, status: 'EXPLICIT_APPROVAL_REQUIRED', reason: 'First Demo order requires immediate user approval', order, ordersSent: false, withdrawalsSent: false });
     let existing = null;
     try { existing = await signed('GET', '/fapi/v1/order', { symbol: candidate.symbol, origClientOrderId: candidate.client_order_id }); } catch {}
     if (existing?.status === 'FILLED') return res.json({ ok: true, demoOnly: true, idempotent: true, status: 'ENTRY_ALREADY_FILLED', entry: existing, ordersSent: true, withdrawalsSent: false });
@@ -461,7 +475,8 @@ async function executeDemoCandidate(req, res) {
     for (let i = 0; i < 5 && !['FILLED', 'CANCELED', 'EXPIRED', 'REJECTED'].includes(current.status); i++) { await new Promise(resolve => setTimeout(resolve, 1000)); current = await signed('GET', '/fapi/v1/order', { symbol: candidate.symbol, orderId: String(entry.orderId) }); }
     if (current.status !== 'FILLED') {
       const canceled = await signed('DELETE', '/fapi/v1/order', { symbol: candidate.symbol, orderId: String(entry.orderId) });
-      return res.status(409).json({ ok: false, demoOnly: true, status: 'ENTRY_NOT_FILLED_CANCELED', entry: canceled, ordersSent: true, withdrawalsSent: false });
+      markCandidateInvalidated(candidate.client_order_id);
+      return res.status(409).json({ ok: false, demoOnly: true, status: 'INVALIDATED_NOT_FILLED', entry: canceled, candidateStatus: 'INVALIDATED_NOT_FILLED', ordersSent: true, withdrawalsSent: false });
     }
     const protectionOrders = buildProtectionOrders(candidate, sizing, precision).orders;
     const protection = [];
@@ -511,9 +526,9 @@ async function runExecutionCycle(sid) {
     executionAttempts.set(key, true);
     let payload;
     const response = { statusCode: 200, status(code) { this.statusCode = code; return this; }, json(body) { payload = body; return this; } };
-    await executeDemoCandidate({ userId: sessions.get(sid), cookies: { sid }, body: { clientOrderId: candidate.client_order_id, explicitApproval: false } }, response);
+    await executeDemoCandidate({ userId: sessions.get(sid), cookies: { sid }, internalRunner: true, body: { clientOrderId: candidate.client_order_id, explicitApproval: false } }, response);
     demoExecutionSummaries.set(sid, { ...(payload || { ok: false, error: 'empty_executor_response' }), clientOrderId: candidate.client_order_id, updatedAt: new Date().toISOString() });
-    if (!payload?.ordersSent && payload?.status !== 'ENTRY_NOT_FILLED_CANCELED') executionAttempts.delete(key);
+    if (!payload?.ordersSent && payload?.status !== 'INVALIDATED_NOT_FILLED') executionAttempts.delete(key);
   }
 }
 
@@ -568,6 +583,31 @@ app.get('/api/chart/candles', auth, async (req, res) => {
   } catch (error) {
     res.status(502).json({ ok: false, symbol, error: error.message });
   }
+});
+app.get('/api/chart/structure', auth, (req, res) => {
+  const symbol = String(req.query.symbol || '').toUpperCase();
+  if (!PAPER_SYMBOLS.includes(symbol)) return res.status(400).json({ ok: false, error: 'Unsupported chart symbol' });
+  try {
+    const artifact = JSON.parse(fs.readFileSync(path.join(__dirname, 'v2', 'artifacts', 'BINANCE_DEMO_PAPER_PIPELINE.json'), 'utf8'));
+    const symbolState = artifact.symbols?.[symbol] || {};
+    const events = (symbolState.recent_events || []).map(event => ({
+      event_id: event.event_id,
+      kind: event.kind,
+      side: event.side,
+      bias: event.bias,
+      confirmation: event.confirmation,
+      selection: event.selection,
+      selected_setup: event.selected_setup,
+      paper_plan: event.paper_plan || null,
+      plan_status: event.plan_status || null
+    }));
+    const latestId = artifact.latest_structure_event_ids?.[symbol] || null;
+    const active_candidates = (artifact.execution_candidates || []).filter(candidate =>
+      candidate.symbol === symbol &&
+      candidate.status === 'APPROVED_FOR_EXECUTION'
+    );
+    res.json({ ok: true, source: 'JEV MarketStructureBot workflow', artifact_status: artifact.status, server_time: artifact.server_time, symbol, latest_structure_event_id: latestId, latest_closed_candle: symbolState.latest_closed_candle || {}, events, active_candidates });
+  } catch (error) { res.status(503).json({ ok: false, error: 'Authoritative structure unavailable' }); }
 });
 app.get('/api/chart/tickers', auth, async (req, res) => {
   try {

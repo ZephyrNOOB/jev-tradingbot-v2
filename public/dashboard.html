@@ -24,9 +24,10 @@
     <div class="page-header">
       <h2 class="page-title">DASHBOARD</h2>
       <div class="header-actions"><span id="userInfo" style="font-family:var(--mono);font-size:12px;color:var(--muted)"></span><span id="headerConnection" class="header-connection is-offline">CONNECTION OFFLINE</span><button id="botToggle" class="bot-toggle" onclick="toggleBot()">BOT OFF</button><span id="botRuntime" class="bot-runtime">PAPER STOPPED</span></div>
-    </div><section class="market-charts" aria-labelledby="marketChartsTitle"><div class="charts-header"><div><h3 id="marketChartsTitle">LIVE MARKET CHARTS</h3></div><span id="chartsUpdated" class="muted mono">LIVE --:--:--</span></div><div id="pairCharts" class="pair-charts"></div></section>
+    </div><section class="market-charts" aria-labelledby="marketChartsTitle"><div class="charts-header"><div><h3 id="marketChartsTitle">LIVE MARKET CHARTS</h3><label class="chart-timeframe-picker">TIMEFRAME <select id="chartTimeframe" aria-label="Chart timeframe" onchange="changeChartTimeframe(this.value)"><option value="1h">1H</option><option value="15m" selected>15M</option><option value="5m">5M</option></select></label></div><span id="chartsUpdated" class="muted mono">LIVE --:--:--</span></div><div id="pairCharts" class="pair-charts"></div></section>
         <div class="card workflow-office"><div class="office-header"><div><h3 style="font-size:14px;margin-bottom:6px">V2 WORKFLOW OFFICE</h3></div><span class="office-live"><i></i> PAPER MODE</span></div><div class="workflow-track" id="workflowTrack"></div><p id="v2Status" class="muted mono" style="margin-top:14px">Loading paper status...</p><div id="v2Pairs" class="table-wrap"></div></div><section class="card account-assets" aria-labelledby="accountAssetsTitle"><div class="office-header"><div><h3 id="accountAssetsTitle" style="font-size:14px;margin-bottom:6px">BINANCE DEMO ASSETS</h3></div></div><div id="assetsTable" class="table-wrap"><p class="muted mono">Loading account assets...</p></div></section>
 </div>
+<script src="/vendor/lightweight-charts.standalone.production.js"></script>
 <script>
 function csrfToken() { return document.cookie.split('; ').find(x => x.startsWith('csrf='))?.split('=')[1] || ''; }
 async function api(path, opts = {}) {
@@ -38,28 +39,91 @@ async function api(path, opts = {}) {
 }
 
 const chartPairs = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XAUUSDT'];
-function drawChart(canvas, candles, livePrice) {
-  const ctx = canvas.getContext('2d'), ratio = devicePixelRatio || 1, width = canvas.clientWidth, height = canvas.clientHeight;
-  canvas.width = width * ratio; canvas.height = height * ratio; ctx.scale(ratio, ratio);
-  const prices = candles.flatMap(c => [c.high, c.low]).concat(livePrice), max = Math.max(...prices), min = Math.min(...prices), range = max - min || 1;
-  ctx.clearRect(0, 0, width, height); ctx.strokeStyle = '#00d992'; ctx.lineWidth = 1.2; ctx.beginPath();
-  candles.forEach((c, i) => { const x = i * width / Math.max(1, candles.length - 1), y = height - ((c.close - min) / range) * (height - 10) - 5; i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.stroke();
-  const liveY = height - ((livePrice - min) / range) * (height - 10) - 5; ctx.strokeStyle = '#f2b84b'; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.moveTo(0, liveY); ctx.lineTo(width, liveY); ctx.stroke(); ctx.setLineDash([]);
-  ctx.fillStyle = '#6b6966'; ctx.font = '10px monospace'; ctx.fillText(max.toFixed(2), 8, 12); ctx.fillText(min.toFixed(2), 8, height - 4); ctx.fillStyle = '#f2b84b'; ctx.fillText(`LIVE ${livePrice}`, Math.max(8, width - 90), 12);
+let selectedChartInterval = localStorage.getItem('jev_chart_timeframe') || '15m';
+const charts = new Map();
+function changeChartTimeframe(interval) {
+  if (!['1h', '15m', '5m'].includes(interval)) return;
+  selectedChartInterval = interval;
+  localStorage.setItem('jev_chart_timeframe', interval);
+  charts.forEach(view => view.chart.remove());
+  charts.clear();
+  document.getElementById('pairCharts').replaceChildren();
+  refreshCharts();
+}
+function chartData(candles) { return candles.map(c => ({ time: Math.floor(c.ts / 1000), open: c.open, high: c.high, low: c.low, close: c.close })); }
+function volumeData(candles) { return candles.map(c => ({ time: Math.floor(c.ts / 1000), value: c.volume, color: c.close >= c.open ? '#00d99266' : '#f2364566' })); }
+function createChart(container) {
+  const chart = LightweightCharts.createChart(container, { autoSize: true, layout: { background: { color: '#080b0a' }, textColor: '#8f9692', fontFamily: 'JetBrains Mono, monospace', fontSize: 9 }, grid: { vertLines: { color: '#18201d' }, horzLines: { color: '#18201d' } }, rightPriceScale: { borderColor: '#3d3a39', scaleMargins: { top: 0.08, bottom: 0.22 } }, timeScale: { borderColor: '#3d3a39', timeVisible: true, secondsVisible: false, rightOffset: 3 }, crosshair: { mode: LightweightCharts.CrosshairMode.Normal } });
+  const candles = chart.addSeries(LightweightCharts.CandlestickSeries, { upColor: '#00d992', downColor: '#f23645', borderVisible: false, wickUpColor: '#00d992', wickDownColor: '#f23645' });
+  const volume = chart.addSeries(LightweightCharts.HistogramSeries, { priceFormat: { type: 'volume' }, priceScaleId: '', lastValueVisible: false, priceLineVisible: false });
+  volume.priceScale().applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
+  return { chart, candles, volume, overlays: [], markers: null };
+}
+async function smcOverlay(view, raw, symbol, interval) {
+  view.overlays.forEach(line => view.candles.removePriceLine(line));
+  view.overlays = [];
+  const structure = await api(`/chart/structure?symbol=${symbol}`);
+  if (!structure?.ok || structure.artifact_status !== 'PASS') throw new Error('Authoritative structure unavailable');
+  const bars = raw.map(c => ({ ...c, time: Math.floor(c.ts / 1000) }));
+  const markerTimes = bars.map(c => c.time);
+  const markers = [];
+  const indexFromId = eventId => {
+    const match = String(eventId || '').match(/^(?:15m:)?(\d+):/);
+    return match ? Number(match[1]) : null;
+  };
+  structure.events.forEach(event => {
+    const index = indexFromId(event.event_id);
+    if (index === null || !['BOS', 'CHoCH_MSS'].includes(event.kind)) return;
+    const offset = index - (structure.latest_closed_candle[interval] ? bars.length - 1 : 0);
+    const bar = bars[index] || bars[Math.max(0, Math.min(bars.length - 1, offset))];
+    if (!bar) return;
+    const bullish = event.side === 'LONG';
+    markers.push({ time: bar.time, position: bullish ? 'belowBar' : 'aboveBar', color: bullish ? '#00d992' : '#f23645', shape: bullish ? 'arrowUp' : 'arrowDown', text: event.kind === 'CHoCH_MSS' ? 'CHoCH' : 'BOS' });
+  });
+  if (view.markers) view.markers.setMarkers([]);
+  view.markers = LightweightCharts.createSeriesMarkers(view.candles, markers.slice(-40));
+  const plans = (structure.active_candidates || []).map(candidate => ({
+    entry: candidate.entry,
+    sl: candidate.sl,
+    tp: candidate.tp
+  }));
+  for (const plan of plans) {
+    [['ENTRY', plan.entry, '#f2b84b'], ['SL', plan.sl, '#f23645'], ['TP', plan.tp, '#00d992']].forEach(([title, value, color]) => {
+      if (!Number.isFinite(Number(value))) return;
+      const line = view.candles.createPriceLine({ price: Number(value), color, lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, axisLabelVisible: true, title });
+      view.overlays.push(line);
+    });
+  }
 }
 let chartsRefreshing = false;
 async function refreshCharts() {
   if (chartsRefreshing) return;
   chartsRefreshing = true;
   const root = document.getElementById('pairCharts');
-  if (!root.children.length) root.innerHTML = chartPairs.map(symbol => `<article class="pair-chart"><div class="pair-chart-title"><strong>${symbol}</strong><span id="chartState-${symbol}">LOADING</span></div><div class="pair-timeframes">${[['1h','BIAS 1H'],['15m','STRUCTURE 15M'],['5m','ENTRY 5M']].map(([interval,label]) => `<div><div class="timeframe-label">${label}</div><canvas id="chart-${symbol}-${interval}" aria-label="${symbol} ${label} chart"></canvas></div>`).join('')}</div></article>`).join('');
+  if (!root.children.length) root.innerHTML = chartPairs.map(symbol => `<article class="pair-chart"><div class="pair-chart-title"><strong>${symbol}</strong><span id="chartState-${symbol}">LOADING</span></div><div class="timeframe-label">${selectedChartInterval.toUpperCase()}</div><div class="chart-host" id="chart-${symbol}-${selectedChartInterval}" role="img" aria-label="${symbol} ${selectedChartInterval} candlestick chart"></div></article>`).join('');
   try {
     const ticker = await api('/chart/tickers');
     if (!ticker?.ok) throw new Error(ticker?.error || 'Ticker unavailable');
-    await Promise.all(chartPairs.map(async symbol => { const state = document.getElementById(`chartState-${symbol}`); try { await Promise.all(['1h','15m','5m'].map(async interval => { const result = await api(`/chart/candles?symbol=${symbol}&interval=${interval}&limit=120`); if (!result?.ok) throw new Error(result?.error || 'Unavailable'); drawChart(document.getElementById(`chart-${symbol}-${interval}`), result.candles, ticker.prices[symbol]); })); state.textContent = `LIVE ${ticker.prices[symbol]} · 1H / 15M / 5M`; } catch { state.textContent = 'ERROR'; } }));
+    await Promise.all(chartPairs.map(async symbol => {
+      const state = document.getElementById(`chartState-${symbol}`);
+      try {
+        const interval = selectedChartInterval;
+        const result = await api(`/chart/candles?symbol=${symbol}&interval=${interval}&limit=120`);
+        if (!result?.ok) throw new Error(result?.error || 'Unavailable');
+        const key = `${symbol}-${interval}`;
+        const view = charts.get(key) || createChart(document.getElementById(`chart-${key}`));
+        view.candles.setData(chartData(result.candles));
+        view.volume.setData(volumeData(result.candles));
+        await smcOverlay(view, result.candles, symbol, interval);
+        view.chart.timeScale().fitContent();
+        charts.set(key, view);
+        state.textContent = `LIVE ${ticker.prices[symbol]} · ${interval.toUpperCase()}`;
+      } catch { state.textContent = 'ERROR'; }
+    }));
     document.getElementById('chartsUpdated').textContent = `LIVE ${new Date().toLocaleTimeString()}`;
   } finally { chartsRefreshing = false; }
-}async function refreshAssets(){
+}
+async function refreshAssets(){
   const table=document.getElementById('assetsTable');
   try {
     const p=await api('/binance-demo/execution-preflight');
@@ -78,7 +142,7 @@ async function refreshV2() {
   rooms.forEach((r,i) => { const room = document.createElement('div'); room.className = 'workflow-room' + (r[3] !== 'WAITING' && r[3] !== 'OFF' ? ' room-active' : ''); room.innerHTML = `<div class="room-top"><span class="room-index">0${i + 1}</span><span class="room-status">${r[3]}</span></div><div class="room-icon">${r[1]}</div><h4>${r[0]}</h4><p>${r[2]}</p>`; if (i < rooms.length - 1) { const connector = document.createElement('span'); connector.className = 'room-connector'; connector.textContent = '›'; room.appendChild(connector); } track.appendChild(room); });
   document.getElementById('v2Status').textContent = `Demo · ${t.structure_events} structure events · ${t.confirmed_5m} confirmed · ${t.selected} selected`;
   const candleTime = ts => ts ? new Date(Number(ts)).toLocaleTimeString() : '--';
-  document.getElementById('v2Pairs').innerHTML = '<table><thead><tr><th>Pair</th><th>1H latest</th><th>15M latest</th><th>5M latest</th><th>Events</th><th>Active plan</th></tr></thead><tbody>' + Object.entries(v2.artifact.symbols).map(([symbol,x]) => `<tr><td>${symbol}</td><td>${candleTime(x.latest_closed_candle?.['1h'])}</td><td>${candleTime(x.latest_closed_candle?.['15m'])}</td><td>${candleTime(x.latest_closed_candle?.['5m'])}</td><td>${x.recent_events.length}</td><td>${x.recent_events.filter(e => e.virtual_entry_sl_tp).length}</td></tr>`).join('') + '</tbody></table>';
+  document.getElementById('v2Pairs').innerHTML = '<table><thead><tr><th>Pair</th><th>1H latest</th><th>15M latest</th><th>5M latest</th><th>Events</th><th>Active plan</th></tr></thead><tbody>' + Object.entries(v2.artifact.symbols).map(([symbol,x]) => `<tr><td>${symbol}</td><td>${candleTime(x.latest_closed_candle?.['1h'])}</td><td>${candleTime(x.latest_closed_candle?.['15m'])}</td><td>${candleTime(x.latest_closed_candle?.['5m'])}</td><td>${x.recent_events.length}</td><td>${(v2.artifact.execution_candidates || []).filter(c => c.symbol === symbol && c.status === 'APPROVED_FOR_EXECUTION').length}</td></tr>`).join('') + '</tbody></table>';
 }
 async function init() {
   const me = await api('/me');

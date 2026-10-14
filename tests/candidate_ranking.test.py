@@ -14,7 +14,7 @@ class CandidateRankingTests(unittest.TestCase):
         ]
         result = rank_and_approve_candidates(candidates, {'BTCUSDT': 'btc-new'})
         self.assertEqual([x['client_order_id'] for x in result], ['new'])
-        self.assertEqual(candidates[0]['status'], 'INVALIDATED_STRUCTURE_UPDATED')
+        self.assertEqual(candidates[0]['status'], 'REJECTED_LOWER_STRUCTURE_RANK')
         self.assertEqual(candidates[1]['status'], 'APPROVED_FOR_EXECUTION')
 
     def test_rejects_ambiguous_tie_instead_of_list_order(self):
