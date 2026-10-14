@@ -191,8 +191,8 @@ async function logout() {
 init();
 refreshCharts();
 refreshAssets();
-setInterval(refreshAssets, 1_000);
-setInterval(refreshCharts, 5_000);
+setInterval(refreshAssets, 30_000);
+setInterval(refreshCharts, 30_000);
 setInterval(refreshBot, 60_000);
 setInterval(refreshV2, 5_000);
 setInterval(() => { const el = document.getElementById('chartsUpdated'); if (el) el.textContent = `LIVE ${new Date().toLocaleTimeString()}`; }, 1_000);

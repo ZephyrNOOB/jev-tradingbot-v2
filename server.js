@@ -15,29 +15,45 @@ import { monitorProtectionState, readinessBlockers } from './v2/scripts/demo_mon
 import { buildRecoveryPlan } from './v2/scripts/demo_recovery.js';
 import { summarizeDemoDryRun } from './v2/scripts/demo_cycle.js';
 import { validateCandidateFreshness } from './v2/scripts/candidate_freshness.js';
+import { startBinanceMarketStream, getBinanceStreamPrices, getBinanceStreamState } from './v2/scripts/binance_market_stream.js';
+import { startBinanceUserStream, stopBinanceUserStream, getBinanceUserStreamState } from './v2/scripts/binance_user_stream.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
-const fetchBinance = fetch;
+let binanceCircuitOpenUntil = 0;
+let binanceRateLimitReason = null;
+async function fetchBinance(url, options = {}) {
+  if (Date.now() < binanceCircuitOpenUntil) throw new Error(binanceRateLimitReason || 'Binance request circuit open');
+  const response = await fetch(url, options);
+  if (response.status === 418 || response.status === 429) {
+    const text = await response.clone().text();
+    const match = text.match(/(?:banned until|retryAfter["': ]+)(\d{10,13})/i);
+    binanceCircuitOpenUntil = Number(match?.[1] || 0) > Date.now() ? Number(match[1]) : Date.now() + 60_000;
+    binanceRateLimitReason = `Binance rate limit ${response.status}; circuit open until ${new Date(binanceCircuitOpenUntil).toISOString()}`;
+  }
+  return response;
+}
 const BINANCE_PUBLIC_HEADERS = { accept: 'application/json', 'user-agent': 'JEV-Trading-Bot/1.0' };
 
+let exchangeInfoCache = null;
+let exchangeInfoPromise = null;
 async function fetchExchangeInfo() {
+  if (exchangeInfoCache && Date.now() - exchangeInfoCache.at < 300_000) return exchangeInfoCache.data;
+  if (exchangeInfoPromise) return exchangeInfoPromise;
   let lastError;
-  for (let attempt = 1; attempt <= 3; attempt += 1) {
-    try {
-      const response = await fetchBinance(EXCHANGES.binanceTestnet.base + '/fapi/v1/exchangeInfo', {
-        headers: BINANCE_PUBLIC_HEADERS,
-        signal: AbortSignal.timeout(10_000)
-      });
-      const data = await response.json();
-      if (response.ok && Array.isArray(data.symbols)) return data;
-      lastError = new Error(data?.msg || `exchangeInfo HTTP ${response.status}`);
-    } catch (error) {
-      lastError = error;
+  exchangeInfoPromise = (async () => {
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      try {
+        const response = await fetchBinance(EXCHANGES.binanceTestnet.base + '/fapi/v1/exchangeInfo', { headers: BINANCE_PUBLIC_HEADERS, signal: AbortSignal.timeout(10_000) });
+        const data = await response.json();
+        if (response.ok && Array.isArray(data.symbols)) { exchangeInfoCache = { at: Date.now(), data }; return data; }
+        lastError = new Error(data?.msg || `exchangeInfo HTTP ${response.status}`);
+      } catch (error) { lastError = error; }
+      if (attempt < 3) await new Promise(resolve => setTimeout(resolve, attempt * 500));
     }
-    if (attempt < 3) await new Promise(resolve => setTimeout(resolve, attempt * 500));
-  }
-  throw lastError || new Error('exchangeInfo failed');
+    throw lastError || new Error('exchangeInfo failed');
+  })();
+  try { return await exchangeInfoPromise; } finally { exchangeInfoPromise = null; }
 }
 
 app.disable('x-powered-by');
@@ -318,8 +334,15 @@ function startPaperRunner(sid) {
   res.json({ ok: true, enabled: botStates.get(req.cookies.sid) === true, observing: Boolean(observer?.timer), running: Boolean(runner?.running), cycles: runner?.cycles || 0, error: runner?.error || null, observer_error: observer?.error || null, last_started_at: runner?.last_started_at || null, last_finished_at: runner?.last_finished_at || null, last_polled_at: observer?.last_polled_at || null, watermark: observer?.watermark || {}, mode: 'paper_observation', demoCycle: demoCycleSummaries.get('global') || null, demoExecution: demoExecutionSummaries.get(req.cookies.sid) || null, ordersEnabled: process.env.DEMO_EXECUTION_ENABLED === 'true' });
 });
 
-app.post('/api/bot/toggle', auth, (req, res) => {
+app.post('/api/bot/toggle', auth, async (req, res) => {
   const enabled = req.body?.enabled === true;
+  if (enabled) {
+    const key = get("SELECT * FROM api_keys WHERE user_id = ? AND exchange = 'binanceTestnet' AND status = 'connected' ORDER BY id DESC LIMIT 1", [req.userId]);
+    if (key) startBinanceUserStream(String(req.userId), decryptSecret(key.api_key), event => {
+      if (event?.e === 'ORDER_TRADE_UPDATE') demoExecutionSummaries.set(String(req.userId), { status: event.o?.X || 'ORDER_UPDATE', symbol: event.o?.s, orderId: event.o?.i, clientOrderId: event.o?.c, updatedAt: new Date().toISOString() });
+    }).catch(() => null);
+  } else stopBinanceUserStream(String(req.userId));
+
   if (enabled && !get('SELECT id FROM api_keys WHERE user_id = ? AND exchange = ? AND status = ?', [req.userId, 'binanceTestnet', 'connected'])) return res.status(400).json({ ok:false, error:'Connected Binance Demo account required before BOT ON' });
   botStates.set(req.cookies.sid, enabled);
   if (enabled) startExecutionRunner(req.cookies.sid); else stopExecutionRunner(req.cookies.sid);
@@ -336,6 +359,9 @@ app.get('/api/binance-demo/live-readiness', auth, async (req, res) => {
   if (blockers.length) return res.json({ ok: true, ready: false, demoOnly: true, blockers, ordersSent: false, withdrawalsSent: false });
   try {
     const apiKey = decryptSecret(keyRow.api_key), secret = decryptSecret(keyRow.secret_key);
+    startBinanceUserStream(String(req.userId), apiKey, event => {
+      if (event?.e === 'ORDER_TRADE_UPDATE') demoExecutionSummaries.set(String(req.userId), { status: event.o?.X || 'ORDER_UPDATE', symbol: event.o?.s, orderId: event.o?.i, clientOrderId: event.o?.c, updatedAt: new Date().toISOString() });
+    }).catch(() => null);
     const signed = async (apiPath, params = {}) => {
       const query = new URLSearchParams({ ...params, recvWindow: '5000', timestamp: String(Date.now()) });
       const queryString = query.toString();
@@ -356,7 +382,7 @@ app.get('/api/binance-demo/live-readiness', auth, async (req, res) => {
     const openOrders = await Promise.all(PAPER_SYMBOLS.map(symbol => signed('/fapi/v1/openOrders', { symbol }))).then(groups => groups.flat());
     const monitoring = monitorProtectionState(artifact.execution_candidates || [], openOrders, openPositions);
     blockers.push(...readinessBlockers(monitoring));
-    res.json({ ok: true, ready: blockers.length === 0, demoOnly: true, blockers, candidateCount: candidates.length, validCandidateCount: candidates.filter(x => x.sizing.status === 'SIZED' && x.precision === 'VALID').length, ordersSent: false, withdrawalsSent: false });
+    res.json({ ok: true, ready: blockers.length === 0, demoOnly: true, blockers, userStream: getBinanceUserStreamState(String(req.userId)), candidateCount: candidates.length, validCandidateCount: candidates.filter(x => x.sizing.status === 'SIZED' && x.precision === 'VALID').length, ordersSent: false, withdrawalsSent: false });
   } catch (error) { res.status(502).json({ ok: false, ready: false, demoOnly: true, blockers: ['BINANCE_DEMO_READINESS_FAILED'], error: error.message, ordersSent: false, withdrawalsSent: false }); }
 });app.get('/api/binance-demo/execution-preflight', auth, async (req, res) => {
   const keyRow = get("SELECT * FROM api_keys WHERE id = (SELECT id FROM api_keys WHERE user_id = ? AND exchange = 'binanceTestnet' AND status = 'connected' ORDER BY id DESC LIMIT 1)", [req.userId]);
@@ -597,6 +623,7 @@ const EXCHANGES = {
 };
 const BINANCE_DEMO_FUTURES_BASE = 'https://demo-fapi.binance.com';
 const BINANCE_DATA_BASE = BINANCE_DEMO_FUTURES_BASE;
+startBinanceMarketStream();
 startMarketObserver();
 startPaperRunner('global');
 
@@ -638,6 +665,8 @@ app.get('/api/chart/structure', auth, (req, res) => {
   } catch (error) { res.status(503).json({ ok: false, error: 'Authoritative structure unavailable' }); }
 });
 app.get('/api/chart/tickers', auth, async (req, res) => {
+  const streamPrices = getBinanceStreamPrices();
+  if (Object.keys(streamPrices).length) return res.json({ ok: true, prices: streamPrices, updated_at: getBinanceStreamState().updatedAt, source: 'websocket' });
   try {
     const query = encodeURIComponent(JSON.stringify(PAPER_SYMBOLS));
     const response = await fetchBinance(BINANCE_DATA_BASE + '/fapi/v1/ticker/price?symbols=' + query);
