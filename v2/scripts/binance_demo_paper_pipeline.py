@@ -122,7 +122,7 @@ def collapse_active_plans(observations, candidates):
     return active
 def main():
     server_time = int(get("/fapi/v1/time")["serverTime"])
-    observations = {}; plan_candidates = []; latest_structure_event_ids = {}; totals = {"bias_ready": 0, "structure_events": 0, "confirmed_5m": 0, "selected": 0, "paper_plans": 0, "gate_rejections": 0}
+    observations = {}; plan_candidates = []; latest_structure_event_ids = {}; latest_confirmed_structure_event_ids = {}; totals = {"bias_ready": 0, "structure_events": 0, "confirmed_5m": 0, "selected": 0, "paper_plans": 0, "gate_rejections": 0}
     for symbol in SYMBOLS:
         h, m, q = rows(symbol, "1h"), rows(symbol, "15m"), rows(symbol, "5m")
         closed = lambda data: [x for x in data if x["close_time"] < server_time]
@@ -169,6 +169,7 @@ def main():
                                 plan_candidates.append({"client_order_id": client_order_id, "symbol": symbol, "structure_event_id": event.event_id, "structure_index": event.index, "confirmation_index": c["index"], "created_at_ms": server_time, "side": "BUY" if plan.side == "BULLISH" else "SELL", "protected_level": event.protected_level or None, "current_close": q[-1]["close"], "poi_type": plan.setup_id.split("_")[0].upper(), "poi_state": c.get("lifecycle_state"), "setup_id": plan.setup_id, "entry": plan.entry, "sl": plan.sl, "tp": plan.tp, "rr": plan.rr, "status": "READY_FOR_DEMO_EXECUTION", "evidence": plan.evidence})
                                 totals["paper_plans"] += 1
             symbol_rows.append(row)
+        latest_confirmed_structure_event_ids[symbol] = next((row["event_id"] for row in reversed(symbol_rows) if row.get("kind") in ("BOS", "CHoCH_MSS") and row.get("confirmation") == "CONFIRMED"), None)
         observations[symbol] = {"closed_counts": {"1h": len(h), "15m": len(m), "5m": len(q)}, "latest_closed_candle": {"1h": h[-1]["close_time"], "15m": m[-1]["close_time"], "5m": q[-1]["close_time"]}, "recent_events": symbol_rows}
 
     structure_events = {symbol: rows_data["recent_events"] for symbol, rows_data in observations.items()}
@@ -179,7 +180,7 @@ def main():
     totals["selected"] = len(execution_candidates)
     totals["paper_plans"] = len(execution_candidates)
 
-    out = {"name": "BINANCE_DEMO_PAPER_PIPELINE", "status": "PASS", "environment": "demo-fapi", "server_time": server_time, "symbols": observations, "latest_structure_event_ids": latest_structure_event_ids, "execution_candidates": execution_candidates, "totals": totals, "execution_status": "PAPER_ONLY", "virtual_entry_sl_tp": totals["paper_plans"] > 0, "next_action": "Demo executor may process READY_FOR_DEMO_EXECUTION candidates."}
+    out = {"name": "BINANCE_DEMO_PAPER_PIPELINE", "status": "PASS", "environment": "demo-fapi", "server_time": server_time, "symbols": observations, "latest_structure_event_ids": latest_structure_event_ids, "latest_confirmed_structure_event_ids": latest_confirmed_structure_event_ids, "execution_candidates": execution_candidates, "totals": totals, "execution_status": "PAPER_ONLY", "virtual_entry_sl_tp": totals["paper_plans"] > 0, "next_action": "Demo executor may process READY_FOR_DEMO_EXECUTION candidates."}
     (ART / "BINANCE_DEMO_PAPER_PIPELINE.json").write_text(json.dumps(out, indent=2) + "\n"); print(json.dumps(out, indent=2))
 
 if __name__ == "__main__": main()
