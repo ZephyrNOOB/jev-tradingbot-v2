@@ -37,6 +37,7 @@ def select_causal_target(side, entry, pivots, decision_index):
     return min(candidates, key=lambda target: abs(target['price'] - entry)) if candidates else None
 def setup_context(bot, side, event, entry, bars, idx, all_hs, all_ls, confirmation=None, live=None, decision_index=None):
     side='BULLISH' if side=='LONG' else 'BEARISH' if side=='SHORT' else side
+    confirmation = confirmation or {}
     decision_index = idx if decision_index is None else decision_index
     hs=[x for x in all_hs if x[2] <= decision_index]; ls=[x for x in all_ls if x[2] <= decision_index]
     buf=max(entry*.0005, (bars[idx]['high']-bars[idx]['low'])*.1)
@@ -46,7 +47,9 @@ def setup_context(bot, side, event, entry, bars, idx, all_hs, all_ls, confirmati
     objective=(target['price'], target['price'] + buf) if target and side=='BULLISH' else (target['price'] - buf, target['price']) if target else None
     zone=(entry-buf,entry+buf)
     if bot=='fvg_context' and event.zone_high>event.zone_low and live:
-        z,rejection,micro=live
+        z, _, _ = live
+        rejection = bool(confirmation.get('rejection_event_id'))
+        micro = bool(confirmation.get('micro_break_event_id'))
         return {'side':side,'fvg_zone':(event.zone_low,event.zone_high),'fvg_state':z.state,'fvg_object':z,'fvg_parent_event_id':event.parent_event_id or event.event_id,'fvg_source_indices':event.source_indices,'fvg_rejection_confirmed':rejection,'local_structure_break':micro,'rejection_event_id':confirmation.get('rejection_event_id'),'micro_break_event_id':confirmation.get('micro_break_event_id'),'invalidation_buffer':buf,'parent_impulse_objective':objective,'target_evidence':target}
     if bot=='ob_context' and event.ob_source_index >= 0 and event.ob_zone_high > event.ob_zone_low and live:
         z,rejection,micro=live

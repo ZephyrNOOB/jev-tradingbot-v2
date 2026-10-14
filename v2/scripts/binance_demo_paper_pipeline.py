@@ -156,7 +156,7 @@ def main():
                             provenance_ok, provenance_reason = validate_entry_sl_provenance(plan)
                             economics_ok, economics_reason = validate_plan_economics(plan)
                         except (AssertionError, KeyError, TypeError) as error:
-                            row["paper_rejection"] = f"plan_exception:{type(error).__name__}"
+                            row["paper_rejection"] = f"plan_exception:{type(error).__name__}:{error}"
                         else:
                             if not provenance_ok:
                                 row["paper_rejection"] = provenance_reason
