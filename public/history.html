@@ -94,7 +94,7 @@ async function loadHistory() {
 
   tbody.innerHTML = trades.map(t => {
     const time = new Date(t.ts).toLocaleString();
-    const sideBadge = t.side === 'buy' ? '<span class="badge badge-long">BUY</span>' : '<span class="badge badge-short">SELL</span>';
+    const sideBadge = String(t.side).toLowerCase() === 'buy' ? '<span class="badge badge-long">BUY</span>' : '<span class="badge badge-short">SELL</span>';
     const pnlNet = t.pnl - Math.abs(t.fee) - Math.abs(t.slippage);
     const pnlClass = pnlNet >= 0 ? 'pos' : 'neg';
     return `<tr>

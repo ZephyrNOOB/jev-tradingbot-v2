@@ -163,6 +163,11 @@ async function initDb() {
   try { run('ALTER TABLE api_keys ADD COLUMN verified_at TEXT'); } catch {}
   migrateApiKeys();
   run('CREATE TABLE IF NOT EXISTS trade_history (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, inst_id TEXT, side TEXT, pos_side TEXT, size REAL, price REAL, fee REAL, funding_rate REAL, slippage REAL, pnl REAL, ts INTEGER, raw_json TEXT)');
+  try { run('ALTER TABLE trade_history ADD COLUMN client_order_id TEXT'); } catch {}
+  try { run('ALTER TABLE trade_history ADD COLUMN order_id TEXT'); } catch {}
+  try { run('ALTER TABLE trade_history ADD COLUMN setup_id TEXT'); } catch {}
+  try { run('ALTER TABLE trade_history ADD COLUMN structure_event_id TEXT'); } catch {}
+  try { run('ALTER TABLE trade_history ADD COLUMN status TEXT DEFAULT \'FILLED\''); } catch {}
   run('CREATE TABLE IF NOT EXISTS sessions (sid_hash TEXT PRIMARY KEY, user_id INTEGER NOT NULL, expires_at INTEGER NOT NULL)');
   run('CREATE TABLE IF NOT EXISTS trade_amounts (user_id INTEGER PRIMARY KEY, amount_usdt REAL NOT NULL, updated_at TEXT NOT NULL)');
 }
@@ -440,6 +445,28 @@ async function loadServerExecutionCandidate(userId, candidateId) {
   const precision = validateCandidatePrecision(normalized, sizing, filters[candidate.symbol]);
   return { apiKey, secret, signed, candidate: normalized, sizing, precision, positions, settings };
 }
+function recordFilledTrade(userId, candidate, entry) {
+  run('INSERT INTO trade_history (user_id,inst_id,side,pos_side,size,price,fee,funding_rate,slippage,pnl,ts,raw_json,client_order_id,order_id,setup_id,structure_event_id,status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', [userId, candidate.symbol, String(candidate.side || '').toLowerCase(), '', Number(entry.executedQty || 0), Number(entry.avgPrice || entry.price || candidate.entry), 0, 0, 0, 0, Number(entry.updateTime || Date.now()), JSON.stringify({ entry, candidate }), candidate.client_order_id, String(entry.orderId || ''), candidate.setup_id || '', candidate.structure_event_id || '', 'OPEN']);
+}
+async function syncTradeHistory(userId) {
+  const key = get("SELECT * FROM api_keys WHERE user_id = ? AND exchange = 'binanceTestnet' AND status = 'connected' ORDER BY id DESC LIMIT 1", [userId]);
+  if (!key) return;
+  const apiKey = decryptSecret(key.api_key), secret = decryptSecret(key.secret_key);
+  const signed = async (symbol) => {
+    const query = new URLSearchParams({ symbol, limit: '100', recvWindow: '5000', timestamp: String(Date.now()) });
+    const queryString = query.toString();
+    const response = await fetchBinance(EXCHANGES.binanceTestnet.base + '/fapi/v1/userTrades?' + queryString + '&signature=' + binanceSignature(secret, queryString), { headers: { 'X-MBX-APIKEY': apiKey }, signal: AbortSignal.timeout(10_000) });
+    const data = await response.json();
+    if (!response.ok || !Array.isArray(data)) throw new Error(data?.msg || 'Trade history sync failed');
+    return data;
+  };
+  for (const symbol of PAPER_SYMBOLS) for (const trade of await signed(symbol)) {
+    const orderId = String(trade.orderId || '');
+    if (!orderId || get('SELECT id FROM trade_history WHERE user_id = ? AND order_id = ? AND price = ?', [userId, orderId, Number(trade.price)]) ) continue;
+    const candidate = get('SELECT setup_id, structure_event_id, client_order_id FROM trade_history WHERE user_id = ? AND order_id = ? LIMIT 1', [userId, orderId]);
+    run('INSERT INTO trade_history (user_id,inst_id,side,pos_side,size,price,fee,funding_rate,slippage,pnl,ts,raw_json,client_order_id,order_id,setup_id,structure_event_id,status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', [userId, symbol, String(trade.side || '').toLowerCase(), trade.positionSide || '', Number(trade.qty || 0), Number(trade.price || 0), Number(trade.commission || 0), 0, 0, Number(trade.realizedPnl || 0), Number(trade.time || Date.now()), JSON.stringify(trade), candidate?.client_order_id || trade.clientOrderId || '', orderId, candidate?.setup_id || '', candidate?.structure_event_id || '', Number(trade.realizedPnl || 0) !== 0 ? 'CLOSED' : 'OPEN']);
+  }
+}
 function markCandidateInvalidated(clientOrderId, status = 'INVALIDATED_NOT_FILLED') {
   const artifactPath = path.join(__dirname, 'v2', 'artifacts', 'BINANCE_DEMO_PAPER_PIPELINE.json');
   const artifact = JSON.parse(fs.readFileSync(artifactPath, 'utf8'));
@@ -478,6 +505,7 @@ async function executeDemoCandidate(req, res) {
       markCandidateInvalidated(candidate.client_order_id);
       return res.status(409).json({ ok: false, demoOnly: true, status: 'INVALIDATED_NOT_FILLED', entry: canceled, candidateStatus: 'INVALIDATED_NOT_FILLED', ordersSent: true, withdrawalsSent: false });
     }
+    recordFilledTrade(req.userId, candidate, current);
     const protectionOrders = buildProtectionOrders(candidate, sizing, precision).orders;
     const protection = [];
     try {
@@ -813,7 +841,8 @@ app.post('/api/history', auth, (req, res) => {
   res.json({ ok: true, count: trades.length });
 });
 
-app.get('/api/history', auth, (req, res) => {
+app.get('/api/history', auth, async (req, res) => {
+  try { await syncTradeHistory(req.userId); } catch {}
   const date = req.query.date;
   let sql = 'SELECT * FROM trade_history WHERE user_id = ?';
   const params = [req.userId];
