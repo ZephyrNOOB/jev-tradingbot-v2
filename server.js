@@ -356,7 +356,7 @@ app.get('/api/binance-demo/live-readiness', auth, async (req, res) => {
   const tradeAmount = get('SELECT amount_usdt FROM trade_amounts WHERE user_id = ?', [req.userId]);
   if (!keyRow) blockers.push('CONNECTED_DEMO_KEY_REQUIRED');
   if (process.env.DEMO_EXECUTION_ENABLED !== 'true') blockers.push('DEMO_EXECUTION_FLAG_DISABLED');
-  if (blockers.length) return res.json({ ok: true, ready: false, demoOnly: true, blockers, ordersSent: false, withdrawalsSent: false });
+  if (blockers.length) return res.json({ ok: true, ready: false, executionMode: 'READ_ONLY', demoOnly: true, blockers, ordersSent: null, withdrawalsSent: null });
   try {
     const apiKey = decryptSecret(keyRow.api_key), secret = decryptSecret(keyRow.secret_key);
     startBinanceUserStream(String(req.userId), apiKey, event => {
@@ -382,8 +382,8 @@ app.get('/api/binance-demo/live-readiness', auth, async (req, res) => {
     const openOrders = await Promise.all(SUPPORTED_SYMBOLS.map(symbol => signed('GET', '/fapi/v1/openOrders', { symbol }))).then(groups => groups.flat());
     const monitoring = monitorProtectionState(artifact.execution_candidates || [], openOrders, openPositions);
     blockers.push(...readinessBlockers(monitoring));
-    res.json({ ok: true, ready: blockers.length === 0, demoOnly: true, blockers, userStream: getBinanceUserStreamState(String(req.userId)), candidateCount: candidates.length, validCandidateCount: candidates.filter(x => x.sizing.status === 'SIZED' && x.precision === 'VALID').length, ordersSent: false, withdrawalsSent: false });
-  } catch (error) { res.status(502).json({ ok: false, ready: false, demoOnly: true, blockers: ['BINANCE_DEMO_READINESS_FAILED'], error: error.message, ordersSent: false, withdrawalsSent: false }); }
+    res.json({ ok: true, ready: blockers.length === 0, executionMode: 'READ_ONLY', demoOnly: true, blockers, userStream: getBinanceUserStreamState(String(req.userId)), candidateCount: candidates.length, validCandidateCount: candidates.filter(x => x.sizing.status === 'SIZED' && x.precision === 'VALID').length, ordersSent: null, withdrawalsSent: null });
+  } catch (error) { res.status(502).json({ ok: false, ready: false, executionMode: 'READ_ONLY', demoOnly: true, blockers: ['BINANCE_DEMO_READINESS_FAILED'], error: error.message, ordersSent: null, withdrawalsSent: null }); }
 });app.get('/api/binance-demo/execution-preflight', auth, async (req, res) => {
   const keyRow = get("SELECT * FROM api_keys WHERE id = (SELECT id FROM api_keys WHERE user_id = ? AND exchange = 'binanceTestnet' AND status = 'connected' ORDER BY id DESC LIMIT 1)", [req.userId]);
   const tradeAmount = get('SELECT amount_usdt FROM trade_amounts WHERE user_id = ?', [req.userId]);
@@ -407,8 +407,8 @@ app.get('/api/binance-demo/live-readiness', auth, async (req, res) => {
     const dailyPnl = Array.isArray(income) ? income.reduce((total, row) => total + Number(row.income || 0), 0) : 0;
     const candidates = (artifact.execution_candidates || []).map(candidate => { const freshness = validateCandidateFreshness(artifact, candidate); const normalized = normalizeCandidatePrices(candidate, filters[candidate.symbol]); const sizing = sizeCandidate(normalized, executionPolicy, balances.find(x => x.asset === 'USDT') || {}, filters[candidate.symbol]); return { ...candidate, freshness, normalized, sizing, precisionValidation: validateCandidatePrecision(normalized, sizing, filters[candidate.symbol]) }; });
     const validCandidates = candidates.filter(x => x.freshness.ok && x.sizing.status === 'SIZED' && x.precisionValidation === 'VALID');
-    res.json({ ok: true, demoOnly: true, status: validCandidates.length ? 'PREFLIGHT_READY' : 'PREFLIGHT_BLOCKED', tradeAmountUsdt: executionPolicy.tradeAmountUsdt, balances, openPositions, dailyPnl: Number(dailyPnl), filters, candidates, validCandidateCount: validCandidates.length, ordersSent: false, withdrawalsSent: false });
-  } catch { res.status(502).json({ ok: false, demoOnly: true, error: 'Demo execution preflight failed' }); }
+    res.json({ ok: true, executionMode: 'READ_ONLY', demoOnly: true, status: validCandidates.length ? 'PREFLIGHT_READY' : 'PREFLIGHT_BLOCKED', tradeAmountUsdt: executionPolicy.tradeAmountUsdt, balances, openPositions, dailyPnl: Number(dailyPnl), filters, candidates, validCandidateCount: validCandidates.length, ordersSent: null, withdrawalsSent: null });
+  } catch (error) { res.status(502).json({ ok: false, executionMode: 'READ_ONLY', demoOnly: true, error: error.message || 'Demo execution preflight failed', ordersSent: null, withdrawalsSent: null }); }
 });
 app.get('/api/binance-demo/reconciliation', auth, async (req, res) => {
   const keyRow = get("SELECT * FROM api_keys WHERE id = (SELECT id FROM api_keys WHERE user_id = ? AND exchange = 'binanceTestnet' AND status = 'connected' ORDER BY id DESC LIMIT 1)", [req.userId]);
@@ -429,15 +429,15 @@ app.get('/api/binance-demo/reconciliation', auth, async (req, res) => {
     const reconciliation = reconcileDemoState(candidates, ordersBySymbol.flat(), positions);
     const monitoring = monitorProtectionState(candidates, ordersBySymbol.flat(), positions);
     const status = reconciliation.status === 'RECONCILED' && !readinessBlockers(monitoring).length ? 'RECONCILIATION_PASS' : 'RECONCILIATION_BLOCKED';
-    res.json({ ok: true, demoOnly: true, status, observedAt: new Date().toISOString(), ordersSent: false, withdrawalsSent: false, monitoring, ...reconciliation });
+    res.json({ ok: true, executionMode: 'READ_ONLY', demoOnly: true, status, observedAt: new Date().toISOString(), ordersSent: null, withdrawalsSent: null, monitoring, ...reconciliation });
   } catch (error) { res.status(502).json({ ok: false, demoOnly: true, error: error.message || 'Demo reconciliation failed' }); }
 });app.post('/api/binance-demo/recovery-plan', auth, (req, res) => {
   const plan = buildRecoveryPlan(req.body?.candidate, req.body?.sizing, req.body?.precisionValidation, req.body?.monitoring);
-  res.status(plan.status === 'PLAN_ONLY' || plan.status === 'NO_ACTION' ? 200 : 409).json({ ok: plan.status === 'PLAN_ONLY' || plan.status === 'NO_ACTION', demoOnly: true, plan, ordersSent: false, withdrawalsSent: false });
+  res.status(plan.status === 'PLAN_ONLY' || plan.status === 'NO_ACTION' ? 200 : 409).json({ ok: plan.status === 'PLAN_ONLY' || plan.status === 'NO_ACTION', executionMode: 'READ_ONLY', demoOnly: true, plan, ordersSent: null, withdrawalsSent: null });
 });app.post('/api/binance-demo/protection-plan', auth, (req, res) => {
   const fill = verifyEntryFill(req.body?.exchangeOrder);
   const plan = fill.filled ? buildProtectionOrders(req.body?.candidate, req.body?.sizing, req.body?.precisionValidation) : { status: 'WAITING_ENTRY_FILL', orders: [] };
-  res.status(plan.status === 'READY_AFTER_ENTRY_FILL' ? 200 : 409).json({ ok: plan.status === 'READY_AFTER_ENTRY_FILL', demoOnly: true, fill, plan, ordersSent: false, withdrawalsSent: false });
+  res.status(plan.status === 'READY_AFTER_ENTRY_FILL' ? 200 : 409).json({ ok: plan.status === 'READY_AFTER_ENTRY_FILL', executionMode: 'READ_ONLY', demoOnly: true, fill, plan, ordersSent: null, withdrawalsSent: null });
 });
 async function loadServerExecutionCandidate(userId, candidateId) {
   const keyRow = get("SELECT * FROM api_keys WHERE id = (SELECT id FROM api_keys WHERE user_id = ? AND exchange = 'binanceTestnet' AND status = 'connected' ORDER BY id DESC LIMIT 1)", [userId]);
