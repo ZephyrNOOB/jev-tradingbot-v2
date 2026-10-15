@@ -2,7 +2,7 @@
   "name": "BINANCE_DEMO_PAPER_PIPELINE",
   "status": "PASS",
   "environment": "demo-fapi",
-  "server_time": 1792027153025,
+  "server_time": 1792027246567,
   "symbols": {
     "BTCUSDT": {
       "closed_counts": {
@@ -13,7 +13,7 @@
       "latest_closed_candle": {
         "1h": 1792025999999,
         "15m": 1792026899999,
-        "5m": 1792026899999
+        "5m": 1792027199999
       },
       "recent_events": [
         {
@@ -420,7 +420,7 @@
       "latest_closed_candle": {
         "1h": 1792025999999,
         "15m": 1792026899999,
-        "5m": 1792026899999
+        "5m": 1792027199999
       },
       "recent_events": [
         {
@@ -827,7 +827,7 @@
       "latest_closed_candle": {
         "1h": 1792025999999,
         "15m": 1792026899999,
-        "5m": 1792026899999
+        "5m": 1792027199999
       },
       "recent_events": [
         {
@@ -1207,7 +1207,7 @@
       "latest_closed_candle": {
         "1h": 1792025999999,
         "15m": 1792026899999,
-        "5m": 1792026899999
+        "5m": 1792027199999
       },
       "recent_events": [
         {
@@ -1573,11 +1573,11 @@
       "symbol": "BTCUSDT",
       "structure_event_id": "FVG-SHORT-481",
       "structure_index": 481,
-      "confirmation_index": 449,
-      "created_at_ms": 1792027153025,
+      "confirmation_index": 448,
+      "created_at_ms": 1792027246567,
       "side": "SELL",
       "protected_level": null,
-      "current_close": 81686.1,
+      "current_close": 81761.8,
       "poi_type": "FVG",
       "poi_state": "PARTIAL_MITIGATION",
       "setup_id": "fvg_context",
@@ -1605,11 +1605,11 @@
       "symbol": "ETHUSDT",
       "structure_event_id": "FVG-SHORT-470",
       "structure_index": 470,
-      "confirmation_index": 419,
-      "created_at_ms": 1792027153025,
+      "confirmation_index": 418,
+      "created_at_ms": 1792027246567,
       "side": "SELL",
       "protected_level": null,
-      "current_close": 2417.81,
+      "current_close": 2419.56,
       "poi_type": "FVG",
       "poi_state": "PARTIAL_MITIGATION",
       "setup_id": "fvg_context",
@@ -1637,11 +1637,11 @@
       "symbol": "SOLUSDT",
       "structure_event_id": "FVG-SHORT-469",
       "structure_index": 469,
-      "confirmation_index": 414,
-      "created_at_ms": 1792027153025,
+      "confirmation_index": 413,
+      "created_at_ms": 1792027246567,
       "side": "SELL",
       "protected_level": null,
-      "current_close": 104.33,
+      "current_close": 104.35,
       "poi_type": "FVG",
       "poi_state": "PARTIAL_MITIGATION",
       "setup_id": "fvg_context",
