@@ -1,5 +1,5 @@
 export function summarizeDemoDryRun(artifact = {}) {
   const candidates = Array.isArray(artifact.execution_candidates) ? artifact.execution_candidates : [];
   const ready = candidates.filter(candidate => candidate.sizing?.status === 'SIZED' && candidate.precisionValidation === 'VALID');
-  return { status: 'PAPER_ONLY', candidateCount: candidates.length, readyCount: ready.length, filledCount: 0, ordersSent: false, withdrawalsSent: false, candidates: ready.map(candidate => ({ clientOrderId: candidate.client_order_id, symbol: candidate.symbol, status: 'READY_FOR_DEMO_EXECUTION' })) };
+  return { status: 'LIVE_DEMO', candidateCount: candidates.length, readyCount: ready.length, filledCount: 0, ordersSent: false, withdrawalsSent: false, candidates: ready.map(candidate => ({ clientOrderId: candidate.client_order_id, symbol: candidate.symbol, status: 'READY_FOR_LIVE_DEMO_EXECUTION' })) };
 }

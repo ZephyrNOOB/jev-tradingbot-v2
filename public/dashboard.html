@@ -172,10 +172,10 @@ async function refreshBot() {
   button.textContent = bot.enabled ? 'BOT ON' : 'BOT OFF';
   button.classList.toggle('bot-enabled', bot.enabled);
   button.setAttribute('aria-pressed', String(bot.enabled));
-  const execution = bot.demoExecution?.status ? ` · Demo ${bot.demoExecution.status}` : '';
-  button.title = bot.running ? `Paper cycle running · ${bot.cycles} completed${execution}` : (bot.error || (bot.enabled ? `Trading bot ready${execution}` : 'Trading bot stopped'));
-  const runtime = document.getElementById('botRuntime');
-  runtime.textContent = bot.running ? `PAPER RUNNING · ${bot.cycles}` : bot.enabled ? `BOT ON · ${bot.cycles} CYCLES` : bot.observing ? 'PAPER OBSERVER ON · BOT OFF' : 'PAPER OBSERVER OFF';
+  const execution = bot.demoExecution?.status ? ` · Live Demo ${bot.demoExecution.status}` : '';
+    button.title = bot.running ? `Live Demo cycle running · ${bot.cycles} completed${execution}` : (bot.error || (bot.enabled ? `Live Demo bot ready${execution}` : 'Trading bot stopped'));
+    const runtime = document.getElementById('botRuntime');
+    runtime.textContent = bot.running ? `LIVE DEMO RUNNING · ${bot.cycles}` : bot.enabled ? `LIVE DEMO ON · ${bot.cycles} CYCLES` : bot.observing ? 'LIVE DEMO OBSERVER ON · BOT OFF' : 'LIVE DEMO OFF';
   runtime.classList.toggle('bot-runtime-error', Boolean(bot.error && bot.enabled));
 }
 async function toggleBot() {
