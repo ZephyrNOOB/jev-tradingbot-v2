@@ -501,7 +501,7 @@ async function syncTradeHistory(userId) {
     run('INSERT INTO trade_history (user_id,inst_id,side,pos_side,size,price,fee,funding_rate,slippage,pnl,ts,raw_json,client_order_id,order_id,setup_id,structure_event_id,status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', [userId, symbol, String(trade.side || '').toLowerCase(), trade.positionSide || '', Number(trade.qty || 0), Number(trade.price || 0), Number(trade.commission || 0), 0, 0, Number(trade.realizedPnl || 0), Number(trade.time || Date.now()), JSON.stringify(trade), candidate?.client_order_id || trade.clientOrderId || '', orderId, candidate?.setup_id || '', candidate?.structure_event_id || '', Number(trade.realizedPnl || 0) !== 0 ? 'CLOSED' : 'OPEN']);
   }
 }
-function markCandidateInvalidated(clientOrderId, status = 'INVALIDATED_NOT_FILLED') {
+function markCandidateInvalidated(clientOrderId, status) {
   const artifactPath = path.join(__dirname, 'v2', 'artifacts', 'BINANCE_DEMO_LIVE_PIPELINE.json');
   const artifact = JSON.parse(fs.readFileSync(artifactPath, 'utf8'));
   let changed = false;
@@ -542,8 +542,9 @@ async function executeDemoCandidate(req, res) {
     for (let i = 0; i < 5 && !['FILLED', 'CANCELED', 'EXPIRED', 'REJECTED'].includes(current.status); i++) { await new Promise(resolve => setTimeout(resolve, 1000)); current = await signed('GET', '/fapi/v1/order', { symbol: candidate.symbol, orderId: String(entry.orderId) }); }
     if (current.status !== 'FILLED') {
       const canceled = await signed('DELETE', '/fapi/v1/order', { symbol: candidate.symbol, orderId: String(entry.orderId) });
-      markCandidateInvalidated(candidate.client_order_id);
-      return res.status(409).json({ ok: false, demoOnly: true, status: 'INVALIDATED_NOT_FILLED', entry: canceled, candidateStatus: 'INVALIDATED_NOT_FILLED', ordersSent: true, withdrawalsSent: false });
+      markCandidateInvalidated(candidate.client_order_id, 'ENTRY_TIMEOUT_NOT_FILLED');
+      demoExecutionSummaries.set(String(req.userId), { status: 'ENTRY_TIMEOUT_NOT_FILLED', symbol: candidate.symbol, orderId: entry.orderId, clientOrderId: candidate.client_order_id, attemptAt: new Date().toISOString(), updatedAt: new Date().toISOString(), cancelReason: 'ENTRY_WINDOW_5S_EXPIRED' });
+      return res.status(409).json({ ok: false, demoOnly: true, status: 'ENTRY_TIMEOUT_NOT_FILLED', entry: canceled, candidateStatus: 'ENTRY_TIMEOUT_NOT_FILLED', cancelReason: 'ENTRY_WINDOW_5S_EXPIRED', ordersSent: true, withdrawalsSent: false });
     }
     recordFilledTrade(req.userId, candidate, current);
     const protectionOrders = buildProtectionOrders(candidate, sizing, precision).orders;
@@ -597,7 +598,7 @@ async function runExecutionCycle(sid) {
     const response = { statusCode: 200, status(code) { this.statusCode = code; return this; }, json(body) { payload = body; return this; } };
     await executeDemoCandidate({ userId: sessions.get(sid), cookies: { sid }, internalRunner: true, body: { clientOrderId: candidate.client_order_id, explicitApproval: false } }, response);
     demoExecutionSummaries.set(sid, { ...(payload || { ok: false, error: 'empty_executor_response' }), clientOrderId: candidate.client_order_id, attemptAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
-    if (!payload?.ordersSent && payload?.status !== 'INVALIDATED_NOT_FILLED') executionAttempts.delete(key);
+    if (!payload?.ordersSent && !['ENTRY_TIMEOUT_NOT_FILLED', 'INVALIDATED_NOT_FILLED'].includes(payload?.status)) executionAttempts.delete(key);
   }
 }
 
