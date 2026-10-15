@@ -2,7 +2,7 @@
   "name": "BINANCE_DEMO_PAPER_PIPELINE",
   "status": "PASS",
   "environment": "demo-fapi",
-  "server_time": 1792027965525,
+  "server_time": 1792028086079,
   "symbols": {
     "BTCUSDT": {
       "closed_counts": {
@@ -1601,7 +1601,7 @@
       "structure_event_id": "FVG-SHORT-480",
       "structure_index": 480,
       "confirmation_index": 446,
-      "created_at_ms": 1792027965525,
+      "created_at_ms": 1792028086079,
       "side": "SELL",
       "protected_level": null,
       "current_close": 81609.3,
@@ -1633,7 +1633,7 @@
       "structure_event_id": "FVG-SHORT-496",
       "structure_index": 496,
       "confirmation_index": 497,
-      "created_at_ms": 1792027965525,
+      "created_at_ms": 1792028086079,
       "side": "SELL",
       "protected_level": null,
       "current_close": 2410.54,
@@ -1665,7 +1665,7 @@
       "structure_event_id": "FVG-SHORT-468",
       "structure_index": 468,
       "confirmation_index": 411,
-      "created_at_ms": 1792027965525,
+      "created_at_ms": 1792028086079,
       "side": "SELL",
       "protected_level": null,
       "current_close": 104.06,
