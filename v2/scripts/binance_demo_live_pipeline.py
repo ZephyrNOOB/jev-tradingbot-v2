@@ -2,6 +2,8 @@ import hashlib
 import time
 """Live Demo candidate pipeline on latest Binance Demo closed candles."""
 import json
+import os
+import tempfile
 import urllib.request
 from bisect import bisect_right
 from pathlib import Path
@@ -10,6 +12,7 @@ import sys
 ROOT = Path(__file__).resolve().parents[2]
 ART = ROOT / "v2" / "artifacts"
 BASE = "https://demo-fapi.binance.com"
+CANDLE_CACHE_PATH = ART / "MARKET_CANDLE_CACHE.json"
 # Live Demo pipeline: artifact builds candidates; executor owns order side effects.
 SYMBOLS = ("BTCUSDT", "ETHUSDT", "SOLUSDT", "XAUUSDT")
 sys.path.insert(0, str(ROOT / "v2" / "scripts"))
@@ -22,8 +25,40 @@ def get(path):
     with urllib.request.urlopen(request, timeout=15) as response: return json.loads(response.read())
 
 def rows(symbol, interval, limit=500):
+    cache = {}
+    if CANDLE_CACHE_PATH.exists():
+        try: cache = json.loads(CANDLE_CACHE_PATH.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError): cache = {}
+    cached = cache.get(f"{symbol}:{interval}", [])
+    if len(cached) >= limit:
+        return sorted(cached, key=lambda row: row["open_time"])[-limit:]
     raw = get(f"/fapi/v1/klines?symbol={symbol}&interval={interval}&limit={limit}")
-    return [{"open": float(x[1]), "high": float(x[2]), "low": float(x[3]), "close": float(x[4]), "volume": float(x[5]), "taker_buy_volume": float(x[9]), "open_time": int(x[0]), "close_time": int(x[6])} for x in raw]
+    result = [{"open": float(x[1]), "high": float(x[2]), "low": float(x[3]), "close": float(x[4]), "volume": float(x[5]), "taker_buy_volume": float(x[9]), "open_time": int(x[0]), "close_time": int(x[6])} for x in raw]
+    by_open = {int(row["open_time"]): row for row in cached if isinstance(row, dict)}
+    by_open.update({row["open_time"]: row for row in result})
+    merged = sorted(by_open.values(), key=lambda row: row["open_time"])[-limit:]
+    cache[f"{symbol}:{interval}"] = merged
+    _write_cache(cache)
+    return merged
+
+def _write_cache(cache):
+    fd, temp_path = tempfile.mkstemp(prefix="market-cache-", suffix=".json", dir=CANDLE_CACHE_PATH.parent)
+    try:
+        with open(fd, "w", encoding="utf-8") as handle: json.dump(cache, handle)
+        Path(temp_path).replace(CANDLE_CACHE_PATH)
+    finally:
+        Path(temp_path).unlink(missing_ok=True)
+
+def write_stream_candle_cache(candles):
+    if not candles: return
+    try: cache = json.loads(CANDLE_CACHE_PATH.read_text(encoding="utf-8")) if CANDLE_CACHE_PATH.exists() else {}
+    except (OSError, json.JSONDecodeError): cache = {}
+    for candle in candles:
+        key = f"{candle['symbol']}:{candle['interval']}"
+        cache.setdefault(key, []).append({"open": candle["open"], "high": candle["high"], "low": candle["low"], "close": candle["close"], "volume": candle["volume"], "taker_buy_volume": candle.get("takerBuyVolume", 0), "open_time": candle["openTime"], "close_time": candle["closeTime"]})
+        cache[key] = list({int(row["open_time"]): row for row in cache[key]}.values())
+        cache[key] = sorted(cache[key], key=lambda row: row["open_time"])[-500:]
+    _write_cache(cache)
 
 def rank_and_approve_candidates(candidates, latest_structure_event_ids):
     """Rank current candidates by structure/confirmation freshness; reject ties."""
@@ -181,7 +216,18 @@ def main():
     totals["selected"] = len(execution_candidates)
     totals["live_demo_candidates"] = len(execution_candidates)
 
-    out = {"name": "BINANCE_DEMO_LIVE_PIPELINE", "status": "PASS", "environment": "demo-fapi", "server_time": server_time, "symbols": observations, "latest_structure_event_ids": latest_structure_event_ids, "latest_confirmed_structure_event_ids": latest_confirmed_structure_event_ids, "execution_candidates": execution_candidates, "totals": totals, "execution_status": "LIVE_DEMO", "live_demo_plan": False, "next_action": "Live Demo executor processes fresh APPROVED_FOR_EXECUTION candidates."}
-    (ART / "BINANCE_DEMO_LIVE_PIPELINE.json").write_text(json.dumps(out, indent=2) + "\n"); print(json.dumps(out, indent=2))
+    active_plan_by_symbol = {candidate["symbol"]: candidate for candidate in execution_candidates}
+    out = {"name": "BINANCE_DEMO_LIVE_PIPELINE", "status": "PASS", "environment": "demo-fapi", "server_time": server_time, "symbols": observations, "latest_structure_event_ids": latest_structure_event_ids, "latest_confirmed_structure_event_ids": latest_confirmed_structure_event_ids, "execution_candidates": execution_candidates, "active_plan_by_symbol": active_plan_by_symbol, "totals": totals, "execution_status": "LIVE_DEMO", "live_demo_plan": False, "next_action": "Live Demo executor processes fresh APPROVED_FOR_EXECUTION candidates."}
+    _write_artifact(out)
+    print(json.dumps(out, indent=2))
+
+def _write_artifact(payload):
+    artifact_path = ART / "BINANCE_DEMO_LIVE_PIPELINE.json"
+    fd, temp_path = tempfile.mkstemp(prefix="live-pipeline-", suffix=".json", dir=ART)
+    try:
+        with open(fd, "w", encoding="utf-8") as handle: json.dump(payload, handle, indent=2); handle.write("\n")
+        Path(temp_path).replace(artifact_path)
+    finally:
+        Path(temp_path).unlink(missing_ok=True)
 
 if __name__ == "__main__": main()

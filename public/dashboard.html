@@ -138,13 +138,13 @@ async function refreshV2() {
   const v2 = await api('/v2/status');
   if (!v2?.ok) return;
   const t = v2.artifact.totals;
-  const rooms = [['BIAS BOT','1H','Reads closed 1H candles; sets market direction.',t.bias_ready > 0 ? 'READY' : 'WAITING'],['MARKET STRUCTURE BOT','15M','Builds SMC structure and emits BOS / CHoCH evidence.',t.structure_events > 0 ? 'ANALYZING' : 'WAITING'],['CONFIRMATION BOT','5M','Checks retest, rejection, and micro-break confirmation.',t.confirmed_5m > 0 ? 'CONFIRMED' : 'WAITING'],['SELECTION BOT','GATE','Accepts only bias-aligned, causally owned setups.',t.selected > 0 ? 'SELECTED' : 'WAITING'],['SETUP BOT','PLAN','Builds virtual Entry / SL / TP with provenance and economics.',t.live_demo_plans > 0 ? 'LIVE_DEMO READY' : 'WAITING']];
+  const rooms = [['BIAS BOT','1H','Reads closed 1H candles; sets market direction.',t.bias_ready > 0 ? 'READY' : 'WAITING'],['MARKET STRUCTURE BOT','15M','Builds SMC structure and emits BOS / CHoCH evidence.',t.structure_events > 0 ? 'ANALYZING' : 'WAITING'],['CONFIRMATION BOT','5M','Checks retest, rejection, and micro-break confirmation.',t.confirmed_5m > 0 ? 'CONFIRMED' : 'WAITING'],['SELECTION BOT','GATE','Accepts only bias-aligned, causally owned setups.',t.selected > 0 ? 'SELECTED' : 'WAITING'],['SETUP BOT','PLAN','Builds virtual Entry / SL / TP with provenance and economics.',t.live_demo_candidates > 0 ? 'LIVE_DEMO READY' : 'WAITING']];
   const track = document.getElementById('workflowTrack');
   track.replaceChildren();
   rooms.forEach((r,i) => { const room = document.createElement('div'); room.className = 'workflow-room' + (r[3] !== 'WAITING' && r[3] !== 'OFF' ? ' room-active' : ''); room.innerHTML = `<div class="room-top"><span class="room-index">0${i + 1}</span><span class="room-status">${r[3]}</span></div><div class="room-icon">${r[1]}</div><h4>${r[0]}</h4><p>${r[2]}</p>`; if (i < rooms.length - 1) { const connector = document.createElement('span'); connector.className = 'room-connector'; connector.textContent = '›'; room.appendChild(connector); } track.appendChild(room); });
   document.getElementById('v2Status').textContent = `Demo · ${t.structure_events} structure events · ${t.confirmed_5m} confirmed · ${t.selected} selected`;
   const candleTime = ts => ts ? new Date(Number(ts)).toLocaleTimeString() : '--';
-  document.getElementById('v2Pairs').innerHTML = '<table><thead><tr><th>Pair</th><th>1H latest</th><th>15M latest</th><th>5M latest</th><th>Events</th><th>Active plan</th></tr></thead><tbody>' + Object.entries(v2.artifact.symbols).map(([symbol,x]) => `<tr><td>${symbol}</td><td>${candleTime(x.latest_closed_candle?.['1h'])}</td><td>${candleTime(x.latest_closed_candle?.['15m'])}</td><td>${candleTime(x.latest_closed_candle?.['5m'])}</td><td>${x.recent_events.length}</td><td>${(v2.artifact.execution_candidates || []).filter(c => c.symbol === symbol && c.status === 'APPROVED_FOR_EXECUTION').length} <span class="muted mono">(${v2.artifact.latest_confirmed_structure_event_ids?.[symbol] || '—'})</span></td></tr>`).join('') + '</tbody></table>';
+  document.getElementById('v2Pairs').innerHTML = '<table><thead><tr><th>Pair</th><th>1H latest</th><th>15M latest</th><th>5M latest</th><th>Events</th><th>Active plan</th></tr></thead><tbody>' + Object.entries(v2.artifact.symbols).map(([symbol,x]) => `<tr><td>${symbol}</td><td>${candleTime(x.latest_closed_candle?.['1h'])}</td><td>${candleTime(x.latest_closed_candle?.['15m'])}</td><td>${candleTime(x.latest_closed_candle?.['5m'])}</td><td>${x.recent_events.length}</td><td>${v2.artifact.active_plan_by_symbol?.[symbol]?.client_order_id ? 'ACTIVE' : '—'} <span class="muted mono">(${v2.artifact.latest_confirmed_structure_event_ids?.[symbol] || '—'})</span></td></tr>`).join('') + '</tbody></table>';
 }
 async function init() {
   const me = await api('/me');
@@ -173,7 +173,8 @@ async function refreshBot() {
   button.classList.toggle('bot-enabled', bot.enabled);
   button.setAttribute('aria-pressed', String(bot.enabled));
   const execution = bot.demoExecution?.status ? ` · Live Demo ${bot.demoExecution.status}` : '';
-    button.title = bot.running ? `Live Demo cycle running · ${bot.cycles} completed${execution}` : (bot.error || (bot.enabled ? `Live Demo bot ready${execution}` : 'Trading bot stopped'));
+  const stream = bot.marketStream?.connected ? ' · WS CONNECTED' : ' · WS OFFLINE';
+    button.title = bot.running ? `Live Demo cycle running · ${bot.cycles} completed${execution}${stream}` : (bot.error || (bot.enabled ? `Live Demo bot ready${execution}${stream}` : 'Trading bot stopped'));
     const runtime = document.getElementById('botRuntime');
     runtime.textContent = bot.running ? `LIVE DEMO RUNNING · ${bot.cycles}` : bot.enabled ? `LIVE DEMO ON · ${bot.cycles} CYCLES` : bot.observing ? 'LIVE DEMO OBSERVER ON · BOT OFF' : 'LIVE DEMO OFF';
   runtime.classList.toggle('bot-runtime-error', Boolean(bot.error && bot.enabled));

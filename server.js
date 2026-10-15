@@ -15,7 +15,7 @@ import { monitorProtectionState, readinessBlockers } from './v2/scripts/demo_mon
 import { buildRecoveryPlan } from './v2/scripts/demo_recovery.js';
 import { summarizeDemoDryRun } from './v2/scripts/demo_cycle.js';
 import { validateCandidateFreshness } from './v2/scripts/candidate_freshness.js';
-import { startBinanceMarketStream, getBinanceStreamPrices, getBinanceStreamState } from './v2/scripts/binance_market_stream.js';
+import { startBinanceMarketStream, getBinanceStreamPrices, getBinanceStreamCandles, getBinanceStreamState, onClosedCandle } from './v2/scripts/binance_market_stream.js';
 import { startBinanceUserStream, stopBinanceUserStream, getBinanceUserStreamState } from './v2/scripts/binance_user_stream.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -83,8 +83,9 @@ const demoCycleSummaries = new Map();
 const demoExecutionSummaries = new Map();
 const executionAttempts = new Map();
 const marketObservers = new Map();
-const MARKET_INTERVAL_MS = 60_000;
+const MARKET_INTERVAL_MS = 15 * 60_000;
 const EXECUTION_INTERVAL_MS = 5_000;
+let marketCandleUnsubscribe = null;
 const LIVE_DEMO_STALE_AFTER_MS = 15 * 60_000;
 const MARKET_POLL_TIMEOUT_MS = 10_000;
 const SUPPORTED_SYMBOLS = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XAUUSDT'];
@@ -328,10 +329,30 @@ function startLiveDemoWorkflowRunner(sid) {
   botRunners.set(sid, runner);
   runLiveDemoWorkflowCycle(sid);
   return runner;
+}
+function persistClosedCandle(candle) {
+  const cachePath = path.join(__dirname, 'v2', 'artifacts', 'MARKET_CANDLE_CACHE.json');
+  let cache = {};
+  try { cache = JSON.parse(fs.readFileSync(cachePath, 'utf8')); } catch {}
+  const key = `${candle.symbol}:${candle.interval}`;
+  const rows = Array.isArray(cache[key]) ? cache[key] : [];
+  const row = { open: candle.open, high: candle.high, low: candle.low, close: candle.close, volume: candle.volume, taker_buy_volume: candle.takerBuyVolume || 0, open_time: candle.openTime, close_time: candle.closeTime };
+  cache[key] = [...rows.filter(item => Number(item.open_time) !== candle.openTime), row].sort((a, b) => a.open_time - b.open_time).slice(-500);
+  const tmp = `${cachePath}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(cache));
+  fs.renameSync(tmp, cachePath);
+}
+function startMarketStructureStreamTrigger() {
+  if (marketCandleUnsubscribe) return;
+  marketCandleUnsubscribe = onClosedCandle(candle => {
+    persistClosedCandle(candle);
+    if (candle.interval !== '15m') return;
+    runLiveDemoWorkflowCycle('global');
+  });
 }app.get('/api/bot/status', auth, (req, res) => {
   const runner = botRunners.get('execution:' + req.cookies.sid) || botRunners.get('global');
   const observer = marketObservers.get('global');
-  res.json({ ok: true, enabled: botStates.get(req.cookies.sid) === true, observing: Boolean(observer?.timer), running: Boolean(runner?.running), cycles: runner?.cycles || 0, error: runner?.error || null, observer_error: observer?.error || null, last_started_at: runner?.last_started_at || null, last_finished_at: runner?.last_finished_at || null, last_polled_at: observer?.last_polled_at || null, watermark: observer?.watermark || {}, mode: 'demo_execution', demoCycle: demoCycleSummaries.get('global') || null, demoExecution: demoExecutionSummaries.get(req.cookies.sid) || null, ordersEnabled: process.env.DEMO_EXECUTION_ENABLED === 'true' });
+  res.json({ ok: true, enabled: botStates.get(req.cookies.sid) === true, observing: Boolean(observer?.timer), running: Boolean(runner?.running), cycles: runner?.cycles || 0, error: runner?.error || null, observer_error: observer?.error || null, last_started_at: runner?.last_started_at || null, last_finished_at: runner?.last_finished_at || null, last_polled_at: observer?.last_polled_at || null, watermark: observer?.watermark || {}, mode: 'demo_execution', marketStream: getBinanceStreamState(), demoCycle: demoCycleSummaries.get('global') || null, demoExecution: demoExecutionSummaries.get(req.cookies.sid) || null, ordersEnabled: process.env.DEMO_EXECUTION_ENABLED === 'true' });
 });
 
 app.post('/api/bot/toggle', auth, async (req, res) => {
@@ -348,7 +369,7 @@ app.post('/api/bot/toggle', auth, async (req, res) => {
   if (enabled) startExecutionRunner(req.cookies.sid); else stopExecutionRunner(req.cookies.sid);
   const runner = botRunners.get('execution:' + req.cookies.sid) || botRunners.get('global');
   const observer = marketObservers.get('global');
-  res.json({ ok: true, enabled, observing: Boolean(observer?.timer), running: Boolean(runner?.running), cycles: runner?.cycles || 0, last_started_at: runner?.last_started_at || null, last_finished_at: runner?.last_finished_at || null, error: runner?.error || null, mode: 'demo_execution', demoCycle: demoCycleSummaries.get('global') || null, demoExecution: demoExecutionSummaries.get(req.cookies.sid) || null, ordersEnabled: process.env.DEMO_EXECUTION_ENABLED === 'true' });
+  res.json({ ok: true, enabled, observing: Boolean(observer?.timer), running: Boolean(runner?.running), cycles: runner?.cycles || 0, last_started_at: runner?.last_started_at || null, last_finished_at: runner?.last_finished_at || null, error: runner?.error || null, mode: 'demo_execution', marketStream: getBinanceStreamState(), demoCycle: demoCycleSummaries.get('global') || null, demoExecution: demoExecutionSummaries.get(req.cookies.sid) || null, ordersEnabled: process.env.DEMO_EXECUTION_ENABLED === 'true' });
 });
 app.get('/api/binance-demo/live-readiness', auth, async (req, res) => {
   const blockers = [];
@@ -471,8 +492,8 @@ async function loadServerExecutionCandidate(userId, candidateId) {
     const artifact = JSON.parse(fs.readFileSync(path.join(__dirname, 'v2', 'artifacts', 'BINANCE_DEMO_LIVE_PIPELINE.json'), 'utf8'));
   const candidate = (artifact.execution_candidates || []).find(x => x.client_order_id === candidateId);
   if (!candidate) return { error: 'Execution candidate not found' };
-  const freshness = validateCandidateFreshness(artifact, candidate);
-  if (!freshness.ok) return { error: freshness.reason };
+  const currentPlan = assertCurrentActivePlan(candidateId);
+  if (!currentPlan.ok) return { error: currentPlan.error };
 
   const normalized = normalizeCandidatePrices(candidate, filters[candidate.symbol]);
   const sizing = sizeCandidate(normalized, settings, balance || {}, filters[candidate.symbol]);
@@ -501,6 +522,15 @@ async function syncTradeHistory(userId) {
     run('INSERT INTO trade_history (user_id,inst_id,side,pos_side,size,price,fee,funding_rate,slippage,pnl,ts,raw_json,client_order_id,order_id,setup_id,structure_event_id,status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', [userId, symbol, String(trade.side || '').toLowerCase(), trade.positionSide || '', Number(trade.qty || 0), Number(trade.price || 0), Number(trade.commission || 0), 0, 0, Number(trade.realizedPnl || 0), Number(trade.time || Date.now()), JSON.stringify(trade), candidate?.client_order_id || trade.clientOrderId || '', orderId, candidate?.setup_id || '', candidate?.structure_event_id || '', Number(trade.realizedPnl || 0) !== 0 ? 'CLOSED' : 'OPEN']);
   }
 }
+function assertCurrentActivePlan(candidateId) {
+  const artifact = JSON.parse(fs.readFileSync(path.join(__dirname, 'v2', 'artifacts', 'BINANCE_DEMO_LIVE_PIPELINE.json'), 'utf8'));
+  const candidate = (artifact.execution_candidates || []).find(item => item.client_order_id === candidateId);
+  const active = candidate && artifact.active_plan_by_symbol?.[candidate.symbol];
+  if (!candidate) return { ok: false, error: 'Execution candidate not found' };
+  if (!active || active.client_order_id !== candidate.client_order_id) return { ok: false, error: 'ACTIVE_PLAN_REPLACED' };
+  const freshness = validateCandidateFreshness(artifact, candidate);
+  return freshness.ok ? { ok: true } : { ok: false, error: freshness.reason };
+}
 function markCandidateInvalidated(clientOrderId, status) {
   const artifactPath = path.join(__dirname, 'v2', 'artifacts', 'BINANCE_DEMO_LIVE_PIPELINE.json');
   const artifact = JSON.parse(fs.readFileSync(artifactPath, 'utf8'));
@@ -519,7 +549,7 @@ async function executeDemoCandidate(req, res) {
   try {
     const candidateId = String(req.body?.clientOrderId || '');
     const context = await loadServerExecutionCandidate(req.userId, candidateId);
-    if (context.error) return res.status(context.error === 'Execution candidate not found' ? 404 : 400).json({ ok: false, demoOnly: true, error: context.error, ordersSent: false, withdrawalsSent: false });
+    if (context.error) return res.status(context.error === 'Execution candidate not found' ? 404 : 409).json({ ok: false, demoOnly: true, error: context.error, ordersSent: false, withdrawalsSent: false });
     const { candidate, sizing, precision, signed } = context;
     demoExecutionSummaries.set(String(req.userId), { status: 'PRECHECK', clientOrderId: candidate.client_order_id, attemptAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
     const order = buildDemoEntryOrder(candidate, sizing, precision);
@@ -539,7 +569,17 @@ async function executeDemoCandidate(req, res) {
     const entry = await signed('POST', '/fapi/v1/order', { symbol: candidate.symbol, side: candidate.side, type: 'LIMIT', timeInForce: 'GTC', quantity: sizing.quantity, price: sizing.price, newClientOrderId: candidate.client_order_id });
     demoExecutionSummaries.set(String(req.userId), { status: entry.status || 'ORDER_SENT', orderId: entry.orderId, clientOrderId: candidate.client_order_id, attemptAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
     let current = entry;
-    for (let i = 0; i < 5 && !['FILLED', 'CANCELED', 'EXPIRED', 'REJECTED'].includes(current.status); i++) { await new Promise(resolve => setTimeout(resolve, 1000)); current = await signed('GET', '/fapi/v1/order', { symbol: candidate.symbol, orderId: String(entry.orderId) }); }
+    for (let i = 0; i < 5 && !['FILLED', 'CANCELED', 'EXPIRED', 'REJECTED'].includes(current.status); i++) {
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      const livePlan = assertCurrentActivePlan(candidate.client_order_id);
+      if (!livePlan.ok) {
+        const canceled = await signed('DELETE', '/fapi/v1/order', { symbol: candidate.symbol, orderId: String(entry.orderId) });
+        markCandidateInvalidated(candidate.client_order_id, 'ACTIVE_PLAN_REPLACED');
+        demoExecutionSummaries.set(String(req.userId), { status: 'ACTIVE_PLAN_REPLACED', symbol: candidate.symbol, orderId: entry.orderId, clientOrderId: candidate.client_order_id, attemptAt: new Date().toISOString(), updatedAt: new Date().toISOString(), cancelReason: livePlan.error });
+        return res.status(409).json({ ok: false, demoOnly: true, status: 'ACTIVE_PLAN_REPLACED', entry: canceled, candidateStatus: 'ACTIVE_PLAN_REPLACED', cancelReason: livePlan.error, ordersSent: true, withdrawalsSent: false });
+      }
+      current = await signed('GET', '/fapi/v1/order', { symbol: candidate.symbol, orderId: String(entry.orderId) });
+    }
     if (current.status !== 'FILLED') {
       const canceled = await signed('DELETE', '/fapi/v1/order', { symbol: candidate.symbol, orderId: String(entry.orderId) });
       markCandidateInvalidated(candidate.client_order_id, 'ENTRY_TIMEOUT_NOT_FILLED');
@@ -598,7 +638,7 @@ async function runExecutionCycle(sid) {
     const response = { statusCode: 200, status(code) { this.statusCode = code; return this; }, json(body) { payload = body; return this; } };
     await executeDemoCandidate({ userId: sessions.get(sid), cookies: { sid }, internalRunner: true, body: { clientOrderId: candidate.client_order_id, explicitApproval: false } }, response);
     demoExecutionSummaries.set(sid, { ...(payload || { ok: false, error: 'empty_executor_response' }), clientOrderId: candidate.client_order_id, attemptAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
-    if (!payload?.ordersSent && !['ENTRY_TIMEOUT_NOT_FILLED', 'INVALIDATED_NOT_FILLED'].includes(payload?.status)) executionAttempts.delete(key);
+    if (!payload?.ordersSent && payload?.status !== 'ENTRY_TIMEOUT_NOT_FILLED') executionAttempts.delete(key);
   }
 }
 
@@ -644,6 +684,7 @@ const BINANCE_DEMO_FUTURES_BASE = 'https://demo-fapi.binance.com';
 const BINANCE_DATA_BASE = BINANCE_DEMO_FUTURES_BASE;
 startBinanceMarketStream();
 startMarketObserver();
+startMarketStructureStreamTrigger();
 startLiveDemoWorkflowRunner('global');
 
 app.get('/api/chart/candles', auth, async (req, res) => {
@@ -678,9 +719,10 @@ app.get('/api/chart/structure', auth, (req, res) => {
     const latestId = artifact.latest_structure_event_ids?.[symbol] || null;
     const active_candidates = (artifact.execution_candidates || []).filter(candidate =>
       candidate.symbol === symbol &&
-      candidate.status === 'APPROVED_FOR_EXECUTION'
+      candidate.status === 'APPROVED_FOR_EXECUTION' &&
+      artifact.active_plan_by_symbol?.[symbol]?.client_order_id === candidate.client_order_id
     );
-    res.json({ ok: true, source: 'JEV MarketStructureBot workflow', artifact_status: artifact.status, server_time: artifact.server_time, symbol, latest_structure_event_id: latestId, latest_closed_candle: symbolState.latest_closed_candle || {}, events, active_candidates });
+    res.json({ ok: true, source: 'JEV MarketStructureBot workflow', artifact_status: artifact.status, server_time: artifact.server_time, symbol, latest_structure_event_id: latestId, latest_confirmed_structure_event_id: artifact.latest_confirmed_structure_event_ids?.[symbol] || null, latest_closed_candle: symbolState.latest_closed_candle || {}, events, active_candidates });
   } catch (error) { res.status(503).json({ ok: false, error: 'Authoritative structure unavailable' }); }
 });
 app.get('/api/chart/tickers', auth, async (req, res) => {

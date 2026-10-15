@@ -1,4 +1,7 @@
 node_modules/
+v2/artifacts/MARKET_CANDLE_CACHE.json
+v2/artifacts/BINANCE_DEMO_LIVE_PIPELINE.json
+v2/artifacts/*.tmp
 jev.db
 .jev-master-key
 .env
