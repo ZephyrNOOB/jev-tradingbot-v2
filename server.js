@@ -329,9 +329,9 @@ function startPaperRunner(sid) {
   runPaperCycle(sid);
   return runner;
 }app.get('/api/bot/status', auth, (req, res) => {
-  const runner = botRunners.get('global');
+  const runner = botRunners.get('execution:' + req.cookies.sid) || botRunners.get('global');
   const observer = marketObservers.get('global');
-  res.json({ ok: true, enabled: botStates.get(req.cookies.sid) === true, observing: Boolean(observer?.timer), running: Boolean(runner?.running), cycles: runner?.cycles || 0, error: runner?.error || null, observer_error: observer?.error || null, last_started_at: runner?.last_started_at || null, last_finished_at: runner?.last_finished_at || null, last_polled_at: observer?.last_polled_at || null, watermark: observer?.watermark || {}, mode: 'paper_observation', demoCycle: demoCycleSummaries.get('global') || null, demoExecution: demoExecutionSummaries.get(req.cookies.sid) || null, ordersEnabled: process.env.DEMO_EXECUTION_ENABLED === 'true' });
+  res.json({ ok: true, enabled: botStates.get(req.cookies.sid) === true, observing: Boolean(observer?.timer), running: Boolean(runner?.running), cycles: runner?.cycles || 0, error: runner?.error || null, observer_error: observer?.error || null, last_started_at: runner?.last_started_at || null, last_finished_at: runner?.last_finished_at || null, last_polled_at: observer?.last_polled_at || null, watermark: observer?.watermark || {}, mode: 'demo_execution', demoCycle: demoCycleSummaries.get('global') || null, demoExecution: demoExecutionSummaries.get(req.cookies.sid) || null, ordersEnabled: process.env.DEMO_EXECUTION_ENABLED === 'true' });
 });
 
 app.post('/api/bot/toggle', auth, async (req, res) => {
@@ -581,7 +581,7 @@ async function runExecutionCycle(sid) {
     let payload;
     const response = { statusCode: 200, status(code) { this.statusCode = code; return this; }, json(body) { payload = body; return this; } };
     await executeDemoCandidate({ userId: sessions.get(sid), cookies: { sid }, internalRunner: true, body: { clientOrderId: candidate.client_order_id, explicitApproval: false } }, response);
-    demoExecutionSummaries.set(sid, { ...(payload || { ok: false, error: 'empty_executor_response' }), clientOrderId: candidate.client_order_id, updatedAt: new Date().toISOString() });
+    demoExecutionSummaries.set(sid, { ...(payload || { ok: false, error: 'empty_executor_response' }), clientOrderId: candidate.client_order_id, attemptAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
     if (!payload?.ordersSent && payload?.status !== 'INVALIDATED_NOT_FILLED') executionAttempts.delete(key);
   }
 }
