@@ -346,9 +346,9 @@ app.post('/api/bot/toggle', auth, async (req, res) => {
   if (enabled && !get('SELECT id FROM api_keys WHERE user_id = ? AND exchange = ? AND status = ?', [req.userId, 'binanceTestnet', 'connected'])) return res.status(400).json({ ok:false, error:'Connected Binance Demo account required before BOT ON' });
   botStates.set(req.cookies.sid, enabled);
   if (enabled) startExecutionRunner(req.cookies.sid); else stopExecutionRunner(req.cookies.sid);
-  const runner = botRunners.get('global');
+  const runner = botRunners.get('execution:' + req.cookies.sid) || botRunners.get('global');
   const observer = marketObservers.get('global');
-  res.json({ ok: true, enabled, observing: Boolean(observer?.timer), running: Boolean(runner?.running), cycles: runner?.cycles || 0, mode: 'paper_observation', demoCycle: demoCycleSummaries.get('global') || null, demoExecution: demoExecutionSummaries.get(req.cookies.sid) || null, ordersEnabled: process.env.DEMO_EXECUTION_ENABLED === 'true' });
+  res.json({ ok: true, enabled, observing: Boolean(observer?.timer), running: Boolean(runner?.running), cycles: runner?.cycles || 0, last_started_at: runner?.last_started_at || null, last_finished_at: runner?.last_finished_at || null, error: runner?.error || null, mode: 'demo_execution', demoCycle: demoCycleSummaries.get('global') || null, demoExecution: demoExecutionSummaries.get(req.cookies.sid) || null, ordersEnabled: process.env.DEMO_EXECUTION_ENABLED === 'true' });
 });
 app.get('/api/binance-demo/live-readiness', auth, async (req, res) => {
   const blockers = [];
@@ -513,6 +513,7 @@ async function executeDemoCandidate(req, res) {
     const context = await loadServerExecutionCandidate(req.userId, candidateId);
     if (context.error) return res.status(context.error === 'Execution candidate not found' ? 404 : 400).json({ ok: false, demoOnly: true, error: context.error, ordersSent: false, withdrawalsSent: false });
     const { candidate, sizing, precision, signed } = context;
+    demoExecutionSummaries.set(String(req.userId), { status: 'PRECHECK', clientOrderId: candidate.client_order_id, attemptAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
     const order = buildDemoEntryOrder(candidate, sizing, precision);
     if (sizing.status !== 'SIZED') return res.status(409).json({ ok: false, demoOnly: true, reason: sizing.status, order, ordersSent: false, withdrawalsSent: false });
     const enabled = process.env.DEMO_EXECUTION_ENABLED === 'true';
@@ -523,7 +524,9 @@ async function executeDemoCandidate(req, res) {
     try { existing = await signed('GET', '/fapi/v1/order', { symbol: candidate.symbol, origClientOrderId: candidate.client_order_id }); } catch {}
     if (existing?.status === 'FILLED') return res.json({ ok: true, demoOnly: true, idempotent: true, status: 'ENTRY_ALREADY_FILLED', entry: existing, ordersSent: true, withdrawalsSent: false });
     if (existing && ['NEW', 'PARTIALLY_FILLED'].includes(existing.status)) return res.status(409).json({ ok: false, demoOnly: true, status: 'ENTRY_ALREADY_OPEN', entry: existing, ordersSent: true, withdrawalsSent: false });
+    demoExecutionSummaries.set(String(req.userId), { status: 'ORDER_SUBMIT', clientOrderId: candidate.client_order_id, attemptAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
     const entry = await signed('POST', '/fapi/v1/order', { symbol: candidate.symbol, side: candidate.side, type: 'LIMIT', timeInForce: 'GTC', quantity: sizing.quantity, price: sizing.price, newClientOrderId: candidate.client_order_id });
+    demoExecutionSummaries.set(String(req.userId), { status: entry.status || 'ORDER_SENT', orderId: entry.orderId, clientOrderId: candidate.client_order_id, attemptAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
     let current = entry;
     for (let i = 0; i < 5 && !['FILLED', 'CANCELED', 'EXPIRED', 'REJECTED'].includes(current.status); i++) { await new Promise(resolve => setTimeout(resolve, 1000)); current = await signed('GET', '/fapi/v1/order', { symbol: candidate.symbol, orderId: String(entry.orderId) }); }
     if (current.status !== 'FILLED') {
@@ -589,11 +592,14 @@ async function runExecutionCycle(sid) {
 function startExecutionRunner(sid) {
   const key = "execution:" + sid;
   if (botRunners.get(key)?.timer) return botRunners.get(key);
-  const runner = { timer: null, running: false };
+  const runner = { timer: null, running: false, cycles: 0, error: null, last_started_at: null, last_finished_at: null };
   const tick = async () => {
     if (runner.running || botStates.get(sid) !== true) return;
     runner.running = true;
-    try { await runExecutionCycle(sid); } finally { runner.running = false; }
+    runner.last_started_at = Date.now();
+    try { await runExecutionCycle(sid); runner.cycles += 1; runner.error = null; }
+    catch (error) { runner.error = error?.message || 'execution_cycle_failed'; runner.last_error_at = Date.now(); }
+    finally { runner.running = false; runner.last_finished_at = Date.now(); }
   };
   runner.timer = setInterval(tick, EXECUTION_INTERVAL_MS);
   botRunners.set(key, runner);
