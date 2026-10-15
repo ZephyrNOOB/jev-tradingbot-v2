@@ -272,7 +272,7 @@ Execution revalidates candidate freshness, approval, structure event, sizing, pr
 Active V2 workflow:
 
 ```text
-1H Bias → 15M MarketStructureBot → 5M ConfirmationBot → SelectionBot → fvg_context / ob_context → virtual Entry/SL/TP → Paper Observer
+1H Bias → 15M MarketStructureBot → 5M ConfirmationBot → SelectionBot → fvg_context / ob_context → virtual Entry/SL/TP → LiveDemo Observer
 ```
 
 No Stage 7 production change. Any future hypothesis requires a new experiment, deterministic comparison, and explicit acceptance decision.

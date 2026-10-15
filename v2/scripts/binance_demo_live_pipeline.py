@@ -1,6 +1,6 @@
 import hashlib
 import time
-"""Read-only paper pipeline on latest Binance Demo closed candles."""
+"""Live Demo candidate pipeline on latest Binance Demo closed candles."""
 import json
 import urllib.request
 from bisect import bisect_right
@@ -10,14 +10,15 @@ import sys
 ROOT = Path(__file__).resolve().parents[2]
 ART = ROOT / "v2" / "artifacts"
 BASE = "https://demo-fapi.binance.com"
+# Live Demo pipeline: artifact builds candidates; executor owns order side effects.
 SYMBOLS = ("BTCUSDT", "ETHUSDT", "SOLUSDT", "XAUUSDT")
 sys.path.insert(0, str(ROOT / "v2" / "scripts"))
 from architecture_v2 import ConfirmationBot, MarketBiasBot, MarketStructureBot, SelectionBot, load_csv, pivots
-from paper_context import lifecycle_context, setup_context
+from live_demo_context import lifecycle_context, setup_context
 from setup_bots_executable import build_plan, validate_entry_sl_provenance, validate_plan_economics
 
 def get(path):
-    request = urllib.request.Request(BASE + path, headers={"User-Agent": "jev-paper/1"})
+    request = urllib.request.Request(BASE + path, headers={"User-Agent": "jev-live-demo/1"})
     with urllib.request.urlopen(request, timeout=15) as response: return json.loads(response.read())
 
 def rows(symbol, interval, limit=500):
@@ -115,14 +116,14 @@ def collapse_active_plans(observations, candidates):
     for symbol_data in observations.values():
         for row in symbol_data["recent_events"]:
             candidate_id = row.get("client_order_id")
-            if row.get("virtual_entry_sl_tp") and candidate_id not in active_ids:
-                row["virtual_entry_sl_tp"] = False
-                row["virtual_order"] = False
+            if row.get("live_demo_plan") and candidate_id not in active_ids:
+                row["live_demo_plan"] = False
+                row["live_demo_order"] = False
                 row["plan_status"] = "ELIMINATED_REPLACED"
     return active
 def main():
     server_time = int(get("/fapi/v1/time")["serverTime"])
-    observations = {}; plan_candidates = []; latest_structure_event_ids = {}; latest_confirmed_structure_event_ids = {}; totals = {"bias_ready": 0, "structure_events": 0, "confirmed_5m": 0, "selected": 0, "paper_plans": 0, "gate_rejections": 0}
+    observations = {}; plan_candidates = []; latest_structure_event_ids = {}; latest_confirmed_structure_event_ids = {}; totals = {"bias_ready": 0, "structure_events": 0, "confirmed_5m": 0, "selected": 0, "live_demo_candidates": 0, "gate_rejections": 0}
     for symbol in SYMBOLS:
         h, m, q = rows(symbol, "1h"), rows(symbol, "15m"), rows(symbol, "5m")
         closed = lambda data: [x for x in data if x["close_time"] < server_time]
@@ -140,34 +141,34 @@ def main():
             if b.get("valid"): totals["bias_ready"] += 1
             if decision["state"] == "SELECTED": totals["selected"] += 1
             else: totals["gate_rejections"] += 1
-            row = {"event_id": event.event_id, "kind": event.kind, "side": event.side, "structure_index": event.index, "bias": b.get("state"), "confirmation": c["state"], "lifecycle_state": c.get("lifecycle_state"), "zone_bounds": c.get("zone_bounds"), "touch_event_id": c.get("touch_event_id"), "selection": decision["state"], "selected_setup": decision.get("selected"), "virtual_order": False}
+            row = {"event_id": event.event_id, "kind": event.kind, "side": event.side, "structure_index": event.index, "bias": b.get("state"), "confirmation": c["state"], "lifecycle_state": c.get("lifecycle_state"), "zone_bounds": c.get("zone_bounds"), "touch_event_id": c.get("touch_event_id"), "selection": decision["state"], "selected_setup": decision.get("selected"), "live_demo_order": False}
             if decision["state"] == "SELECTED":
                 entry_index = c["index"] + 1
                 if entry_index >= len(q):
-                    row["paper_rejection"] = "entry_out_of_range"
+                    row["gate_rejection"] = "entry_out_of_range"
                 else:
                     live = lifecycle_context(event, q, start, c["index"])
                     ctx = setup_context(decision["selected"], event.side, event, q[entry_index]["open"], m, event.index, hs, ls, c, live, entry_index)
                     if ctx is None:
-                        row["paper_rejection"] = "context_rejected"
+                        row["gate_rejection"] = "context_rejected"
                     else:
                         try:
                             plan = build_plan(decision["selected"], ctx)
                             provenance_ok, provenance_reason = validate_entry_sl_provenance(plan)
                             economics_ok, economics_reason = validate_plan_economics(plan)
                         except (AssertionError, KeyError, TypeError) as error:
-                            row["paper_rejection"] = f"plan_exception:{type(error).__name__}:{error}"
+                            row["gate_rejection"] = f"plan_exception:{type(error).__name__}:{error}"
                         else:
                             if not provenance_ok:
-                                row["paper_rejection"] = provenance_reason
+                                row["gate_rejection"] = provenance_reason
                             elif not economics_ok:
-                                row["paper_rejection"] = economics_reason
+                                row["gate_rejection"] = economics_reason
                             else:
-                                row.update({"virtual_order": True, "virtual_entry_sl_tp": True, "paper_plan": {"setup_id": plan.setup_id, "side": plan.side, "entry": plan.entry, "sl": plan.sl, "tp": plan.tp, "rr": plan.rr, "entry_reason": plan.entry_reason, "sl_reason": plan.sl_reason, "tp_reason": plan.tp_reason, "evidence": plan.evidence}})
+                                row.update({"live_demo_order": False, "live_demo_plan": {"setup_id": plan.setup_id, "side": plan.side, "entry": plan.entry, "sl": plan.sl, "tp": plan.tp, "rr": plan.rr, "entry_reason": plan.entry_reason, "sl_reason": plan.sl_reason, "tp_reason": plan.tp_reason, "evidence": plan.evidence}})
                                 client_order_id = "jev_" + hashlib.sha256(f"{symbol}:{plan.evidence['event_id']}".encode()).hexdigest()[:24]
                                 row["client_order_id"] = client_order_id
-                                plan_candidates.append({"client_order_id": client_order_id, "symbol": symbol, "structure_event_id": event.event_id, "structure_index": event.index, "confirmation_index": c["index"], "created_at_ms": server_time, "side": "BUY" if plan.side == "BULLISH" else "SELL", "protected_level": event.protected_level or None, "current_close": q[-1]["close"], "poi_type": plan.setup_id.split("_")[0].upper(), "poi_state": c.get("lifecycle_state"), "setup_id": plan.setup_id, "entry": plan.entry, "sl": plan.sl, "tp": plan.tp, "rr": plan.rr, "status": "READY_FOR_DEMO_EXECUTION", "evidence": plan.evidence})
-                                totals["paper_plans"] += 1
+                                plan_candidates.append({"client_order_id": client_order_id, "symbol": symbol, "structure_event_id": event.event_id, "structure_index": event.index, "confirmation_index": c["index"], "created_at_ms": server_time, "side": "BUY" if plan.side == "BULLISH" else "SELL", "protected_level": event.protected_level or None, "current_close": q[-1]["close"], "poi_type": plan.setup_id.split("_")[0].upper(), "poi_state": c.get("lifecycle_state"), "setup_id": plan.setup_id, "entry": plan.entry, "sl": plan.sl, "tp": plan.tp, "rr": plan.rr, "status": "APPROVED_FOR_EXECUTION", "evidence": plan.evidence})
+                                totals["live_demo_candidates"] += 1
             symbol_rows.append(row)
         latest_confirmed_structure_event_ids[symbol] = next((row["event_id"] for row in reversed(symbol_rows) if row.get("kind") in ("BOS", "CHoCH_MSS") and row.get("confirmation") == "CONFIRMED"), None)
         observations[symbol] = {"closed_counts": {"1h": len(h), "15m": len(m), "5m": len(q)}, "latest_closed_candle": {"1h": h[-1]["close_time"], "15m": m[-1]["close_time"], "5m": q[-1]["close_time"]}, "recent_events": symbol_rows}
@@ -178,9 +179,9 @@ def main():
     execution_candidates = collapse_active_plans(observations, plan_candidates)
     totals["selected_events"] = totals["selected"]
     totals["selected"] = len(execution_candidates)
-    totals["paper_plans"] = len(execution_candidates)
+    totals["live_demo_candidates"] = len(execution_candidates)
 
-    out = {"name": "BINANCE_DEMO_PAPER_PIPELINE", "status": "PASS", "environment": "demo-fapi", "server_time": server_time, "symbols": observations, "latest_structure_event_ids": latest_structure_event_ids, "latest_confirmed_structure_event_ids": latest_confirmed_structure_event_ids, "execution_candidates": execution_candidates, "totals": totals, "execution_status": "PAPER_ONLY", "virtual_entry_sl_tp": totals["paper_plans"] > 0, "next_action": "Demo executor may process READY_FOR_DEMO_EXECUTION candidates."}
-    (ART / "BINANCE_DEMO_PAPER_PIPELINE.json").write_text(json.dumps(out, indent=2) + "\n"); print(json.dumps(out, indent=2))
+    out = {"name": "BINANCE_DEMO_LIVE_PIPELINE", "status": "PASS", "environment": "demo-fapi", "server_time": server_time, "symbols": observations, "latest_structure_event_ids": latest_structure_event_ids, "latest_confirmed_structure_event_ids": latest_confirmed_structure_event_ids, "execution_candidates": execution_candidates, "totals": totals, "execution_status": "LIVE_DEMO", "live_demo_plan": False, "next_action": "Live Demo executor processes fresh APPROVED_FOR_EXECUTION candidates."}
+    (ART / "BINANCE_DEMO_LIVE_PIPELINE.json").write_text(json.dumps(out, indent=2) + "\n"); print(json.dumps(out, indent=2))
 
 if __name__ == "__main__": main()

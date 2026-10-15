@@ -70,8 +70,8 @@ This is an experimental order, not a claim that SMC will win.
 [4] https://link.springer.com/article/10.1007/s10479-019-03357-1
 [5] https://www.sciencedirect.com/science/article/abs/pii/S1042443122000816
 [6] https://www.sciencedirect.com/science/article/abs/pii/S1059056024003010
-[7] https://papers.ssrn.com/sol3/papers.cfm?abstract_id=3387950
-[8] https://papers.ssrn.com/sol3/papers.cfm?abstract_id=4675565
+[7] https://live_demos.ssrn.com/sol3/live_demos.cfm?abstract_id=3387950
+[8] https://live_demos.ssrn.com/sol3/live_demos.cfm?abstract_id=4675565
 [9] https://www.sciencedirect.com/science/article/abs/pii/S0275531921002130
 [10] https://arxiv.org/html/2502.13722v2
 [11] https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data

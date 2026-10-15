@@ -175,7 +175,7 @@ A candidate may be selected for research role without being declared profitable.
 
 - White, A Reality Check for Data Snooping: https://www.jstor.org/stable/2999444
 - White Reality Check PDF: https://users.ssc.wisc.edu/~behansen/718/White2000.pdf
-- Deflated Sharpe Ratio: https://www.davidhbailey.com/dhbpapers/deflated-sharpe.pdf
+- Deflated Sharpe Ratio: https://www.davidhbailey.com/dhblive_demos/deflated-sharpe.pdf
 - Technical trading and cryptocurrencies: https://link.springer.com/article/10.1007/s10479-019-03357-1
 - Technical analysis, transaction costs and bubbles: https://www.sciencedirect.com/science/article/abs/pii/S1042443122000816
 - Event-study methodology reference: https://www.eventstudytools.com/introduction-event-study-methodology

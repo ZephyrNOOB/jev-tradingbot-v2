@@ -101,7 +101,7 @@ Binance Futures Testnet is suitable for sandbox execution testing. Historical ca
 
 - Binance USDⓈ-M Futures Kline/Candlestick API: https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data
 - Binance Futures API general information: https://developers.binance.com/en/docs/products/derivatives-trading-usds-futures/general-info
-- Moskowitz, Ooi, Pedersen, Time Series Momentum: https://papers.ssrn.com/sol3/papers.cfm?abstract_id=2089463
-- The Significance of Technical Trading-Rule Profits: https://www.nber.org/papers/w3818
+- Moskowitz, Ooi, Pedersen, Time Series Momentum: https://live_demos.ssrn.com/sol3/live_demos.cfm?abstract_id=2089463
+- The Significance of Technical Trading-Rule Profits: https://www.nber.org/live_demos/w3818
 - Wilder ATR reference: https://ta-lib.github.io/ta-doc/indicator/ATR.htm
 - LuxAlgo ADX/DMI concept reference: https://www.luxalgo.com/library/concept/adx-dmi-system/

@@ -136,12 +136,12 @@ Status: COMPLETE — READ-ONLY, NO ORDER SUBMISSION
 - Missing or partial protective orders produce explicit safety blockers.
 - No order or setup decision is created by this stage.
 
-The active architecture remains the Stage 6-locked V2 paper workflow:
+The active architecture remains the Stage 6-locked V2 live_demo workflow:
 
 Stage 8 is implemented as a guarded Demo execution path, but remains blocked until a fresh approved candidate exists and the user provides explicit immediate approval in the execution request.
 
 ```text
-1H Bias → 15M MarketStructureBot → 5M ConfirmationBot → SelectionBot → fvg_context / ob_context → virtual Entry/SL/TP → Paper Observer
+1H Bias → 15M MarketStructureBot → 5M ConfirmationBot → SelectionBot → fvg_context / ob_context → virtual Entry/SL/TP → LiveDemo Observer
 ```
 
 Stage 7 results are retained only as research context. Do not resume or promote its hypotheses without a new explicit experiment and acceptance decision.

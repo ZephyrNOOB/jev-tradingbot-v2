@@ -3,7 +3,7 @@ from pathlib import Path
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'v2' / 'scripts'))
-from binance_demo_paper_pipeline import invalidate_stale_candidates
+from binance_demo_live_pipeline import invalidate_stale_candidates
 
 
 class CandidateInvalidationTests(unittest.TestCase):

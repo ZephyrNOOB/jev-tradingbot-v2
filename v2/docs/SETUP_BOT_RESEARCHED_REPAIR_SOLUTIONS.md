@@ -9,7 +9,7 @@ Source artifacts:
 - `v2/artifacts/ARCHITECTURE_V2_BACKTEST.json`
 - `v2/artifacts/ARCHITECTURE_V2_TRADES.json`
 - `v2/scripts/architecture_v2.py`
-- `v2/scripts/paper_context.py`
+- `v2/scripts/live_demo_context.py`
 - `v2/scripts/setup_bots_executable.py`
 
 ## Shared rule
@@ -233,7 +233,7 @@ confirmed displacement/BOS
 → entry
 ```
 
-The source candle is eligible only if it is linked to the confirmed displacement event, not merely directionally opposite within a lookback window. Order-flow literature supports treating price impact as a function of supply-demand imbalance and available depth, but OHLCV is not L2 order flow. Bouchaud et al. find a relation between order-flow imbalance and price change, with slope related to market depth: https://papers.ssrn.com/sol3/papers.cfm?abstract_id=1712822
+The source candle is eligible only if it is linked to the confirmed displacement event, not merely directionally opposite within a lookback window. Order-flow literature supports treating price impact as a function of supply-demand imbalance and available depth, but OHLCV is not L2 order flow. Bouchaud et al. find a relation between order-flow imbalance and price change, with slope related to market depth: https://live_demos.ssrn.com/sol3/live_demos.cfm?abstract_id=1712822
 
 Required object fields:
 
@@ -317,7 +317,7 @@ participation_proxy_or_L2
 participation_alignment
 ```
 
-Use true order-flow imbalance only with trade/order-book data. Existing `taker_buy_volume` is a directional volume proxy. Literature finds order-flow imbalance can explain short-horizon price changes, but the result is data-type-specific: https://papers.ssrn.com/sol3/papers.cfm?abstract_id=1712822
+Use true order-flow imbalance only with trade/order-book data. Existing `taker_buy_volume` is a directional volume proxy. Literature finds order-flow imbalance can explain short-horizon price changes, but the result is data-type-specific: https://live_demos.ssrn.com/sol3/live_demos.cfm?abstract_id=1712822
 
 Selection repair:
 

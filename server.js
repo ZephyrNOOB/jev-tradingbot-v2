@@ -83,11 +83,11 @@ const demoCycleSummaries = new Map();
 const demoExecutionSummaries = new Map();
 const executionAttempts = new Map();
 const marketObservers = new Map();
-const PAPER_INTERVAL_MS = 60_000;
+const MARKET_INTERVAL_MS = 60_000;
 const EXECUTION_INTERVAL_MS = 5_000;
-const PAPER_STALE_AFTER_MS = 15 * 60_000;
-const PAPER_POLL_TIMEOUT_MS = 10_000;
-const PAPER_SYMBOLS = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XAUUSDT'];
+const LIVE_DEMO_STALE_AFTER_MS = 15 * 60_000;
+const MARKET_POLL_TIMEOUT_MS = 10_000;
+const SUPPORTED_SYMBOLS = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XAUUSDT'];
 const DB_PATH = path.join(__dirname, 'jev.db');
 const KEY_PATH = path.join(__dirname, '.jev-master-key');
 const isProduction = process.env.NODE_ENV === 'production';
@@ -268,9 +268,9 @@ app.put('/api/trade-amount', auth, (req, res) => {
 async function readClosedCandleWatermark() {
   const now = Date.now();
   const signatures = {};
-  for (const symbol of PAPER_SYMBOLS) {
+  for (const symbol of SUPPORTED_SYMBOLS) {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), PAPER_POLL_TIMEOUT_MS);
+    const timeout = setTimeout(() => controller.abort(), MARKET_POLL_TIMEOUT_MS);
     try {
       const url = BINANCE_DATA_BASE + '/fapi/v1/klines?symbol=' + encodeURIComponent(symbol) + '&interval=5m&limit=2';
       const response = await fetchBinance(url, { signal: controller.signal });
@@ -279,7 +279,7 @@ async function readClosedCandleWatermark() {
       const latest = data.filter(row => Number(row[6]) < now).at(-1);
       if (!latest) throw new Error('No closed 5m candle: ' + symbol);
       const age = now - Number(latest[6]);
-      if (age < 0 || age > PAPER_STALE_AFTER_MS) throw new Error('Stale 5m candle: ' + symbol);
+      if (age < 0 || age > LIVE_DEMO_STALE_AFTER_MS) throw new Error('Stale 5m candle: ' + symbol);
       signatures[symbol] = Number(latest[6]);
     } finally { clearTimeout(timeout); }
   }
@@ -289,12 +289,12 @@ function startMarketObserver() {
   if (marketObservers.has('global')) return marketObservers.get('global');
   const observer = { timer: null, watermark: {}, error: null, last_polled_at: null };
   const poll = async () => { try { observer.watermark = await readClosedCandleWatermark(); observer.last_polled_at = Date.now(); observer.error = null; } catch (error) { observer.error = error?.name === 'AbortError' ? 'candle_poll_timeout' : (error?.message || 'candle_poll_failed'); } };
-  observer.timer = setInterval(poll, PAPER_INTERVAL_MS);
+  observer.timer = setInterval(poll, MARKET_INTERVAL_MS);
   marketObservers.set('global', observer);
   poll();
   return observer;
 }
-function stopPaperRunner(sid, error = null) {
+function stopLiveDemoRunner(sid, error = null) {
   const runner = botRunners.get(sid);
   if (!runner) return;
   if (runner.timer) clearInterval(runner.timer);
@@ -303,30 +303,30 @@ function stopPaperRunner(sid, error = null) {
   if (error) runner.error = error;
   botRunners.delete(sid);
 }
-async function runPaperCycle(sid) {
+async function runLiveDemoWorkflowCycle(sid) {
   const runner = botRunners.get(sid);
   if (!runner || runner.running) return;
   runner.running = true;
   runner.last_started_at = Date.now();
   try {
-    await new Promise((resolve, reject) => execFile(process.env.PYTHON || 'python', [path.join(__dirname, 'v2', 'scripts', 'binance_demo_paper_pipeline.py')], { cwd: __dirname, timeout: 90_000, windowsHide: true, shell: process.platform === 'win32', maxBuffer: 1_000_000 }, error => error ? reject(error) : resolve()));
+    await new Promise((resolve, reject) => execFile(process.env.PYTHON || 'python', [path.join(__dirname, 'v2', 'scripts', 'binance_demo_live_pipeline.py')], { cwd: __dirname, timeout: 90_000, windowsHide: true, shell: false, maxBuffer: 1_000_000 }, error => error ? reject(error) : resolve()));
     runner.error = null;
-    const artifact = JSON.parse(fs.readFileSync(path.join(__dirname, 'v2', 'artifacts', 'BINANCE_DEMO_PAPER_PIPELINE.json'), 'utf8'));
+    const artifact = JSON.parse(fs.readFileSync(path.join(__dirname, 'v2', 'artifacts', 'BINANCE_DEMO_LIVE_PIPELINE.json'), 'utf8'));
     demoCycleSummaries.set(sid, { ...summarizeDemoDryRun(artifact), observedAt: new Date().toISOString() });
     runner.cycles += 1;
   } catch (error) {
-    runner.error = error?.message || 'paper_cycle_failed';
+    runner.error = error?.message || 'live_demo_workflow_cycle_failed';
     runner.last_error_at = Date.now();
   } finally { runner.running = false; runner.last_finished_at = Date.now(); }
 }
-function startPaperRunner(sid) {
+function startLiveDemoWorkflowRunner(sid) {
   const existing = botRunners.get(sid);
   if (existing?.timer) return existing;
   const runner = existing || { timer: null, running: false, cycles: 0, error: null, last_started_at: null, last_finished_at: null };
   runner.error = null;
-  runner.timer = setInterval(() => runPaperCycle(sid), PAPER_INTERVAL_MS);
+  runner.timer = setInterval(() => runLiveDemoWorkflowCycle(sid), MARKET_INTERVAL_MS);
   botRunners.set(sid, runner);
-  runPaperCycle(sid);
+  runLiveDemoWorkflowCycle(sid);
   return runner;
 }app.get('/api/bot/status', auth, (req, res) => {
   const runner = botRunners.get('execution:' + req.cookies.sid) || botRunners.get('global');
@@ -362,24 +362,24 @@ app.get('/api/binance-demo/live-readiness', auth, async (req, res) => {
     startBinanceUserStream(String(req.userId), apiKey, event => {
       if (event?.e === 'ORDER_TRADE_UPDATE') demoExecutionSummaries.set(String(req.userId), { status: event.o?.X || 'ORDER_UPDATE', symbol: event.o?.s, orderId: event.o?.i, clientOrderId: event.o?.c, updatedAt: new Date().toISOString() });
     }).catch(() => null);
-    const signed = async (apiPath, params = {}) => {
+    const signed = async (method, apiPath, params = {}) => {
       const query = new URLSearchParams({ ...params, recvWindow: '5000', timestamp: String(Date.now()) });
       const queryString = query.toString();
-      const response = await fetchBinance(EXCHANGES.binanceTestnet.base + apiPath + '?' + queryString + '&signature=' + binanceSignature(secret, queryString), { headers: { 'X-MBX-APIKEY': apiKey }, signal: AbortSignal.timeout(10000) });
-      const data = await response.json(); if (!response.ok) throw new Error(data?.msg || 'Binance Demo readiness failed'); return data;
+      const response = await fetchBinance(EXCHANGES.binanceTestnet.base + apiPath + '?' + queryString + '&signature=' + binanceSignature(secret, queryString), { method, headers: { 'X-MBX-APIKEY': apiKey }, signal: AbortSignal.timeout(10000) });
+            const data = await response.json(); if (!response.ok) throw new Error(`BINANCE_${method}_${apiPath}_${response.status}: ${data?.msg || 'readiness failed'}`); return data;
     };
-    const [exchangeInfo, account, positions, income] = await Promise.all([fetchExchangeInfo(), signed('/fapi/v2/account'), signed('/fapi/v2/positionRisk'), signed('/fapi/v1/income', { incomeType: 'REALIZED_PNL', startTime: String(Date.now() - 24 * 60 * 60 * 1000), limit: '1000' })]);
-    const filters = Object.fromEntries(exchangeInfo.symbols.filter(x => PAPER_SYMBOLS.includes(x.symbol)).map(x => [x.symbol, { filters: x.filters.filter(f => ['LOT_SIZE', 'PRICE_FILTER', 'MIN_NOTIONAL', 'NOTIONAL'].includes(f.filterType)) }]));
+    const [exchangeInfo, account, positions, income] = await Promise.all([fetchExchangeInfo(), signed('GET', '/fapi/v2/account'), signed('GET', '/fapi/v2/positionRisk'), signed('GET', '/fapi/v1/income', { incomeType: 'REALIZED_PNL', startTime: String(Date.now() - 24 * 60 * 60 * 1000), limit: '1000' })]);
+    const filters = Object.fromEntries(exchangeInfo.symbols.filter(x => SUPPORTED_SYMBOLS.includes(x.symbol)).map(x => [x.symbol, { filters: x.filters.filter(f => ['LOT_SIZE', 'PRICE_FILTER', 'MIN_NOTIONAL', 'NOTIONAL'].includes(f.filterType)) }]));
     const balances = (account.assets || []).filter(x => x.asset === 'USDT').map(x => ({ asset: x.asset, availableBalance: Number(x.availableBalance) }));
     const executionPolicy = { tradeAmountUsdt: Number(tradeAmount?.amount_usdt) };
-    const artifact = JSON.parse(fs.readFileSync(path.join(__dirname, 'v2', 'artifacts', 'BINANCE_DEMO_PAPER_PIPELINE.json'), 'utf8'));
+    const artifact = JSON.parse(fs.readFileSync(path.join(__dirname, 'v2', 'artifacts', 'BINANCE_DEMO_LIVE_PIPELINE.json'), 'utf8'));
     const dailyPnl = Array.isArray(income) ? income.reduce((total, row) => total + Number(row.income || 0), 0) : 0;
     const artifactFreshness = validateCandidateFreshness(artifact, artifact.execution_candidates?.[0]);
     if (!artifactFreshness.ok) blockers.push(artifactFreshness.reason);
     const candidates = (artifact.execution_candidates || []).map(candidate => { const freshness = validateCandidateFreshness(artifact, candidate); const normalized = normalizeCandidatePrices(candidate, filters[candidate.symbol]); const sizing = sizeCandidate(normalized, executionPolicy, balances[0] || {}, filters[candidate.symbol]); return { candidate: normalized, freshness, sizing, precision: validateCandidatePrecision(normalized, sizing, filters[candidate.symbol]) }; });
     if (!candidates.some(x => x.freshness.ok && x.sizing.status === 'SIZED' && x.precision === 'VALID')) blockers.push('NO_VALID_SERVER_SIZED_CANDIDATE');
     const openPositions = positions.filter(position => Number(position.positionAmt) !== 0);
-    const openOrders = await Promise.all(PAPER_SYMBOLS.map(symbol => signed('/fapi/v1/openOrders', { symbol }))).then(groups => groups.flat());
+    const openOrders = await Promise.all(SUPPORTED_SYMBOLS.map(symbol => signed('GET', '/fapi/v1/openOrders', { symbol }))).then(groups => groups.flat());
     const monitoring = monitorProtectionState(artifact.execution_candidates || [], openOrders, openPositions);
     blockers.push(...readinessBlockers(monitoring));
     res.json({ ok: true, ready: blockers.length === 0, demoOnly: true, blockers, userStream: getBinanceUserStreamState(String(req.userId)), candidateCount: candidates.length, validCandidateCount: candidates.filter(x => x.sizing.status === 'SIZED' && x.precision === 'VALID').length, ordersSent: false, withdrawalsSent: false });
@@ -390,19 +390,20 @@ app.get('/api/binance-demo/live-readiness', auth, async (req, res) => {
   if (!keyRow) return res.status(400).json({ ok: false, error: 'Connected Binance Demo key required' });
   try {
     const apiKey = decryptSecret(keyRow.api_key), secret = decryptSecret(keyRow.secret_key);
-    const signed = async (apiPath, params = {}) => {
+    const signed = async (method, apiPath, params = {}) => {
       const query = new URLSearchParams({ ...params, recvWindow: '5000', timestamp: String(Date.now()) });
       const queryString = query.toString();
       const controller = new AbortController(); const timeout = setTimeout(() => controller.abort(), 10000);
-      let r; try { r = await fetchBinance(EXCHANGES.binanceTestnet.base + apiPath + '?' + queryString + '&signature=' + binanceSignature(secret, queryString), { headers: { 'X-MBX-APIKEY': apiKey }, signal: controller.signal }); } finally { clearTimeout(timeout); }
-      const data = await r.json(); if (!r.ok) throw new Error(data?.msg || 'Binance Demo request failed'); return data;
+      let r; try { r = await fetchBinance(EXCHANGES.binanceTestnet.base + apiPath + '?' + queryString + '&signature=' + binanceSignature(secret, queryString), { method, headers: { 'X-MBX-APIKEY': apiKey }, signal: controller.signal }); } finally { clearTimeout(timeout); }
+            const text = await r.text(); let data; try { data = text ? JSON.parse(text) : null; } catch { data = null; }
+            if (!r.ok) throw new Error(`BINANCE_${method}_${apiPath}_${r.status}: ${data?.msg || text.slice(0, 300) || 'empty response'}`); return data;
     };
-    const [exchangeInfo, account, positions, income] = await Promise.all([fetchExchangeInfo(), signed('/fapi/v2/account'), signed('/fapi/v2/positionRisk'), signed('/fapi/v1/income', { incomeType: 'REALIZED_PNL', startTime: String(Date.now() - 24 * 60 * 60 * 1000), limit: '1000' })]);
-    const filters = Object.fromEntries(exchangeInfo.symbols.filter(x => PAPER_SYMBOLS.includes(x.symbol)).map(x => [x.symbol, { status: x.status, quantityPrecision: x.quantityPrecision, pricePrecision: x.pricePrecision, filters: x.filters.filter(f => ['LOT_SIZE', 'PRICE_FILTER', 'MIN_NOTIONAL', 'NOTIONAL'].includes(f.filterType)) }]));
+    const [exchangeInfo, account, positions, income] = await Promise.all([fetchExchangeInfo(), signed('GET', '/fapi/v2/account'), signed('GET', '/fapi/v2/positionRisk'), signed('GET', '/fapi/v1/income', { incomeType: 'REALIZED_PNL', startTime: String(Date.now() - 24 * 60 * 60 * 1000), limit: '1000' })]);
+    const filters = Object.fromEntries(exchangeInfo.symbols.filter(x => SUPPORTED_SYMBOLS.includes(x.symbol)).map(x => [x.symbol, { status: x.status, quantityPrecision: x.quantityPrecision, pricePrecision: x.pricePrecision, filters: x.filters.filter(f => ['LOT_SIZE', 'PRICE_FILTER', 'MIN_NOTIONAL', 'NOTIONAL'].includes(f.filterType)) }]));
     const balances = (account.assets || []).filter(x => ['USDT', 'USDC'].includes(x.asset)).map(x => ({ asset: x.asset, walletBalance: Number(x.walletBalance), availableBalance: Number(x.availableBalance), unrealizedProfit: Number(x.unrealizedProfit) }));
     const openPositions = positions.filter(x => Number(x.positionAmt) !== 0).map(x => ({ symbol: x.symbol, positionAmt: Number(x.positionAmt), entryPrice: Number(x.entryPrice), unrealizedProfit: Number(x.unRealizedProfit), isolated: x.marginType === 'isolated' }));
     const executionPolicy = { tradeAmountUsdt: Number(tradeAmount?.amount_usdt) };
-    const artifact = JSON.parse(fs.readFileSync(path.join(__dirname, 'v2', 'artifacts', 'BINANCE_DEMO_PAPER_PIPELINE.json'), 'utf8'));
+    const artifact = JSON.parse(fs.readFileSync(path.join(__dirname, 'v2', 'artifacts', 'BINANCE_DEMO_LIVE_PIPELINE.json'), 'utf8'));
     const dailyPnl = Array.isArray(income) ? income.reduce((total, row) => total + Number(row.income || 0), 0) : 0;
     const candidates = (artifact.execution_candidates || []).map(candidate => { const freshness = validateCandidateFreshness(artifact, candidate); const normalized = normalizeCandidatePrices(candidate, filters[candidate.symbol]); const sizing = sizeCandidate(normalized, executionPolicy, balances.find(x => x.asset === 'USDT') || {}, filters[candidate.symbol]); return { ...candidate, freshness, normalized, sizing, precisionValidation: validateCandidatePrecision(normalized, sizing, filters[candidate.symbol]) }; });
     const validCandidates = candidates.filter(x => x.freshness.ok && x.sizing.status === 'SIZED' && x.precisionValidation === 'VALID');
@@ -414,16 +415,16 @@ app.get('/api/binance-demo/reconciliation', auth, async (req, res) => {
   if (!keyRow) return res.status(400).json({ ok: false, error: 'Connected Binance Demo key required' });
   try {
     const apiKey = decryptSecret(keyRow.api_key), secret = decryptSecret(keyRow.secret_key);
-    const signed = async (apiPath, params = {}) => {
+    const signed = async (method, apiPath, params = {}) => {
       const query = new URLSearchParams({ ...params, recvWindow: '5000', timestamp: String(Date.now()) });
       const queryString = query.toString();
-      const response = await fetchBinance(EXCHANGES.binanceTestnet.base + apiPath + '?' + queryString + '&signature=' + binanceSignature(secret, queryString), { headers: { 'X-MBX-APIKEY': apiKey }, signal: AbortSignal.timeout(10000) });
+      const response = await fetchBinance(EXCHANGES.binanceTestnet.base + apiPath + '?' + queryString + '&signature=' + binanceSignature(secret, queryString), { method, headers: { 'X-MBX-APIKEY': apiKey }, signal: AbortSignal.timeout(10000) });
       const data = await response.json();
       if (!response.ok) throw new Error(data?.msg || 'Binance Demo reconciliation failed');
       return data;
     };
-    const [positions, ordersBySymbol] = await Promise.all([signed('/fapi/v2/positionRisk'), Promise.all(PAPER_SYMBOLS.map(symbol => signed('/fapi/v1/openOrders', { symbol }))) ]);
-    const artifact = JSON.parse(fs.readFileSync(path.join(__dirname, 'v2', 'artifacts', 'BINANCE_DEMO_PAPER_PIPELINE.json'), 'utf8'));
+    const [positions, ordersBySymbol] = await Promise.all([signed('GET', '/fapi/v2/positionRisk'), Promise.all(SUPPORTED_SYMBOLS.map(symbol => signed('GET', '/fapi/v1/openOrders', { symbol }))) ]);
+    const artifact = JSON.parse(fs.readFileSync(path.join(__dirname, 'v2', 'artifacts', 'BINANCE_DEMO_LIVE_PIPELINE.json'), 'utf8'));
     const candidates = (artifact.execution_candidates || []).filter(candidate => validateCandidateFreshness(artifact, candidate).ok);
     const reconciliation = reconcileDemoState(candidates, ordersBySymbol.flat(), positions);
     const monitoring = monitorProtectionState(candidates, ordersBySymbol.flat(), positions);
@@ -443,24 +444,31 @@ async function loadServerExecutionCandidate(userId, candidateId) {
   const tradeAmountRow = get('SELECT amount_usdt FROM trade_amounts WHERE user_id = ?', [userId]);
   if (!keyRow) return { error: 'Connected Binance Demo key required' };
   const apiKey = decryptSecret(keyRow.api_key), secret = decryptSecret(keyRow.secret_key);
-  const signed = async (apiPath, params = {}) => {
+  const signed = async (method, apiPath, params = {}) => {
     const query = new URLSearchParams({ ...params, recvWindow: '5000', timestamp: String(Date.now()) });
     const queryString = query.toString();
-    const response = await fetchBinance(EXCHANGES.binanceTestnet.base + apiPath + '?' + queryString + '&signature=' + binanceSignature(secret, queryString), { headers: { 'X-MBX-APIKEY': apiKey }, signal: AbortSignal.timeout(10000) });
-    const data = await response.json();
-    if (!response.ok) throw new Error(data?.msg || 'Binance Demo execution preflight failed');
-    return data;
+    const url = EXCHANGES.binanceTestnet.base + apiPath + '?' + queryString + '&signature=' + binanceSignature(secret, queryString);
+    try {
+      const response = await fetchBinance(url, { method, headers: { 'X-MBX-APIKEY': apiKey }, signal: AbortSignal.timeout(10000) });
+      const text = await response.text();
+      let data; try { data = text ? JSON.parse(text) : null; } catch { data = null; }
+      if (!response.ok) throw new Error(`BINANCE_${method}_${apiPath}_${response.status}: ${data?.msg || text.slice(0, 300) || 'empty response'}`);
+      return data;
+    } catch (error) {
+      const reason = error?.name === 'TimeoutError' || error?.name === 'AbortError' ? 'timeout' : error?.message || String(error);
+      throw new Error(`BINANCE_${method}_${apiPath}: ${reason}`);
+    }
   };
   const [exchangeInfo, account, positions, income] = await Promise.all([
     fetchExchangeInfo(),
-    signed('/fapi/v2/account'), signed('/fapi/v2/positionRisk'),
-    signed('/fapi/v1/income', { incomeType: 'REALIZED_PNL', startTime: String(Date.now() - 24 * 60 * 60 * 1000), limit: '1000' })
+    signed('GET', '/fapi/v2/account'), signed('GET', '/fapi/v2/positionRisk'),
+    signed('GET', '/fapi/v1/income', { incomeType: 'REALIZED_PNL', startTime: String(Date.now() - 24 * 60 * 60 * 1000), limit: '1000' })
   ]);
-  const filters = Object.fromEntries(exchangeInfo.symbols.filter(x => PAPER_SYMBOLS.includes(x.symbol)).map(x => [x.symbol, { filters: x.filters.filter(f => ['LOT_SIZE', 'PRICE_FILTER', 'MIN_NOTIONAL', 'NOTIONAL'].includes(f.filterType)) }]));
+  const filters = Object.fromEntries(exchangeInfo.symbols.filter(x => SUPPORTED_SYMBOLS.includes(x.symbol)).map(x => [x.symbol, { filters: x.filters.filter(f => ['LOT_SIZE', 'PRICE_FILTER', 'MIN_NOTIONAL', 'NOTIONAL'].includes(f.filterType)) }]));
   const balance = (account.assets || []).find(x => x.asset === 'USDT');
   const settings = { tradeAmountUsdt: Number(tradeAmountRow?.amount_usdt) };
   const dailyPnl = Array.isArray(income) ? income.reduce((total, row) => total + Number(row.income || 0), 0) : 0;
-    const artifact = JSON.parse(fs.readFileSync(path.join(__dirname, 'v2', 'artifacts', 'BINANCE_DEMO_PAPER_PIPELINE.json'), 'utf8'));
+    const artifact = JSON.parse(fs.readFileSync(path.join(__dirname, 'v2', 'artifacts', 'BINANCE_DEMO_LIVE_PIPELINE.json'), 'utf8'));
   const candidate = (artifact.execution_candidates || []).find(x => x.client_order_id === candidateId);
   if (!candidate) return { error: 'Execution candidate not found' };
   const freshness = validateCandidateFreshness(artifact, candidate);
@@ -486,7 +494,7 @@ async function syncTradeHistory(userId) {
     if (!response.ok || !Array.isArray(data)) throw new Error(data?.msg || 'Trade history sync failed');
     return data;
   };
-  for (const symbol of PAPER_SYMBOLS) for (const trade of await signed(symbol)) {
+  for (const symbol of SUPPORTED_SYMBOLS) for (const trade of await signed(symbol)) {
     const orderId = String(trade.orderId || '');
     if (!orderId || get('SELECT id FROM trade_history WHERE user_id = ? AND order_id = ? AND price = ?', [userId, orderId, Number(trade.price)]) ) continue;
     const candidate = get('SELECT setup_id, structure_event_id, client_order_id FROM trade_history WHERE user_id = ? AND order_id = ? LIMIT 1', [userId, orderId]);
@@ -494,7 +502,7 @@ async function syncTradeHistory(userId) {
   }
 }
 function markCandidateInvalidated(clientOrderId, status = 'INVALIDATED_NOT_FILLED') {
-  const artifactPath = path.join(__dirname, 'v2', 'artifacts', 'BINANCE_DEMO_PAPER_PIPELINE.json');
+  const artifactPath = path.join(__dirname, 'v2', 'artifacts', 'BINANCE_DEMO_LIVE_PIPELINE.json');
   const artifact = JSON.parse(fs.readFileSync(artifactPath, 'utf8'));
   let changed = false;
   for (const candidate of artifact.execution_candidates || []) {
@@ -521,7 +529,10 @@ async function executeDemoCandidate(req, res) {
     if (!permission.allowed) return res.status(409).json({ ok: false, demoOnly: true, ...permission, order, ordersSent: false, withdrawalsSent: false });
     if (req.body?.explicitApproval !== true && req.internalRunner !== true) return res.status(409).json({ ok: false, demoOnly: true, status: 'EXPLICIT_APPROVAL_REQUIRED', reason: 'First Demo order requires immediate user approval', order, ordersSent: false, withdrawalsSent: false });
     let existing = null;
-    try { existing = await signed('GET', '/fapi/v1/order', { symbol: candidate.symbol, origClientOrderId: candidate.client_order_id }); } catch {}
+    try { existing = await signed('GET', '/fapi/v1/order', { symbol: candidate.symbol, origClientOrderId: candidate.client_order_id }); }
+    catch (error) {
+      if (!/_(404|400):/.test(error.message) || !/Unknown order|Order does not exist/i.test(error.message)) throw error;
+    }
     if (existing?.status === 'FILLED') return res.json({ ok: true, demoOnly: true, idempotent: true, status: 'ENTRY_ALREADY_FILLED', entry: existing, ordersSent: true, withdrawalsSent: false });
     if (existing && ['NEW', 'PARTIALLY_FILLED'].includes(existing.status)) return res.status(409).json({ ok: false, demoOnly: true, status: 'ENTRY_ALREADY_OPEN', entry: existing, ordersSent: true, withdrawalsSent: false });
     demoExecutionSummaries.set(String(req.userId), { status: 'ORDER_SUBMIT', clientOrderId: candidate.client_order_id, attemptAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
@@ -558,7 +569,8 @@ async function executeDemoCandidate(req, res) {
       catch (error) { return res.status(502).json({ ok: false, demoOnly: true, status: 'PROTECTION_VERIFICATION_FAILED_EMERGENCY_CLOSE_FAILED', entry: current, protection, emergencyCloseError: error.message, ordersSent: true, withdrawalsSent: false }); }
       return res.status(502).json({ ok: false, demoOnly: true, status: 'PROTECTION_VERIFICATION_FAILED_POSITION_CLOSED', entry: current, protection, emergencyClose, ordersSent: true, withdrawalsSent: false });
     }
-    res.json({ ok: true, demoOnly: true, status: 'FILLED_PROTECTED', entry: current, protection, protectionVerified: true, ordersSent: true, withdrawalsSent: false });
+    demoExecutionSummaries.set(String(req.userId), { status: 'FILLED_PROTECTED', orderId: current.orderId, clientOrderId: candidate.client_order_id, attemptAt: new Date().toISOString(), updatedAt: new Date().toISOString(), protectionVerified: true });
+        return res.json({ ok: true, demoOnly: true, status: 'FILLED_PROTECTED', entry: current, protection, protectionVerified: true, ordersSent: true, withdrawalsSent: false });
   } catch (error) { res.status(502).json({ ok: false, demoOnly: true, error: error.message || 'Binance Demo execution failed', ordersSent: false, withdrawalsSent: false }); }
 }
 app.post('/api/binance-demo/execute-candidate', auth, executeDemoCandidate);
@@ -566,17 +578,17 @@ app.post('/api/binance-demo/execute-candidate', auth, executeDemoCandidate);
 async function runExecutionCycle(sid) {
   if (botStates.get(sid) !== true) return;
   let artifact;
-  try { artifact = JSON.parse(fs.readFileSync(path.join(__dirname, 'v2', 'artifacts', 'BINANCE_DEMO_PAPER_PIPELINE.json'), 'utf8')); } catch (error) {
+  try { artifact = JSON.parse(fs.readFileSync(path.join(__dirname, 'v2', 'artifacts', 'BINANCE_DEMO_LIVE_PIPELINE.json'), 'utf8')); } catch (error) {
     demoExecutionSummaries.set(sid, { status: 'ARTIFACT_UNAVAILABLE', error: error.message, updatedAt: new Date().toISOString() });
     return;
   }
-  if (artifact.status !== 'PASS' || !Number.isFinite(Number(artifact.server_time)) || Date.now() - Number(artifact.server_time) > PAPER_STALE_AFTER_MS) {
+  if (artifact.status !== 'PASS' || !Number.isFinite(Number(artifact.server_time)) || Date.now() - Number(artifact.server_time) > LIVE_DEMO_STALE_AFTER_MS) {
     demoExecutionSummaries.set(sid, { status: 'ARTIFACT_STALE', updatedAt: new Date().toISOString() });
     return;
   }
   for (const candidate of (artifact.execution_candidates || [])) {
     const freshness = validateCandidateFreshness(artifact, candidate);
-    if (!freshness.ok) continue;
+    if (!freshness.ok || candidate.status !== 'APPROVED_FOR_EXECUTION') continue;
     if (botStates.get(sid) !== true) return;
     const key = sid + ":" + candidate.client_order_id;
     if (!candidate.client_order_id || executionAttempts.has(key)) continue;
@@ -613,12 +625,12 @@ function stopExecutionRunner(sid) {
   if (runner?.timer) clearInterval(runner.timer);
   botRunners.delete(key);
 }app.get('/api/v2/status', auth, (req, res) => {
-  const artifactPath = path.join(__dirname, 'v2', 'artifacts', 'BINANCE_DEMO_PAPER_PIPELINE.json');
+  const artifactPath = path.join(__dirname, 'v2', 'artifacts', 'BINANCE_DEMO_LIVE_PIPELINE.json');
   try {
     const artifact = JSON.parse(fs.readFileSync(artifactPath, 'utf8'));
     res.json({ ok: true, workflow: '1H Bias → 15M MarketStructureBot → 5M ConfirmationBot → SelectionBot → SetupBot', activeSetups: ['fvg_context', 'ob_context'], artifact });
   } catch {
-    res.status(503).json({ ok: false, error: 'V2 paper artifact unavailable' });
+    res.status(503).json({ ok: false, error: 'V2 Live Demo workflow artifact unavailable' });
   }
 });
 const EXCHANGES = {
@@ -631,13 +643,13 @@ const BINANCE_DEMO_FUTURES_BASE = 'https://demo-fapi.binance.com';
 const BINANCE_DATA_BASE = BINANCE_DEMO_FUTURES_BASE;
 startBinanceMarketStream();
 startMarketObserver();
-startPaperRunner('global');
+startLiveDemoWorkflowRunner('global');
 
 app.get('/api/chart/candles', auth, async (req, res) => {
   const symbol = String(req.query.symbol || '').toUpperCase();
   const interval = String(req.query.interval || '5m');
   const limit = Math.min(200, Math.max(30, Number(req.query.limit) || 120));
-  if (!PAPER_SYMBOLS.includes(symbol) || !['1h', '15m', '5m'].includes(interval)) return res.status(400).json({ error: 'Unsupported chart request' });
+  if (!SUPPORTED_SYMBOLS.includes(symbol) || !['1h', '15m', '5m'].includes(interval)) return res.status(400).json({ error: 'Unsupported chart request' });
   try {
     const candles = await fetchBinanceCandles(symbol, interval, limit);
     res.json({ ok: true, symbol, interval, candles });
@@ -647,9 +659,9 @@ app.get('/api/chart/candles', auth, async (req, res) => {
 });
 app.get('/api/chart/structure', auth, (req, res) => {
   const symbol = String(req.query.symbol || '').toUpperCase();
-  if (!PAPER_SYMBOLS.includes(symbol)) return res.status(400).json({ ok: false, error: 'Unsupported chart symbol' });
+  if (!SUPPORTED_SYMBOLS.includes(symbol)) return res.status(400).json({ ok: false, error: 'Unsupported chart symbol' });
   try {
-    const artifact = JSON.parse(fs.readFileSync(path.join(__dirname, 'v2', 'artifacts', 'BINANCE_DEMO_PAPER_PIPELINE.json'), 'utf8'));
+    const artifact = JSON.parse(fs.readFileSync(path.join(__dirname, 'v2', 'artifacts', 'BINANCE_DEMO_LIVE_PIPELINE.json'), 'utf8'));
     const symbolState = artifact.symbols?.[symbol] || {};
     const events = (symbolState.recent_events || []).map(event => ({
       event_id: event.event_id,
@@ -659,7 +671,7 @@ app.get('/api/chart/structure', auth, (req, res) => {
       confirmation: event.confirmation,
       selection: event.selection,
       selected_setup: event.selected_setup,
-      paper_plan: event.paper_plan || null,
+      live_demo_plan: event.live_demo_plan || null,
       plan_status: event.plan_status || null
     }));
     const latestId = artifact.latest_structure_event_ids?.[symbol] || null;
@@ -674,7 +686,7 @@ app.get('/api/chart/tickers', auth, async (req, res) => {
   const streamPrices = getBinanceStreamPrices();
   if (Object.keys(streamPrices).length) return res.json({ ok: true, prices: streamPrices, updated_at: getBinanceStreamState().updatedAt, source: 'websocket' });
   try {
-    const query = encodeURIComponent(JSON.stringify(PAPER_SYMBOLS));
+    const query = encodeURIComponent(JSON.stringify(SUPPORTED_SYMBOLS));
     const response = await fetchBinance(BINANCE_DATA_BASE + '/fapi/v1/ticker/price?symbols=' + query);
     const data = await response.json();
     if (!response.ok || !Array.isArray(data)) throw new Error(data?.msg || 'Ticker request failed');
@@ -752,7 +764,7 @@ app.delete('/api/keys/:id', auth, (req, res) => {
 
 app.post('/api/binance-demo/order-test', auth, async (req, res) => {
   const { keyId, symbol, side, type = 'LIMIT', quantity, price, timeInForce = 'GTC' } = req.body || {};
-  const allowedSymbols = new Set(PAPER_SYMBOLS);
+  const allowedSymbols = new Set(SUPPORTED_SYMBOLS);
   if (Number(keyId) <= 0 || !allowedSymbols.has(String(symbol).toUpperCase()) || !['BUY', 'SELL'].includes(side) || type !== 'LIMIT' || timeInForce !== 'GTC') {
     return res.status(400).json({ ok: false, error: 'Only Binance Demo LIMIT GTC order tests are allowed' });
   }

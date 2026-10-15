@@ -1,6 +1,6 @@
 # JEV Trading Bot — Active V2
 
-Status: Stage 7 closed without promotion. Active workflow is read-only paper observation on Binance Demo.
+Status: Live Demo execution active. Valid candidates can reach Binance Demo LIMIT GTC order submission when BOT ON and all execution gates pass.
 
 ## Active workflow
 
@@ -33,7 +33,7 @@ Continuation Bullish/Bearish is archived and inactive. CHoCH/MSS and liquidity-s
 - `scripts/market_structure_authoritative.py` — 15M SMC structure events.
 - `scripts/confirmation_5m_authoritative.py` — 5M confirmation contract.
 - `scripts/setup_bots_executable.py` — setup-owned plans and validators.
-- `scripts/binance_demo_paper_pipeline.py` — read-only Demo paper pipeline.
-- `artifacts/` — Demo preflight, observation, and paper evidence.
+- `scripts/binance_demo_live_pipeline.py` — Live Demo market-structure candidate pipeline; executor owns exchange order side effects.
+- `artifacts/` — Live Demo workflow and execution-candidate evidence.
 
 Retired research and generated cache are removed from this production workspace.

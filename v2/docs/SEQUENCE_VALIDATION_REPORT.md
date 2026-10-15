@@ -69,4 +69,4 @@ No PnL tuning, Setup Bot implementation, or Stage 3 architecture transition is a
 - https://www.cambridge.org/core/journals/journal-of-financial-and-quantitative-analysis/article/trend-factor-for-the-cross-section-of-cryptocurrency-returns/4C1509ACBA33D5DCAF0AC24379148178
 - https://ideas.repec.org/a/ebl/ecbull/eb-09-00423.html
 - https://arxiv.org/html/2502.13722v2
-- https://www.davidhbailey.com/dhbpapers/deflated-sharpe.pdf
+- https://www.davidhbailey.com/dhblive_demos/deflated-sharpe.pdf

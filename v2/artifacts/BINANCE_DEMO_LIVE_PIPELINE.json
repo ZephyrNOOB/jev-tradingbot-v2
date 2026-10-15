@@ -1,8 +1,8 @@
 {
-  "name": "BINANCE_DEMO_PAPER_PIPELINE",
+  "name": "BINANCE_DEMO_LIVE_PIPELINE",
   "status": "PASS",
   "environment": "demo-fapi",
-  "server_time": 1792034556670,
+  "server_time": 1792039743272,
   "symbols": {
     "BTCUSDT": {
       "closed_counts": {
@@ -11,67 +11,16 @@
         "5m": 499
       },
       "latest_closed_candle": {
-        "1h": 1792033199999,
-        "15m": 1792034099999,
-        "5m": 1792034399999
+        "1h": 1792036799999,
+        "15m": 1792039499999,
+        "5m": 1792039499999
       },
       "recent_events": [
         {
-          "event_id": "15m:440:BOS:SW-L-external_swing-430",
-          "kind": "BOS",
+          "event_id": "FVG-SHORT-440",
+          "kind": "FVG",
           "side": "SHORT",
           "structure_index": 440,
-          "bias": "RANGE",
-          "confirmation": "WAITING",
-          "lifecycle_state": "ACTIVE",
-          "zone_bounds": {
-            "low": 83589.3,
-            "high": 83801.9
-          },
-          "touch_event_id": null,
-          "selection": "NO_SELECTION",
-          "selected_setup": null,
-          "virtual_order": false
-        },
-        {
-          "event_id": "FVG-SHORT-441",
-          "kind": "FVG",
-          "side": "SHORT",
-          "structure_index": 441,
-          "bias": "RANGE",
-          "confirmation": "WAITING",
-          "lifecycle_state": "ACTIVE",
-          "zone_bounds": {
-            "low": 83499.0,
-            "high": 83589.3
-          },
-          "touch_event_id": null,
-          "selection": "NO_SELECTION",
-          "selected_setup": null,
-          "virtual_order": false
-        },
-        {
-          "event_id": "FVG-SHORT-443",
-          "kind": "FVG",
-          "side": "SHORT",
-          "structure_index": 443,
-          "bias": "RANGE",
-          "confirmation": "WAITING",
-          "lifecycle_state": "INVALIDATED",
-          "zone_bounds": {
-            "low": 82720.3,
-            "high": 82773.5
-          },
-          "touch_event_id": null,
-          "selection": "NO_SELECTION",
-          "selected_setup": null,
-          "virtual_order": false
-        },
-        {
-          "event_id": "FVG-SHORT-446",
-          "kind": "FVG",
-          "side": "SHORT",
-          "structure_index": 446,
           "bias": "BEARISH",
           "confirmation": "WAITING",
           "lifecycle_state": "ACTIVE",
@@ -82,13 +31,13 @@
           "touch_event_id": null,
           "selection": "NO_SELECTION",
           "selected_setup": null,
-          "virtual_order": false
+          "live_demo_order": false
         },
         {
-          "event_id": "FVG-SHORT-447",
+          "event_id": "FVG-SHORT-441",
           "kind": "FVG",
           "side": "SHORT",
-          "structure_index": 447,
+          "structure_index": 441,
           "bias": "BEARISH",
           "confirmation": "WAITING",
           "lifecycle_state": "ACTIVE",
@@ -99,13 +48,13 @@
           "touch_event_id": null,
           "selection": "NO_SELECTION",
           "selected_setup": null,
-          "virtual_order": false
+          "live_demo_order": false
         },
         {
-          "event_id": "FVG-SHORT-448",
+          "event_id": "FVG-SHORT-442",
           "kind": "FVG",
           "side": "SHORT",
-          "structure_index": 448,
+          "structure_index": 442,
           "bias": "BEARISH",
           "confirmation": "CONFIRMED",
           "lifecycle_state": "PARTIAL_MITIGATION",
@@ -116,40 +65,16 @@
           "touch_event_id": "5m:BTCUSDT:1791989399999",
           "selection": "SELECTED",
           "selected_setup": "fvg_context",
-          "virtual_order": false,
-          "virtual_entry_sl_tp": false,
-          "paper_plan": {
-            "setup_id": "fvg_context",
-            "side": "BEARISH",
-            "entry": 82050.25,
-            "sl": 82122.34125,
-            "tp": 81340.1,
-            "rr": 9.850710037626163,
-            "entry_reason": "causal FVG return/rejection/local break",
-            "sl_reason": "outside FVG boundary",
-            "tp_reason": "parent impulse/opposing liquidity",
-            "evidence": {
-              "event_id": "FVG-SHORT-448",
-              "source_indices": [
-                446,
-                447,
-                448
-              ],
-              "rejection_event_id": "5m:BTCUSDT:1791989399999",
-              "micro_break_event_id": "5m:BTCUSDT:1791989999999",
-              "entry_source": "fvg_zone",
-              "sl_source": "fvg_boundary",
-              "tp_source": "parent_impulse_objective"
-            }
-          },
-          "client_order_id": "jev_1086513ab429d3b5e7c76c0d",
+          "live_demo_order": false,
+          "live_demo_plan": false,
+          "client_order_id": "jev_97bfb0b1cc08feaa6aa5ba48",
           "plan_status": "ELIMINATED_REPLACED"
         },
         {
-          "event_id": "FVG-SHORT-455",
+          "event_id": "FVG-SHORT-449",
           "kind": "FVG",
           "side": "SHORT",
-          "structure_index": 455,
+          "structure_index": 449,
           "bias": "BEARISH",
           "confirmation": "WAITING",
           "lifecycle_state": "INVALIDATED",
@@ -160,13 +85,13 @@
           "touch_event_id": null,
           "selection": "NO_SELECTION",
           "selected_setup": null,
-          "virtual_order": false
+          "live_demo_order": false
         },
         {
-          "event_id": "FVG-LONG-457",
+          "event_id": "FVG-LONG-451",
           "kind": "FVG",
           "side": "LONG",
-          "structure_index": 457,
+          "structure_index": 451,
           "bias": "BEARISH",
           "confirmation": "WAITING",
           "lifecycle_state": "INVALIDATED",
@@ -177,13 +102,13 @@
           "touch_event_id": "5m:BTCUSDT:1791998699999",
           "selection": "NO_SELECTION",
           "selected_setup": null,
-          "virtual_order": false
+          "live_demo_order": false
         },
         {
-          "event_id": "FVG-LONG-458",
+          "event_id": "FVG-LONG-452",
           "kind": "FVG",
           "side": "LONG",
-          "structure_index": 458,
+          "structure_index": 452,
           "bias": "BEARISH",
           "confirmation": "WAITING",
           "lifecycle_state": "INVALIDATED",
@@ -194,831 +119,7 @@
           "touch_event_id": "5m:BTCUSDT:1791998399999",
           "selection": "NO_SELECTION",
           "selected_setup": null,
-          "virtual_order": false
-        },
-        {
-          "event_id": "FVG-SHORT-460",
-          "kind": "FVG",
-          "side": "SHORT",
-          "structure_index": 460,
-          "bias": "BEARISH",
-          "confirmation": "WAITING",
-          "lifecycle_state": "INVALIDATED",
-          "zone_bounds": {
-            "low": 81848.6,
-            "high": 81910.8
-          },
-          "touch_event_id": "5m:BTCUSDT:1792008299999",
-          "selection": "NO_SELECTION",
-          "selected_setup": null,
-          "virtual_order": false
-        },
-        {
-          "event_id": "15m:461:BOS:SW-L-external_swing-455",
-          "kind": "BOS",
-          "side": "SHORT",
-          "structure_index": 461,
-          "bias": "BEARISH",
-          "confirmation": "WAITING",
-          "lifecycle_state": "INVALIDATED",
-          "zone_bounds": {
-            "low": 81713.6,
-            "high": 81848.6
-          },
-          "touch_event_id": "5m:BTCUSDT:1792005299999",
-          "selection": "NO_SELECTION",
-          "selected_setup": null,
-          "virtual_order": false
-        },
-        {
-          "event_id": "FVG-SHORT-462",
-          "kind": "FVG",
-          "side": "SHORT",
-          "structure_index": 462,
-          "bias": "BEARISH",
-          "confirmation": "WAITING",
-          "lifecycle_state": "INVALIDATED",
-          "zone_bounds": {
-            "low": 81665.1,
-            "high": 81713.6
-          },
-          "touch_event_id": "5m:BTCUSDT:1792004699999",
-          "selection": "NO_SELECTION",
-          "selected_setup": null,
-          "virtual_order": false
-        },
-        {
-          "event_id": "FVG-LONG-471",
-          "kind": "FVG",
-          "side": "LONG",
-          "structure_index": 471,
-          "bias": "BEARISH",
-          "confirmation": "WAITING",
-          "lifecycle_state": "INVALIDATED",
-          "zone_bounds": {
-            "low": 81779.1,
-            "high": 81830.7
-          },
-          "touch_event_id": "5m:BTCUSDT:1792010099999",
-          "selection": "NO_SELECTION",
-          "selected_setup": null,
-          "virtual_order": false
-        },
-        {
-          "event_id": "FVG-SHORT-473",
-          "kind": "FVG",
-          "side": "SHORT",
-          "structure_index": 473,
-          "bias": "BEARISH",
-          "confirmation": "CONFIRMED",
-          "lifecycle_state": "PARTIAL_MITIGATION",
-          "zone_bounds": {
-            "low": 81782.1,
-            "high": 81830.7
-          },
-          "touch_event_id": "5m:BTCUSDT:1792011899999",
-          "selection": "SELECTED",
-          "selected_setup": "fvg_context",
-          "virtual_order": false,
-          "virtual_entry_sl_tp": false,
-          "paper_plan": {
-            "setup_id": "fvg_context",
-            "side": "BEARISH",
-            "entry": 81806.4,
-            "sl": 81871.55064999999,
-            "tp": 81340.1,
-            "rr": 7.157257832424041,
-            "entry_reason": "causal FVG return/rejection/local break",
-            "sl_reason": "outside FVG boundary",
-            "tp_reason": "parent impulse/opposing liquidity",
-            "evidence": {
-              "event_id": "FVG-SHORT-473",
-              "source_indices": [
-                471,
-                472,
-                473
-              ],
-              "rejection_event_id": "5m:BTCUSDT:1792011899999",
-              "micro_break_event_id": "5m:BTCUSDT:1792012199999",
-              "entry_source": "fvg_zone",
-              "sl_source": "fvg_boundary",
-              "tp_source": "parent_impulse_objective"
-            }
-          },
-          "client_order_id": "jev_d3e7969e23e307fe7f08b7e3",
-          "plan_status": "ELIMINATED_REPLACED"
-        },
-        {
-          "event_id": "FVG-LONG-476",
-          "kind": "FVG",
-          "side": "LONG",
-          "structure_index": 476,
-          "bias": "BEARISH",
-          "confirmation": "WAITING",
-          "lifecycle_state": "INVALIDATED",
-          "zone_bounds": {
-            "low": 81782.1,
-            "high": 81809.4
-          },
-          "touch_event_id": "5m:BTCUSDT:1792014599999",
-          "selection": "NO_SELECTION",
-          "selected_setup": null,
-          "virtual_order": false
-        },
-        {
-          "event_id": "FVG-SHORT-478",
-          "kind": "FVG",
-          "side": "SHORT",
-          "structure_index": 478,
-          "bias": "BEARISH",
-          "confirmation": "CONFIRMED",
-          "lifecycle_state": "PARTIAL_MITIGATION",
-          "zone_bounds": {
-            "low": 81754.0,
-            "high": 81809.4
-          },
-          "touch_event_id": "5m:BTCUSDT:1792026299999",
-          "selection": "SELECTED",
-          "selected_setup": "fvg_context",
-          "virtual_order": true,
-          "virtual_entry_sl_tp": true,
-          "paper_plan": {
-            "setup_id": "fvg_context",
-            "side": "BEARISH",
-            "entry": 81781.7,
-            "sl": 81850.16799999999,
-            "tp": 81534.0,
-            "rr": 3.6177484372264512,
-            "entry_reason": "causal FVG return/rejection/local break",
-            "sl_reason": "outside FVG boundary",
-            "tp_reason": "parent impulse/opposing liquidity",
-            "evidence": {
-              "event_id": "FVG-SHORT-478",
-              "source_indices": [
-                476,
-                477,
-                478
-              ],
-              "rejection_event_id": "5m:BTCUSDT:1792026299999",
-              "micro_break_event_id": "5m:BTCUSDT:1792029899999",
-              "entry_source": "fvg_zone",
-              "sl_source": "fvg_boundary",
-              "tp_source": "parent_impulse_objective"
-            }
-          },
-          "client_order_id": "jev_5c04a6601cc13f908fff1fb9"
-        },
-        {
-          "event_id": "15m:483:BOS:SW-L-external_swing-464",
-          "kind": "BOS",
-          "side": "SHORT",
-          "structure_index": 483,
-          "bias": "BEARISH",
-          "confirmation": "WAITING",
-          "lifecycle_state": "INVALIDATED",
-          "zone_bounds": {
-            "low": 81534.8,
-            "high": 81655.0
-          },
-          "touch_event_id": "5m:BTCUSDT:1792021799999",
-          "selection": "NO_SELECTION",
-          "selected_setup": null,
-          "virtual_order": false
-        },
-        {
-          "event_id": "FVG-SHORT-484",
-          "kind": "FVG",
-          "side": "SHORT",
-          "structure_index": 484,
-          "bias": "BEARISH",
-          "confirmation": "WAITING",
-          "lifecycle_state": "INVALIDATED",
-          "zone_bounds": {
-            "low": 81533.8,
-            "high": 81534.8
-          },
-          "touch_event_id": null,
-          "selection": "NO_SELECTION",
-          "selected_setup": null,
-          "virtual_order": false
-        },
-        {
-          "event_id": "FVG-LONG-486",
-          "kind": "FVG",
-          "side": "LONG",
-          "structure_index": 486,
-          "bias": "BEARISH",
-          "confirmation": "WAITING",
-          "lifecycle_state": "INVALIDATED",
-          "zone_bounds": {
-            "low": 81533.8,
-            "high": 81635.7
-          },
-          "touch_event_id": "5m:BTCUSDT:1792025099999",
-          "selection": "NO_SELECTION",
-          "selected_setup": null,
-          "virtual_order": false
-        },
-        {
-          "event_id": "FVG-LONG-487",
-          "kind": "FVG",
-          "side": "LONG",
-          "structure_index": 487,
-          "bias": "BEARISH",
-          "confirmation": "WAITING",
-          "lifecycle_state": "INVALIDATED",
-          "zone_bounds": {
-            "low": 81647.1,
-            "high": 81655.9
-          },
-          "touch_event_id": "5m:BTCUSDT:1792024799999",
-          "selection": "NO_SELECTION",
-          "selected_setup": null,
-          "virtual_order": false
-        }
-      ]
-    },
-    "ETHUSDT": {
-      "closed_counts": {
-        "1h": 499,
-        "15m": 499,
-        "5m": 499
-      },
-      "latest_closed_candle": {
-        "1h": 1792033199999,
-        "15m": 1792034099999,
-        "5m": 1792034399999
-      },
-      "recent_events": [
-        {
-          "event_id": "FVG-LONG-432",
-          "kind": "FVG",
-          "side": "LONG",
-          "structure_index": 432,
-          "bias": "BULLISH",
-          "confirmation": "CONFIRMED",
-          "lifecycle_state": "PARTIAL_MITIGATION",
-          "zone_bounds": {
-            "low": 2496.16,
-            "high": 2499.47
-          },
-          "touch_event_id": "5m:ETHUSDT:1791975899999",
-          "selection": "SELECTED",
-          "selected_setup": "fvg_context",
-          "virtual_order": false,
-          "virtual_entry_sl_tp": false,
-          "paper_plan": {
-            "setup_id": "fvg_context",
-            "side": "BULLISH",
-            "entry": 2497.8149999999996,
-            "sl": 2494.906035,
-            "tp": 2508.43,
-            "rr": 3.649064186059854,
-            "entry_reason": "causal FVG return/rejection/local break",
-            "sl_reason": "outside FVG boundary",
-            "tp_reason": "parent impulse/opposing liquidity",
-            "evidence": {
-              "event_id": "FVG-LONG-432",
-              "source_indices": [
-                430,
-                431,
-                432
-              ],
-              "rejection_event_id": "5m:ETHUSDT:1791975899999",
-              "micro_break_event_id": "5m:ETHUSDT:1791979499999",
-              "entry_source": "fvg_zone",
-              "sl_source": "fvg_boundary",
-              "tp_source": "parent_impulse_objective"
-            }
-          },
-          "client_order_id": "jev_7c28fd2504a05b3857638326",
-          "plan_status": "ELIMINATED_REPLACED"
-        },
-        {
-          "event_id": "FVG-LONG-433",
-          "kind": "FVG",
-          "side": "LONG",
-          "structure_index": 433,
-          "bias": "BULLISH",
-          "confirmation": "WAITING",
-          "lifecycle_state": "INVALIDATED",
-          "zone_bounds": {
-            "low": 2499.94,
-            "high": 2501.6
-          },
-          "touch_event_id": "5m:ETHUSDT:1791975899999",
-          "selection": "NO_SELECTION",
-          "selected_setup": null,
-          "virtual_order": false
-        },
-        {
-          "event_id": "FVG-LONG-439",
-          "kind": "FVG",
-          "side": "LONG",
-          "structure_index": 439,
-          "bias": "BULLISH",
-          "confirmation": "WAITING",
-          "lifecycle_state": "INVALIDATED",
-          "zone_bounds": {
-            "low": 2503.66,
-            "high": 2508.78
-          },
-          "touch_event_id": null,
-          "selection": "NO_SELECTION",
-          "selected_setup": null,
-          "virtual_order": false
-        },
-        {
-          "event_id": "15m:440:BOS:SW-L-external_swing-430",
-          "kind": "BOS",
-          "side": "SHORT",
-          "structure_index": 440,
-          "bias": "BULLISH",
-          "confirmation": "WAITING",
-          "lifecycle_state": "ACTIVE",
-          "zone_bounds": {
-            "low": 2503.5,
-            "high": 2515.86
-          },
-          "touch_event_id": null,
-          "selection": "NO_SELECTION",
-          "selected_setup": null,
-          "virtual_order": false
-        },
-        {
-          "event_id": "FVG-SHORT-441",
-          "kind": "FVG",
-          "side": "SHORT",
-          "structure_index": 441,
-          "bias": "BULLISH",
-          "confirmation": "WAITING",
-          "lifecycle_state": "ACTIVE",
-          "zone_bounds": {
-            "low": 2490.2,
-            "high": 2508.78
-          },
-          "touch_event_id": null,
-          "selection": "NO_SELECTION",
-          "selected_setup": null,
-          "virtual_order": false
-        },
-        {
-          "event_id": "FVG-SHORT-443",
-          "kind": "FVG",
-          "side": "SHORT",
-          "structure_index": 443,
-          "bias": "BULLISH",
-          "confirmation": "WAITING",
-          "lifecycle_state": "INVALIDATED",
-          "zone_bounds": {
-            "low": 2475.89,
-            "high": 2478.01
-          },
-          "touch_event_id": null,
-          "selection": "NO_SELECTION",
-          "selected_setup": null,
-          "virtual_order": false
-        },
-        {
-          "event_id": "FVG-SHORT-447",
-          "kind": "FVG",
-          "side": "SHORT",
-          "structure_index": 447,
-          "bias": "RANGE",
-          "confirmation": "CONFIRMED",
-          "lifecycle_state": "PARTIAL_MITIGATION",
-          "zone_bounds": {
-            "low": 2447.68,
-            "high": 2456.52
-          },
-          "touch_event_id": "5m:ETHUSDT:1791997499999",
-          "selection": "NO_SELECTION",
-          "selected_setup": null,
-          "virtual_order": false
-        },
-        {
-          "event_id": "FVG-LONG-452",
-          "kind": "FVG",
-          "side": "LONG",
-          "structure_index": 452,
-          "bias": "RANGE",
-          "confirmation": "WAITING",
-          "lifecycle_state": "INVALIDATED",
-          "zone_bounds": {
-            "low": 2431.26,
-            "high": 2433.71
-          },
-          "touch_event_id": "5m:ETHUSDT:1791992999999",
-          "selection": "NO_SELECTION",
-          "selected_setup": null,
-          "virtual_order": false
-        },
-        {
-          "event_id": "FVG-LONG-457",
-          "kind": "FVG",
-          "side": "LONG",
-          "structure_index": 457,
-          "bias": "BEARISH",
-          "confirmation": "WAITING",
-          "lifecycle_state": "INVALIDATED",
-          "zone_bounds": {
-            "low": 2432.44,
-            "high": 2439.02
-          },
-          "touch_event_id": "5m:ETHUSDT:1791998999999",
-          "selection": "NO_SELECTION",
-          "selected_setup": null,
-          "virtual_order": false
-        },
-        {
-          "event_id": "FVG-SHORT-460",
-          "kind": "FVG",
-          "side": "SHORT",
-          "structure_index": 460,
-          "bias": "BEARISH",
-          "confirmation": "WAITING",
-          "lifecycle_state": "ACTIVE",
-          "zone_bounds": {
-            "low": 2439.18,
-            "high": 2443.37
-          },
-          "touch_event_id": null,
-          "selection": "NO_SELECTION",
-          "selected_setup": null,
-          "virtual_order": false
-        },
-        {
-          "event_id": "FVG-SHORT-462",
-          "kind": "FVG",
-          "side": "SHORT",
-          "structure_index": 462,
-          "bias": "BEARISH",
-          "confirmation": "CONFIRMED",
-          "lifecycle_state": "PARTIAL_MITIGATION",
-          "zone_bounds": {
-            "low": 2432.88,
-            "high": 2433.79
-          },
-          "touch_event_id": "5m:ETHUSDT:1792001999999",
-          "selection": "SELECTED",
-          "selected_setup": "fvg_context",
-          "virtual_order": false,
-          "virtual_entry_sl_tp": false,
-          "paper_plan": {
-            "setup_id": "fvg_context",
-            "side": "BEARISH",
-            "entry": 2433.335,
-            "sl": 2435.00223,
-            "tp": 2413.12,
-            "rr": 12.124901783197238,
-            "entry_reason": "causal FVG return/rejection/local break",
-            "sl_reason": "outside FVG boundary",
-            "tp_reason": "parent impulse/opposing liquidity",
-            "evidence": {
-              "event_id": "FVG-SHORT-462",
-              "source_indices": [
-                460,
-                461,
-                462
-              ],
-              "rejection_event_id": "5m:ETHUSDT:1792001999999",
-              "micro_break_event_id": "5m:ETHUSDT:1792003199999",
-              "entry_source": "fvg_zone",
-              "sl_source": "fvg_boundary",
-              "tp_source": "parent_impulse_objective"
-            }
-          },
-          "client_order_id": "jev_b8edf809eddc8f2847c8dc07",
-          "plan_status": "ELIMINATED_REPLACED"
-        },
-        {
-          "event_id": "FVG-SHORT-473",
-          "kind": "FVG",
-          "side": "SHORT",
-          "structure_index": 473,
-          "bias": "BEARISH",
-          "confirmation": "WAITING",
-          "lifecycle_state": "INVALIDATED",
-          "zone_bounds": {
-            "low": 2424.53,
-            "high": 2427.24
-          },
-          "touch_event_id": null,
-          "selection": "NO_SELECTION",
-          "selected_setup": null,
-          "virtual_order": false
-        },
-        {
-          "event_id": "FVG-SHORT-474",
-          "kind": "FVG",
-          "side": "SHORT",
-          "structure_index": 474,
-          "bias": "BEARISH",
-          "confirmation": "WAITING",
-          "lifecycle_state": "INVALIDATED",
-          "zone_bounds": {
-            "low": 2416.91,
-            "high": 2419.56
-          },
-          "touch_event_id": "5m:ETHUSDT:1792012799999",
-          "selection": "NO_SELECTION",
-          "selected_setup": null,
-          "virtual_order": false
-        },
-        {
-          "event_id": "15m:475:BOS:SW-L-external_swing-465",
-          "kind": "BOS",
-          "side": "SHORT",
-          "structure_index": 475,
-          "bias": "BEARISH",
-          "confirmation": "WAITING",
-          "lifecycle_state": "ACTIVE",
-          "zone_bounds": {
-            "low": 2428.7,
-            "high": 2433.92
-          },
-          "touch_event_id": null,
-          "selection": "NO_SELECTION",
-          "selected_setup": null,
-          "virtual_order": false
-        },
-        {
-          "event_id": "FVG-LONG-476",
-          "kind": "FVG",
-          "side": "LONG",
-          "structure_index": 476,
-          "bias": "BEARISH",
-          "confirmation": "WAITING",
-          "lifecycle_state": "INVALIDATED",
-          "zone_bounds": {
-            "low": 2416.91,
-            "high": 2421.93
-          },
-          "touch_event_id": "5m:ETHUSDT:1792014899999",
-          "selection": "NO_SELECTION",
-          "selected_setup": null,
-          "virtual_order": false
-        },
-        {
-          "event_id": "FVG-SHORT-478",
-          "kind": "FVG",
-          "side": "SHORT",
-          "structure_index": 478,
-          "bias": "BEARISH",
-          "confirmation": "WAITING",
-          "lifecycle_state": "INVALIDATED",
-          "zone_bounds": {
-            "low": 2420.5,
-            "high": 2421.93
-          },
-          "touch_event_id": "5m:ETHUSDT:1792019699999",
-          "selection": "NO_SELECTION",
-          "selected_setup": null,
-          "virtual_order": false
-        },
-        {
-          "event_id": "FVG-SHORT-479",
-          "kind": "FVG",
-          "side": "SHORT",
-          "structure_index": 479,
-          "bias": "BEARISH",
-          "confirmation": "WAITING",
-          "lifecycle_state": "INVALIDATED",
-          "zone_bounds": {
-            "low": 2415.47,
-            "high": 2416.96
-          },
-          "touch_event_id": null,
-          "selection": "NO_SELECTION",
-          "selected_setup": null,
-          "virtual_order": false
-        },
-        {
-          "event_id": "FVG-LONG-486",
-          "kind": "FVG",
-          "side": "LONG",
-          "structure_index": 486,
-          "bias": "BEARISH",
-          "confirmation": "WAITING",
-          "lifecycle_state": "INVALIDATED",
-          "zone_bounds": {
-            "low": 2419.5,
-            "high": 2419.68
-          },
-          "touch_event_id": "5m:ETHUSDT:1792025099999",
-          "selection": "NO_SELECTION",
-          "selected_setup": null,
-          "virtual_order": false
-        },
-        {
-          "event_id": "FVG-LONG-487",
-          "kind": "FVG",
-          "side": "LONG",
-          "structure_index": 487,
-          "bias": "BEARISH",
-          "confirmation": "WAITING",
-          "lifecycle_state": "INVALIDATED",
-          "zone_bounds": {
-            "low": 2419.87,
-            "high": 2422.9
-          },
-          "touch_event_id": "5m:ETHUSDT:1792024799999",
-          "selection": "NO_SELECTION",
-          "selected_setup": null,
-          "virtual_order": false
-        },
-        {
-          "event_id": "FVG-SHORT-489",
-          "kind": "FVG",
-          "side": "SHORT",
-          "structure_index": 489,
-          "bias": "BEARISH",
-          "confirmation": "CONFIRMED",
-          "lifecycle_state": "PARTIAL_MITIGATION",
-          "zone_bounds": {
-            "low": 2420.69,
-            "high": 2422.9
-          },
-          "touch_event_id": "5m:ETHUSDT:1792026299999",
-          "selection": "SELECTED",
-          "selected_setup": "fvg_context",
-          "virtual_order": true,
-          "virtual_entry_sl_tp": true,
-          "paper_plan": {
-            "setup_id": "fvg_context",
-            "side": "BEARISH",
-            "entry": 2421.795,
-            "sl": 2424.1067000000003,
-            "tp": 2413.12,
-            "rr": 3.75264956525476,
-            "entry_reason": "causal FVG return/rejection/local break",
-            "sl_reason": "outside FVG boundary",
-            "tp_reason": "parent impulse/opposing liquidity",
-            "evidence": {
-              "event_id": "FVG-SHORT-489",
-              "source_indices": [
-                487,
-                488,
-                489
-              ],
-              "rejection_event_id": "5m:ETHUSDT:1792026899999",
-              "micro_break_event_id": "5m:ETHUSDT:1792027499999",
-              "entry_source": "fvg_zone",
-              "sl_source": "fvg_boundary",
-              "tp_source": "parent_impulse_objective"
-            }
-          },
-          "client_order_id": "jev_a3892f5e773c6c94b9153352"
-        }
-      ]
-    },
-    "SOLUSDT": {
-      "closed_counts": {
-        "1h": 499,
-        "15m": 499,
-        "5m": 499
-      },
-      "latest_closed_candle": {
-        "1h": 1792033199999,
-        "15m": 1792034099999,
-        "5m": 1792034399999
-      },
-      "recent_events": [
-        {
-          "event_id": "FVG-LONG-432",
-          "kind": "FVG",
-          "side": "LONG",
-          "structure_index": 432,
-          "bias": "BULLISH",
-          "confirmation": "WAITING",
-          "lifecycle_state": "INVALIDATED",
-          "zone_bounds": {
-            "low": 106.61,
-            "high": 106.64
-          },
-          "touch_event_id": null,
-          "selection": "NO_SELECTION",
-          "selected_setup": null,
-          "virtual_order": false
-        },
-        {
-          "event_id": "FVG-LONG-433",
-          "kind": "FVG",
-          "side": "LONG",
-          "structure_index": 433,
-          "bias": "BULLISH",
-          "confirmation": "WAITING",
-          "lifecycle_state": "INVALIDATED",
-          "zone_bounds": {
-            "low": 106.78,
-            "high": 106.87
-          },
-          "touch_event_id": null,
-          "selection": "NO_SELECTION",
-          "selected_setup": null,
-          "virtual_order": false
-        },
-        {
-          "event_id": "FVG-LONG-439",
-          "kind": "FVG",
-          "side": "LONG",
-          "structure_index": 439,
-          "bias": "BULLISH",
-          "confirmation": "WAITING",
-          "lifecycle_state": "INVALIDATED",
-          "zone_bounds": {
-            "low": 107.19,
-            "high": 107.36
-          },
-          "touch_event_id": null,
-          "selection": "NO_SELECTION",
-          "selected_setup": null,
-          "virtual_order": false
-        },
-        {
-          "event_id": "15m:440:CHoCH_MSS:SW-L-external_swing-430",
-          "kind": "CHoCH_MSS",
-          "side": "SHORT",
-          "structure_index": 440,
-          "bias": "BULLISH",
-          "confirmation": "WAITING",
-          "lifecycle_state": "ACTIVE",
-          "zone_bounds": {
-            "low": 107.12,
-            "high": 107.64
-          },
-          "touch_event_id": null,
-          "selection": "NO_SELECTION",
-          "selected_setup": null,
-          "virtual_order": false
-        },
-        {
-          "event_id": "FVG-SHORT-441",
-          "kind": "FVG",
-          "side": "SHORT",
-          "structure_index": 441,
-          "bias": "BULLISH",
-          "confirmation": "CONFIRMED",
-          "lifecycle_state": "PARTIAL_MITIGATION",
-          "zone_bounds": {
-            "low": 106.08,
-            "high": 107.36
-          },
-          "touch_event_id": "5m:SOLUSDT:1791985199999",
-          "selection": "NO_SELECTION",
-          "selected_setup": null,
-          "virtual_order": false
-        },
-        {
-          "event_id": "FVG-SHORT-442",
-          "kind": "FVG",
-          "side": "SHORT",
-          "structure_index": 442,
-          "bias": "BULLISH",
-          "confirmation": "WAITING",
-          "lifecycle_state": "INVALIDATED",
-          "zone_bounds": {
-            "low": 105.55,
-            "high": 105.6
-          },
-          "touch_event_id": null,
-          "selection": "NO_SELECTION",
-          "selected_setup": null,
-          "virtual_order": false
-        },
-        {
-          "event_id": "FVG-SHORT-443",
-          "kind": "FVG",
-          "side": "SHORT",
-          "structure_index": 443,
-          "bias": "BULLISH",
-          "confirmation": "WAITING",
-          "lifecycle_state": "INVALIDATED",
-          "zone_bounds": {
-            "low": 105.01,
-            "high": 105.39
-          },
-          "touch_event_id": null,
-          "selection": "NO_SELECTION",
-          "selected_setup": null,
-          "virtual_order": false
-        },
-        {
-          "event_id": "FVG-SHORT-448",
-          "kind": "FVG",
-          "side": "SHORT",
-          "structure_index": 448,
-          "bias": "RANGE",
-          "confirmation": "WAITING",
-          "lifecycle_state": "INVALIDATED",
-          "zone_bounds": {
-            "low": 104.21,
-            "high": 104.56
-          },
-          "touch_event_id": "5m:SOLUSDT:1791990299999",
-          "selection": "NO_SELECTION",
-          "selected_setup": null,
-          "virtual_order": false
+          "live_demo_order": false
         },
         {
           "event_id": "FVG-SHORT-454",
@@ -1029,257 +130,310 @@
           "confirmation": "WAITING",
           "lifecycle_state": "INVALIDATED",
           "zone_bounds": {
-            "low": 104.17,
-            "high": 104.2
+            "low": 81848.6,
+            "high": 81910.8
           },
-          "touch_event_id": "5m:SOLUSDT:1791994799999",
+          "touch_event_id": "5m:BTCUSDT:1792008299999",
           "selection": "NO_SELECTION",
           "selected_setup": null,
-          "virtual_order": false
+          "live_demo_order": false
         },
         {
-          "event_id": "FVG-LONG-457",
-          "kind": "FVG",
-          "side": "LONG",
-          "structure_index": 457,
+          "event_id": "15m:455:BOS:SW-L-external_swing-449",
+          "kind": "BOS",
+          "side": "SHORT",
+          "structure_index": 455,
           "bias": "BEARISH",
           "confirmation": "WAITING",
           "lifecycle_state": "INVALIDATED",
           "zone_bounds": {
-            "low": 104.19,
-            "high": 104.56
+            "low": 81713.6,
+            "high": 81848.6
           },
-          "touch_event_id": "5m:SOLUSDT:1791999899999",
+          "touch_event_id": "5m:BTCUSDT:1792005299999",
           "selection": "NO_SELECTION",
           "selected_setup": null,
-          "virtual_order": false
+          "live_demo_order": false
         },
         {
-          "event_id": "FVG-LONG-458",
-          "kind": "FVG",
-          "side": "LONG",
-          "structure_index": 458,
-          "bias": "BEARISH",
-          "confirmation": "WAITING",
-          "lifecycle_state": "INVALIDATED",
-          "zone_bounds": {
-            "low": 104.76,
-            "high": 104.8
-          },
-          "touch_event_id": "5m:SOLUSDT:1791999299999",
-          "selection": "NO_SELECTION",
-          "selected_setup": null,
-          "virtual_order": false
-        },
-        {
-          "event_id": "FVG-LONG-459",
-          "kind": "FVG",
-          "side": "LONG",
-          "structure_index": 459,
-          "bias": "BEARISH",
-          "confirmation": "WAITING",
-          "lifecycle_state": "INVALIDATED",
-          "zone_bounds": {
-            "low": 104.91,
-            "high": 104.95
-          },
-          "touch_event_id": null,
-          "selection": "NO_SELECTION",
-          "selected_setup": null,
-          "virtual_order": false
-        },
-        {
-          "event_id": "FVG-SHORT-461",
+          "event_id": "FVG-SHORT-456",
           "kind": "FVG",
           "side": "SHORT",
-          "structure_index": 461,
+          "structure_index": 456,
+          "bias": "BEARISH",
+          "confirmation": "WAITING",
+          "lifecycle_state": "INVALIDATED",
+          "zone_bounds": {
+            "low": 81665.1,
+            "high": 81713.6
+          },
+          "touch_event_id": "5m:BTCUSDT:1792004699999",
+          "selection": "NO_SELECTION",
+          "selected_setup": null,
+          "live_demo_order": false
+        },
+        {
+          "event_id": "FVG-LONG-465",
+          "kind": "FVG",
+          "side": "LONG",
+          "structure_index": 465,
+          "bias": "BEARISH",
+          "confirmation": "WAITING",
+          "lifecycle_state": "INVALIDATED",
+          "zone_bounds": {
+            "low": 81779.1,
+            "high": 81830.7
+          },
+          "touch_event_id": "5m:BTCUSDT:1792010099999",
+          "selection": "NO_SELECTION",
+          "selected_setup": null,
+          "live_demo_order": false
+        },
+        {
+          "event_id": "FVG-SHORT-467",
+          "kind": "FVG",
+          "side": "SHORT",
+          "structure_index": 467,
           "bias": "BEARISH",
           "confirmation": "CONFIRMED",
           "lifecycle_state": "PARTIAL_MITIGATION",
           "zone_bounds": {
-            "low": 104.73,
-            "high": 104.95
+            "low": 81782.1,
+            "high": 81830.7
           },
-          "touch_event_id": "5m:SOLUSDT:1792001099999",
+          "touch_event_id": "5m:BTCUSDT:1792011899999",
           "selection": "SELECTED",
           "selected_setup": "fvg_context",
-          "virtual_order": true,
-          "virtual_entry_sl_tp": true,
-          "paper_plan": {
+          "live_demo_order": false,
+          "live_demo_plan": false,
+          "client_order_id": "jev_9c1824c37a3f15de01ed96a4",
+          "plan_status": "ELIMINATED_REPLACED"
+        },
+        {
+          "event_id": "FVG-LONG-470",
+          "kind": "FVG",
+          "side": "LONG",
+          "structure_index": 470,
+          "bias": "BEARISH",
+          "confirmation": "WAITING",
+          "lifecycle_state": "INVALIDATED",
+          "zone_bounds": {
+            "low": 81782.1,
+            "high": 81809.4
+          },
+          "touch_event_id": "5m:BTCUSDT:1792014599999",
+          "selection": "NO_SELECTION",
+          "selected_setup": null,
+          "live_demo_order": false
+        },
+        {
+          "event_id": "FVG-SHORT-472",
+          "kind": "FVG",
+          "side": "SHORT",
+          "structure_index": 472,
+          "bias": "BEARISH",
+          "confirmation": "CONFIRMED",
+          "lifecycle_state": "PARTIAL_MITIGATION",
+          "zone_bounds": {
+            "low": 81754.0,
+            "high": 81809.4
+          },
+          "touch_event_id": "5m:BTCUSDT:1792026299999",
+          "selection": "SELECTED",
+          "selected_setup": "fvg_context",
+          "live_demo_order": false,
+          "live_demo_plan": {
             "setup_id": "fvg_context",
             "side": "BEARISH",
-            "entry": 104.84,
-            "sl": 105.002185,
-            "tp": 102.09,
-            "rr": 16.95594537102756,
+            "entry": 81781.7,
+            "sl": 81850.16799999999,
+            "tp": 81534.0,
+            "rr": 3.6177484372264512,
             "entry_reason": "causal FVG return/rejection/local break",
             "sl_reason": "outside FVG boundary",
             "tp_reason": "parent impulse/opposing liquidity",
             "evidence": {
-              "event_id": "FVG-SHORT-461",
+              "event_id": "FVG-SHORT-472",
               "source_indices": [
-                459,
-                460,
-                461
+                470,
+                471,
+                472
               ],
-              "rejection_event_id": "5m:SOLUSDT:1792001099999",
-              "micro_break_event_id": "5m:SOLUSDT:1792001699999",
+              "rejection_event_id": "5m:BTCUSDT:1792026299999",
+              "micro_break_event_id": "5m:BTCUSDT:1792029899999",
               "entry_source": "fvg_zone",
               "sl_source": "fvg_boundary",
               "tp_source": "parent_impulse_objective"
             }
           },
-          "client_order_id": "jev_4a1b6b9311203bd88ba46c3f"
+          "client_order_id": "jev_7435d0e4e0156d43d3af942f"
         },
         {
-          "event_id": "FVG-LONG-477",
-          "kind": "FVG",
-          "side": "LONG",
-          "structure_index": 477,
-          "bias": "RANGE",
-          "confirmation": "WAITING",
-          "lifecycle_state": "INVALIDATED",
-          "zone_bounds": {
-            "low": 104.08,
-            "high": 104.6
-          },
-          "touch_event_id": "5m:SOLUSDT:1792015799999",
-          "selection": "NO_SELECTION",
-          "selected_setup": null,
-          "virtual_order": false
-        },
-        {
-          "event_id": "FVG-SHORT-479",
-          "kind": "FVG",
-          "side": "SHORT",
-          "structure_index": 479,
-          "bias": "RANGE",
-          "confirmation": "WAITING",
-          "lifecycle_state": "INVALIDATED",
-          "zone_bounds": {
-            "low": 104.58,
-            "high": 104.6
-          },
-          "touch_event_id": "5m:SOLUSDT:1792018799999",
-          "selection": "NO_SELECTION",
-          "selected_setup": null,
-          "virtual_order": false
-        },
-        {
-          "event_id": "FVG-SHORT-485",
-          "kind": "FVG",
-          "side": "SHORT",
-          "structure_index": 485,
-          "bias": "RANGE",
-          "confirmation": "WAITING",
-          "lifecycle_state": "INVALIDATED",
-          "zone_bounds": {
-            "low": 104.29,
-            "high": 104.38
-          },
-          "touch_event_id": null,
-          "selection": "NO_SELECTION",
-          "selected_setup": null,
-          "virtual_order": false
-        },
-        {
-          "event_id": "FVG-LONG-487",
-          "kind": "FVG",
-          "side": "LONG",
-          "structure_index": 487,
-          "bias": "RANGE",
-          "confirmation": "WAITING",
-          "lifecycle_state": "INVALIDATED",
-          "zone_bounds": {
-            "low": 104.29,
-            "high": 104.3
-          },
-          "touch_event_id": null,
-          "selection": "NO_SELECTION",
-          "selected_setup": null,
-          "virtual_order": false
-        },
-        {
-          "event_id": "15m:494:BOS:SW-L-external_swing-472",
+          "event_id": "15m:477:BOS:SW-L-external_swing-458",
           "kind": "BOS",
           "side": "SHORT",
-          "structure_index": 494,
-          "bias": "RANGE",
+          "structure_index": 477,
+          "bias": "BEARISH",
           "confirmation": "WAITING",
-          "lifecycle_state": "ACTIVE",
+          "lifecycle_state": "INVALIDATED",
           "zone_bounds": {
-            "low": 103.99,
-            "high": 104.61
+            "low": 81534.8,
+            "high": 81655.0
+          },
+          "touch_event_id": "5m:BTCUSDT:1792021799999",
+          "selection": "NO_SELECTION",
+          "selected_setup": null,
+          "live_demo_order": false
+        },
+        {
+          "event_id": "FVG-SHORT-478",
+          "kind": "FVG",
+          "side": "SHORT",
+          "structure_index": 478,
+          "bias": "BEARISH",
+          "confirmation": "WAITING",
+          "lifecycle_state": "INVALIDATED",
+          "zone_bounds": {
+            "low": 81533.8,
+            "high": 81534.8
           },
           "touch_event_id": null,
           "selection": "NO_SELECTION",
           "selected_setup": null,
-          "virtual_order": false
+          "live_demo_order": false
+        },
+        {
+          "event_id": "FVG-LONG-480",
+          "kind": "FVG",
+          "side": "LONG",
+          "structure_index": 480,
+          "bias": "BEARISH",
+          "confirmation": "WAITING",
+          "lifecycle_state": "INVALIDATED",
+          "zone_bounds": {
+            "low": 81533.8,
+            "high": 81635.7
+          },
+          "touch_event_id": "5m:BTCUSDT:1792025099999",
+          "selection": "NO_SELECTION",
+          "selected_setup": null,
+          "live_demo_order": false
+        },
+        {
+          "event_id": "FVG-LONG-481",
+          "kind": "FVG",
+          "side": "LONG",
+          "structure_index": 481,
+          "bias": "BEARISH",
+          "confirmation": "WAITING",
+          "lifecycle_state": "INVALIDATED",
+          "zone_bounds": {
+            "low": 81647.1,
+            "high": 81655.9
+          },
+          "touch_event_id": "5m:BTCUSDT:1792024799999",
+          "selection": "NO_SELECTION",
+          "selected_setup": null,
+          "live_demo_order": false
+        },
+        {
+          "event_id": "FVG-SHORT-494",
+          "kind": "FVG",
+          "side": "SHORT",
+          "structure_index": 494,
+          "bias": "BEARISH",
+          "confirmation": "WAITING",
+          "lifecycle_state": "INVALIDATED",
+          "zone_bounds": {
+            "low": 81087.4,
+            "high": 81161.5
+          },
+          "touch_event_id": "5m:BTCUSDT:1792038299999",
+          "selection": "NO_SELECTION",
+          "selected_setup": null,
+          "live_demo_order": false
         },
         {
           "event_id": "FVG-SHORT-495",
           "kind": "FVG",
           "side": "SHORT",
           "structure_index": 495,
-          "bias": "RANGE",
+          "bias": "BEARISH",
+          "confirmation": "WAITING",
+          "lifecycle_state": "INVALIDATED",
+          "zone_bounds": {
+            "low": 80923.0,
+            "high": 81068.9
+          },
+          "touch_event_id": "5m:BTCUSDT:1792037099999",
+          "selection": "NO_SELECTION",
+          "selected_setup": null,
+          "live_demo_order": false
+        },
+        {
+          "event_id": "FVG-LONG-498",
+          "kind": "FVG",
+          "side": "LONG",
+          "structure_index": 498,
+          "bias": "BEARISH",
           "confirmation": "WAITING",
           "lifecycle_state": "ACTIVE",
           "zone_bounds": {
-            "low": 103.87,
-            "high": 104.0
+            "low": 80949.1,
+            "high": 81275.0
           },
           "touch_event_id": null,
           "selection": "NO_SELECTION",
           "selected_setup": null,
-          "virtual_order": false
-        },
-        {
-          "event_id": "FVG-SHORT-496",
-          "kind": "FVG",
-          "side": "SHORT",
-          "structure_index": 496,
-          "bias": "RANGE",
-          "confirmation": "WAITING",
-          "lifecycle_state": "PARTIAL_MITIGATION",
-          "zone_bounds": {
-            "low": 103.34,
-            "high": 103.68
-          },
-          "touch_event_id": "5m:SOLUSDT:1792032599999",
-          "selection": "NO_SELECTION",
-          "selected_setup": null,
-          "virtual_order": false
+          "live_demo_order": false
         }
       ]
     },
-    "XAUUSDT": {
+    "ETHUSDT": {
       "closed_counts": {
         "1h": 499,
         "15m": 499,
         "5m": 499
       },
       "latest_closed_candle": {
-        "1h": 1792033199999,
-        "15m": 1792034099999,
-        "5m": 1792034399999
+        "1h": 1792036799999,
+        "15m": 1792039499999,
+        "5m": 1792039499999
       },
       "recent_events": [
         {
-          "event_id": "15m:440:BOS:SW-L-external_swing-434",
-          "kind": "BOS",
+          "event_id": "FVG-SHORT-435",
+          "kind": "FVG",
           "side": "SHORT",
-          "structure_index": 440,
-          "bias": "RANGE",
+          "structure_index": 435,
+          "bias": "BULLISH",
           "confirmation": "WAITING",
           "lifecycle_state": "ACTIVE",
           "zone_bounds": {
-            "low": 4155.6,
-            "high": 4161.13
+            "low": 2490.2,
+            "high": 2508.78
           },
           "touch_event_id": null,
           "selection": "NO_SELECTION",
           "selected_setup": null,
-          "virtual_order": false
+          "live_demo_order": false
+        },
+        {
+          "event_id": "FVG-SHORT-437",
+          "kind": "FVG",
+          "side": "SHORT",
+          "structure_index": 437,
+          "bias": "BULLISH",
+          "confirmation": "WAITING",
+          "lifecycle_state": "INVALIDATED",
+          "zone_bounds": {
+            "low": 2475.89,
+            "high": 2478.01
+          },
+          "touch_event_id": null,
+          "selection": "NO_SELECTION",
+          "selected_setup": null,
+          "live_demo_order": false
         },
         {
           "event_id": "FVG-SHORT-441",
@@ -1290,19 +444,729 @@
           "confirmation": "CONFIRMED",
           "lifecycle_state": "PARTIAL_MITIGATION",
           "zone_bounds": {
-            "low": 4114.01,
-            "high": 4155.6
+            "low": 2447.68,
+            "high": 2456.52
           },
-          "touch_event_id": "5m:XAUUSDT:1791983099999",
+          "touch_event_id": "5m:ETHUSDT:1791997499999",
           "selection": "NO_SELECTION",
           "selected_setup": null,
-          "virtual_order": false
+          "live_demo_order": false
         },
         {
-          "event_id": "FVG-SHORT-450",
+          "event_id": "FVG-LONG-446",
+          "kind": "FVG",
+          "side": "LONG",
+          "structure_index": 446,
+          "bias": "RANGE",
+          "confirmation": "WAITING",
+          "lifecycle_state": "INVALIDATED",
+          "zone_bounds": {
+            "low": 2431.26,
+            "high": 2433.71
+          },
+          "touch_event_id": "5m:ETHUSDT:1791992999999",
+          "selection": "NO_SELECTION",
+          "selected_setup": null,
+          "live_demo_order": false
+        },
+        {
+          "event_id": "FVG-LONG-451",
+          "kind": "FVG",
+          "side": "LONG",
+          "structure_index": 451,
+          "bias": "BEARISH",
+          "confirmation": "WAITING",
+          "lifecycle_state": "INVALIDATED",
+          "zone_bounds": {
+            "low": 2432.44,
+            "high": 2439.02
+          },
+          "touch_event_id": "5m:ETHUSDT:1791998999999",
+          "selection": "NO_SELECTION",
+          "selected_setup": null,
+          "live_demo_order": false
+        },
+        {
+          "event_id": "FVG-SHORT-454",
           "kind": "FVG",
           "side": "SHORT",
-          "structure_index": 450,
+          "structure_index": 454,
+          "bias": "BEARISH",
+          "confirmation": "WAITING",
+          "lifecycle_state": "ACTIVE",
+          "zone_bounds": {
+            "low": 2439.18,
+            "high": 2443.37
+          },
+          "touch_event_id": null,
+          "selection": "NO_SELECTION",
+          "selected_setup": null,
+          "live_demo_order": false
+        },
+        {
+          "event_id": "FVG-SHORT-456",
+          "kind": "FVG",
+          "side": "SHORT",
+          "structure_index": 456,
+          "bias": "BEARISH",
+          "confirmation": "CONFIRMED",
+          "lifecycle_state": "PARTIAL_MITIGATION",
+          "zone_bounds": {
+            "low": 2432.88,
+            "high": 2433.79
+          },
+          "touch_event_id": "5m:ETHUSDT:1792001999999",
+          "selection": "SELECTED",
+          "selected_setup": "fvg_context",
+          "live_demo_order": false,
+          "live_demo_plan": false,
+          "client_order_id": "jev_196a4496bbf9188c85d5800a",
+          "plan_status": "ELIMINATED_REPLACED"
+        },
+        {
+          "event_id": "FVG-SHORT-467",
+          "kind": "FVG",
+          "side": "SHORT",
+          "structure_index": 467,
+          "bias": "BEARISH",
+          "confirmation": "WAITING",
+          "lifecycle_state": "INVALIDATED",
+          "zone_bounds": {
+            "low": 2424.53,
+            "high": 2427.24
+          },
+          "touch_event_id": null,
+          "selection": "NO_SELECTION",
+          "selected_setup": null,
+          "live_demo_order": false
+        },
+        {
+          "event_id": "FVG-SHORT-468",
+          "kind": "FVG",
+          "side": "SHORT",
+          "structure_index": 468,
+          "bias": "BEARISH",
+          "confirmation": "WAITING",
+          "lifecycle_state": "INVALIDATED",
+          "zone_bounds": {
+            "low": 2416.91,
+            "high": 2419.56
+          },
+          "touch_event_id": "5m:ETHUSDT:1792012799999",
+          "selection": "NO_SELECTION",
+          "selected_setup": null,
+          "live_demo_order": false
+        },
+        {
+          "event_id": "15m:469:BOS:SW-L-external_swing-459",
+          "kind": "BOS",
+          "side": "SHORT",
+          "structure_index": 469,
+          "bias": "BEARISH",
+          "confirmation": "WAITING",
+          "lifecycle_state": "ACTIVE",
+          "zone_bounds": {
+            "low": 2428.7,
+            "high": 2433.92
+          },
+          "touch_event_id": null,
+          "selection": "NO_SELECTION",
+          "selected_setup": null,
+          "live_demo_order": false
+        },
+        {
+          "event_id": "FVG-LONG-470",
+          "kind": "FVG",
+          "side": "LONG",
+          "structure_index": 470,
+          "bias": "BEARISH",
+          "confirmation": "WAITING",
+          "lifecycle_state": "INVALIDATED",
+          "zone_bounds": {
+            "low": 2416.91,
+            "high": 2421.93
+          },
+          "touch_event_id": "5m:ETHUSDT:1792014899999",
+          "selection": "NO_SELECTION",
+          "selected_setup": null,
+          "live_demo_order": false
+        },
+        {
+          "event_id": "FVG-SHORT-472",
+          "kind": "FVG",
+          "side": "SHORT",
+          "structure_index": 472,
+          "bias": "BEARISH",
+          "confirmation": "WAITING",
+          "lifecycle_state": "INVALIDATED",
+          "zone_bounds": {
+            "low": 2420.5,
+            "high": 2421.93
+          },
+          "touch_event_id": "5m:ETHUSDT:1792019699999",
+          "selection": "NO_SELECTION",
+          "selected_setup": null,
+          "live_demo_order": false
+        },
+        {
+          "event_id": "FVG-SHORT-473",
+          "kind": "FVG",
+          "side": "SHORT",
+          "structure_index": 473,
+          "bias": "BEARISH",
+          "confirmation": "WAITING",
+          "lifecycle_state": "INVALIDATED",
+          "zone_bounds": {
+            "low": 2415.47,
+            "high": 2416.96
+          },
+          "touch_event_id": null,
+          "selection": "NO_SELECTION",
+          "selected_setup": null,
+          "live_demo_order": false
+        },
+        {
+          "event_id": "FVG-LONG-480",
+          "kind": "FVG",
+          "side": "LONG",
+          "structure_index": 480,
+          "bias": "BEARISH",
+          "confirmation": "WAITING",
+          "lifecycle_state": "INVALIDATED",
+          "zone_bounds": {
+            "low": 2419.5,
+            "high": 2419.68
+          },
+          "touch_event_id": "5m:ETHUSDT:1792025099999",
+          "selection": "NO_SELECTION",
+          "selected_setup": null,
+          "live_demo_order": false
+        },
+        {
+          "event_id": "FVG-LONG-481",
+          "kind": "FVG",
+          "side": "LONG",
+          "structure_index": 481,
+          "bias": "BEARISH",
+          "confirmation": "WAITING",
+          "lifecycle_state": "INVALIDATED",
+          "zone_bounds": {
+            "low": 2419.87,
+            "high": 2422.9
+          },
+          "touch_event_id": "5m:ETHUSDT:1792024799999",
+          "selection": "NO_SELECTION",
+          "selected_setup": null,
+          "live_demo_order": false
+        },
+        {
+          "event_id": "FVG-SHORT-483",
+          "kind": "FVG",
+          "side": "SHORT",
+          "structure_index": 483,
+          "bias": "BEARISH",
+          "confirmation": "CONFIRMED",
+          "lifecycle_state": "PARTIAL_MITIGATION",
+          "zone_bounds": {
+            "low": 2420.69,
+            "high": 2422.9
+          },
+          "touch_event_id": "5m:ETHUSDT:1792026299999",
+          "selection": "SELECTED",
+          "selected_setup": "fvg_context",
+          "live_demo_order": false,
+          "live_demo_plan": {
+            "setup_id": "fvg_context",
+            "side": "BEARISH",
+            "entry": 2421.795,
+            "sl": 2424.1067000000003,
+            "tp": 2413.12,
+            "rr": 3.75264956525476,
+            "entry_reason": "causal FVG return/rejection/local break",
+            "sl_reason": "outside FVG boundary",
+            "tp_reason": "parent impulse/opposing liquidity",
+            "evidence": {
+              "event_id": "FVG-SHORT-483",
+              "source_indices": [
+                481,
+                482,
+                483
+              ],
+              "rejection_event_id": "5m:ETHUSDT:1792026899999",
+              "micro_break_event_id": "5m:ETHUSDT:1792027499999",
+              "entry_source": "fvg_zone",
+              "sl_source": "fvg_boundary",
+              "tp_source": "parent_impulse_objective"
+            }
+          },
+          "client_order_id": "jev_d4dfd23e667a85c6f8898aa6"
+        },
+        {
+          "event_id": "FVG-SHORT-494",
+          "kind": "FVG",
+          "side": "SHORT",
+          "structure_index": 494,
+          "bias": "BEARISH",
+          "confirmation": "WAITING",
+          "lifecycle_state": "INVALIDATED",
+          "zone_bounds": {
+            "low": 2363.47,
+            "high": 2363.9
+          },
+          "touch_event_id": "5m:ETHUSDT:1792037099999",
+          "selection": "NO_SELECTION",
+          "selected_setup": null,
+          "live_demo_order": false
+        },
+        {
+          "event_id": "FVG-SHORT-495",
+          "kind": "FVG",
+          "side": "SHORT",
+          "structure_index": 495,
+          "bias": "BEARISH",
+          "confirmation": "WAITING",
+          "lifecycle_state": "INVALIDATED",
+          "zone_bounds": {
+            "low": 2360.36,
+            "high": 2362.88
+          },
+          "touch_event_id": null,
+          "selection": "NO_SELECTION",
+          "selected_setup": null,
+          "live_demo_order": false
+        },
+        {
+          "event_id": "FVG-LONG-497",
+          "kind": "FVG",
+          "side": "LONG",
+          "structure_index": 497,
+          "bias": "BEARISH",
+          "confirmation": "WAITING",
+          "lifecycle_state": "ACTIVE",
+          "zone_bounds": {
+            "low": 2360.36,
+            "high": 2361.91
+          },
+          "touch_event_id": null,
+          "selection": "NO_SELECTION",
+          "selected_setup": null,
+          "live_demo_order": false
+        },
+        {
+          "event_id": "FVG-LONG-498",
+          "kind": "FVG",
+          "side": "LONG",
+          "structure_index": 498,
+          "bias": "BEARISH",
+          "confirmation": "WAITING",
+          "lifecycle_state": "ACTIVE",
+          "zone_bounds": {
+            "low": 2365.4,
+            "high": 2375.18
+          },
+          "touch_event_id": null,
+          "selection": "NO_SELECTION",
+          "selected_setup": null,
+          "live_demo_order": false
+        }
+      ]
+    },
+    "SOLUSDT": {
+      "closed_counts": {
+        "1h": 499,
+        "15m": 499,
+        "5m": 499
+      },
+      "latest_closed_candle": {
+        "1h": 1792036799999,
+        "15m": 1792039499999,
+        "5m": 1792039499999
+      },
+      "recent_events": [
+        {
+          "event_id": "FVG-LONG-427",
+          "kind": "FVG",
+          "side": "LONG",
+          "structure_index": 427,
+          "bias": "BULLISH",
+          "confirmation": "WAITING",
+          "lifecycle_state": "INVALIDATED",
+          "zone_bounds": {
+            "low": 106.78,
+            "high": 106.87
+          },
+          "touch_event_id": null,
+          "selection": "NO_SELECTION",
+          "selected_setup": null,
+          "live_demo_order": false
+        },
+        {
+          "event_id": "FVG-LONG-433",
+          "kind": "FVG",
+          "side": "LONG",
+          "structure_index": 433,
+          "bias": "BULLISH",
+          "confirmation": "WAITING",
+          "lifecycle_state": "INVALIDATED",
+          "zone_bounds": {
+            "low": 107.19,
+            "high": 107.36
+          },
+          "touch_event_id": null,
+          "selection": "NO_SELECTION",
+          "selected_setup": null,
+          "live_demo_order": false
+        },
+        {
+          "event_id": "15m:434:CHoCH_MSS:SW-L-external_swing-424",
+          "kind": "CHoCH_MSS",
+          "side": "SHORT",
+          "structure_index": 434,
+          "bias": "BULLISH",
+          "confirmation": "WAITING",
+          "lifecycle_state": "ACTIVE",
+          "zone_bounds": {
+            "low": 107.12,
+            "high": 107.64
+          },
+          "touch_event_id": null,
+          "selection": "NO_SELECTION",
+          "selected_setup": null,
+          "live_demo_order": false
+        },
+        {
+          "event_id": "FVG-SHORT-435",
+          "kind": "FVG",
+          "side": "SHORT",
+          "structure_index": 435,
+          "bias": "BULLISH",
+          "confirmation": "CONFIRMED",
+          "lifecycle_state": "PARTIAL_MITIGATION",
+          "zone_bounds": {
+            "low": 106.08,
+            "high": 107.36
+          },
+          "touch_event_id": "5m:SOLUSDT:1791985199999",
+          "selection": "NO_SELECTION",
+          "selected_setup": null,
+          "live_demo_order": false
+        },
+        {
+          "event_id": "FVG-SHORT-436",
+          "kind": "FVG",
+          "side": "SHORT",
+          "structure_index": 436,
+          "bias": "BULLISH",
+          "confirmation": "WAITING",
+          "lifecycle_state": "INVALIDATED",
+          "zone_bounds": {
+            "low": 105.55,
+            "high": 105.6
+          },
+          "touch_event_id": null,
+          "selection": "NO_SELECTION",
+          "selected_setup": null,
+          "live_demo_order": false
+        },
+        {
+          "event_id": "FVG-SHORT-437",
+          "kind": "FVG",
+          "side": "SHORT",
+          "structure_index": 437,
+          "bias": "BULLISH",
+          "confirmation": "WAITING",
+          "lifecycle_state": "INVALIDATED",
+          "zone_bounds": {
+            "low": 105.01,
+            "high": 105.39
+          },
+          "touch_event_id": null,
+          "selection": "NO_SELECTION",
+          "selected_setup": null,
+          "live_demo_order": false
+        },
+        {
+          "event_id": "FVG-SHORT-442",
+          "kind": "FVG",
+          "side": "SHORT",
+          "structure_index": 442,
+          "bias": "RANGE",
+          "confirmation": "WAITING",
+          "lifecycle_state": "INVALIDATED",
+          "zone_bounds": {
+            "low": 104.21,
+            "high": 104.56
+          },
+          "touch_event_id": "5m:SOLUSDT:1791990299999",
+          "selection": "NO_SELECTION",
+          "selected_setup": null,
+          "live_demo_order": false
+        },
+        {
+          "event_id": "FVG-SHORT-448",
+          "kind": "FVG",
+          "side": "SHORT",
+          "structure_index": 448,
+          "bias": "BEARISH",
+          "confirmation": "WAITING",
+          "lifecycle_state": "INVALIDATED",
+          "zone_bounds": {
+            "low": 104.17,
+            "high": 104.2
+          },
+          "touch_event_id": "5m:SOLUSDT:1791994799999",
+          "selection": "NO_SELECTION",
+          "selected_setup": null,
+          "live_demo_order": false
+        },
+        {
+          "event_id": "FVG-LONG-451",
+          "kind": "FVG",
+          "side": "LONG",
+          "structure_index": 451,
+          "bias": "BEARISH",
+          "confirmation": "WAITING",
+          "lifecycle_state": "INVALIDATED",
+          "zone_bounds": {
+            "low": 104.19,
+            "high": 104.56
+          },
+          "touch_event_id": "5m:SOLUSDT:1791999899999",
+          "selection": "NO_SELECTION",
+          "selected_setup": null,
+          "live_demo_order": false
+        },
+        {
+          "event_id": "FVG-LONG-452",
+          "kind": "FVG",
+          "side": "LONG",
+          "structure_index": 452,
+          "bias": "BEARISH",
+          "confirmation": "WAITING",
+          "lifecycle_state": "INVALIDATED",
+          "zone_bounds": {
+            "low": 104.76,
+            "high": 104.8
+          },
+          "touch_event_id": "5m:SOLUSDT:1791999299999",
+          "selection": "NO_SELECTION",
+          "selected_setup": null,
+          "live_demo_order": false
+        },
+        {
+          "event_id": "FVG-LONG-453",
+          "kind": "FVG",
+          "side": "LONG",
+          "structure_index": 453,
+          "bias": "BEARISH",
+          "confirmation": "WAITING",
+          "lifecycle_state": "INVALIDATED",
+          "zone_bounds": {
+            "low": 104.91,
+            "high": 104.95
+          },
+          "touch_event_id": null,
+          "selection": "NO_SELECTION",
+          "selected_setup": null,
+          "live_demo_order": false
+        },
+        {
+          "event_id": "FVG-SHORT-455",
+          "kind": "FVG",
+          "side": "SHORT",
+          "structure_index": 455,
+          "bias": "BEARISH",
+          "confirmation": "CONFIRMED",
+          "lifecycle_state": "PARTIAL_MITIGATION",
+          "zone_bounds": {
+            "low": 104.73,
+            "high": 104.95
+          },
+          "touch_event_id": "5m:SOLUSDT:1792001099999",
+          "selection": "SELECTED",
+          "selected_setup": "fvg_context",
+          "live_demo_order": false,
+          "live_demo_plan": {
+            "setup_id": "fvg_context",
+            "side": "BEARISH",
+            "entry": 104.84,
+            "sl": 105.002185,
+            "tp": 102.09,
+            "rr": 16.95594537102756,
+            "entry_reason": "causal FVG return/rejection/local break",
+            "sl_reason": "outside FVG boundary",
+            "tp_reason": "parent impulse/opposing liquidity",
+            "evidence": {
+              "event_id": "FVG-SHORT-455",
+              "source_indices": [
+                453,
+                454,
+                455
+              ],
+              "rejection_event_id": "5m:SOLUSDT:1792001099999",
+              "micro_break_event_id": "5m:SOLUSDT:1792001699999",
+              "entry_source": "fvg_zone",
+              "sl_source": "fvg_boundary",
+              "tp_source": "parent_impulse_objective"
+            }
+          },
+          "client_order_id": "jev_49c3b2e068ce213ce3421390"
+        },
+        {
+          "event_id": "FVG-LONG-471",
+          "kind": "FVG",
+          "side": "LONG",
+          "structure_index": 471,
+          "bias": "RANGE",
+          "confirmation": "WAITING",
+          "lifecycle_state": "INVALIDATED",
+          "zone_bounds": {
+            "low": 104.08,
+            "high": 104.6
+          },
+          "touch_event_id": "5m:SOLUSDT:1792015799999",
+          "selection": "NO_SELECTION",
+          "selected_setup": null,
+          "live_demo_order": false
+        },
+        {
+          "event_id": "FVG-SHORT-473",
+          "kind": "FVG",
+          "side": "SHORT",
+          "structure_index": 473,
+          "bias": "RANGE",
+          "confirmation": "WAITING",
+          "lifecycle_state": "INVALIDATED",
+          "zone_bounds": {
+            "low": 104.58,
+            "high": 104.6
+          },
+          "touch_event_id": "5m:SOLUSDT:1792018799999",
+          "selection": "NO_SELECTION",
+          "selected_setup": null,
+          "live_demo_order": false
+        },
+        {
+          "event_id": "FVG-SHORT-479",
+          "kind": "FVG",
+          "side": "SHORT",
+          "structure_index": 479,
+          "bias": "RANGE",
+          "confirmation": "WAITING",
+          "lifecycle_state": "INVALIDATED",
+          "zone_bounds": {
+            "low": 104.29,
+            "high": 104.38
+          },
+          "touch_event_id": null,
+          "selection": "NO_SELECTION",
+          "selected_setup": null,
+          "live_demo_order": false
+        },
+        {
+          "event_id": "FVG-LONG-481",
+          "kind": "FVG",
+          "side": "LONG",
+          "structure_index": 481,
+          "bias": "RANGE",
+          "confirmation": "WAITING",
+          "lifecycle_state": "INVALIDATED",
+          "zone_bounds": {
+            "low": 104.29,
+            "high": 104.3
+          },
+          "touch_event_id": null,
+          "selection": "NO_SELECTION",
+          "selected_setup": null,
+          "live_demo_order": false
+        },
+        {
+          "event_id": "15m:488:BOS:SW-L-external_swing-466",
+          "kind": "BOS",
+          "side": "SHORT",
+          "structure_index": 488,
+          "bias": "RANGE",
+          "confirmation": "WAITING",
+          "lifecycle_state": "PARTIAL_MITIGATION",
+          "zone_bounds": {
+            "low": 103.99,
+            "high": 104.61
+          },
+          "touch_event_id": "5m:SOLUSDT:1792038899999",
+          "selection": "NO_SELECTION",
+          "selected_setup": null,
+          "live_demo_order": false
+        },
+        {
+          "event_id": "FVG-SHORT-489",
+          "kind": "FVG",
+          "side": "SHORT",
+          "structure_index": 489,
+          "bias": "RANGE",
+          "confirmation": "WAITING",
+          "lifecycle_state": "INVALIDATED",
+          "zone_bounds": {
+            "low": 103.87,
+            "high": 104.0
+          },
+          "touch_event_id": "5m:SOLUSDT:1792038899999",
+          "selection": "NO_SELECTION",
+          "selected_setup": null,
+          "live_demo_order": false
+        },
+        {
+          "event_id": "FVG-SHORT-490",
+          "kind": "FVG",
+          "side": "SHORT",
+          "structure_index": 490,
+          "bias": "RANGE",
+          "confirmation": "WAITING",
+          "lifecycle_state": "INVALIDATED",
+          "zone_bounds": {
+            "low": 103.34,
+            "high": 103.68
+          },
+          "touch_event_id": "5m:SOLUSDT:1792032599999",
+          "selection": "NO_SELECTION",
+          "selected_setup": null,
+          "live_demo_order": false
+        },
+        {
+          "event_id": "FVG-LONG-498",
+          "kind": "FVG",
+          "side": "LONG",
+          "structure_index": 498,
+          "bias": "RANGE",
+          "confirmation": "WAITING",
+          "lifecycle_state": "ACTIVE",
+          "zone_bounds": {
+            "low": 102.96,
+            "high": 103.31
+          },
+          "touch_event_id": null,
+          "selection": "NO_SELECTION",
+          "selected_setup": null,
+          "live_demo_order": false
+        }
+      ]
+    },
+    "XAUUSDT": {
+      "closed_counts": {
+        "1h": 499,
+        "15m": 499,
+        "5m": 499
+      },
+      "latest_closed_candle": {
+        "1h": 1792036799999,
+        "15m": 1792039499999,
+        "5m": 1792039499999
+      },
+      "recent_events": [
+        {
+          "event_id": "FVG-SHORT-444",
+          "kind": "FVG",
+          "side": "SHORT",
+          "structure_index": 444,
           "bias": "BEARISH",
           "confirmation": "CONFIRMED",
           "lifecycle_state": "PARTIAL_MITIGATION",
@@ -1313,14 +1177,14 @@
           "touch_event_id": "5m:XAUUSDT:1791991499999",
           "selection": "SELECTED",
           "selected_setup": "fvg_context",
-          "virtual_order": false,
-          "paper_rejection": "plan_exception:TypeError:object of type 'NoneType' has no len()"
+          "live_demo_order": false,
+          "gate_rejection": "plan_exception:TypeError:object of type 'NoneType' has no len()"
         },
         {
-          "event_id": "FVG-SHORT-453",
+          "event_id": "FVG-SHORT-447",
           "kind": "FVG",
           "side": "SHORT",
-          "structure_index": 453,
+          "structure_index": 447,
           "bias": "BEARISH",
           "confirmation": "CONFIRMED",
           "lifecycle_state": "PARTIAL_MITIGATION",
@@ -1331,14 +1195,14 @@
           "touch_event_id": "5m:XAUUSDT:1791993899999",
           "selection": "SELECTED",
           "selected_setup": "fvg_context",
-          "virtual_order": false,
-          "paper_rejection": "plan_exception:TypeError:object of type 'NoneType' has no len()"
+          "live_demo_order": false,
+          "gate_rejection": "plan_exception:TypeError:object of type 'NoneType' has no len()"
         },
         {
-          "event_id": "FVG-SHORT-455",
+          "event_id": "FVG-SHORT-449",
           "kind": "FVG",
           "side": "SHORT",
-          "structure_index": 455,
+          "structure_index": 449,
           "bias": "BEARISH",
           "confirmation": "WAITING",
           "lifecycle_state": "INVALIDATED",
@@ -1349,13 +1213,13 @@
           "touch_event_id": null,
           "selection": "NO_SELECTION",
           "selected_setup": null,
-          "virtual_order": false
+          "live_demo_order": false
         },
         {
-          "event_id": "FVG-LONG-457",
+          "event_id": "FVG-LONG-451",
           "kind": "FVG",
           "side": "LONG",
-          "structure_index": 457,
+          "structure_index": 451,
           "bias": "BEARISH",
           "confirmation": "WAITING",
           "lifecycle_state": "ACTIVE",
@@ -1366,13 +1230,13 @@
           "touch_event_id": null,
           "selection": "NO_SELECTION",
           "selected_setup": null,
-          "virtual_order": false
+          "live_demo_order": false
         },
         {
-          "event_id": "FVG-LONG-460",
+          "event_id": "FVG-LONG-454",
           "kind": "FVG",
           "side": "LONG",
-          "structure_index": 460,
+          "structure_index": 454,
           "bias": "BEARISH",
           "confirmation": "WAITING",
           "lifecycle_state": "INVALIDATED",
@@ -1383,13 +1247,13 @@
           "touch_event_id": "5m:XAUUSDT:1792000199999",
           "selection": "NO_SELECTION",
           "selected_setup": null,
-          "virtual_order": false
+          "live_demo_order": false
         },
         {
-          "event_id": "FVG-LONG-463",
+          "event_id": "FVG-LONG-457",
           "kind": "FVG",
           "side": "LONG",
-          "structure_index": 463,
+          "structure_index": 457,
           "bias": "BEARISH",
           "confirmation": "WAITING",
           "lifecycle_state": "ACTIVE",
@@ -1400,13 +1264,13 @@
           "touch_event_id": null,
           "selection": "NO_SELECTION",
           "selected_setup": null,
-          "virtual_order": false
+          "live_demo_order": false
         },
         {
-          "event_id": "FVG-LONG-464",
+          "event_id": "FVG-LONG-458",
           "kind": "FVG",
           "side": "LONG",
-          "structure_index": 464,
+          "structure_index": 458,
           "bias": "BEARISH",
           "confirmation": "CONFIRMED",
           "lifecycle_state": "PARTIAL_MITIGATION",
@@ -1417,13 +1281,13 @@
           "touch_event_id": "5m:XAUUSDT:1792004099999",
           "selection": "NO_SELECTION",
           "selected_setup": null,
-          "virtual_order": false
+          "live_demo_order": false
         },
         {
-          "event_id": "FVG-LONG-467",
+          "event_id": "FVG-LONG-461",
           "kind": "FVG",
           "side": "LONG",
-          "structure_index": 467,
+          "structure_index": 461,
           "bias": "BEARISH",
           "confirmation": "WAITING",
           "lifecycle_state": "ACTIVE",
@@ -1434,13 +1298,13 @@
           "touch_event_id": null,
           "selection": "NO_SELECTION",
           "selected_setup": null,
-          "virtual_order": false
+          "live_demo_order": false
         },
         {
-          "event_id": "FVG-LONG-468",
+          "event_id": "FVG-LONG-462",
           "kind": "FVG",
           "side": "LONG",
-          "structure_index": 468,
+          "structure_index": 462,
           "bias": "BEARISH",
           "confirmation": "CONFIRMED",
           "lifecycle_state": "PARTIAL_MITIGATION",
@@ -1451,13 +1315,13 @@
           "touch_event_id": "5m:XAUUSDT:1792007399999",
           "selection": "NO_SELECTION",
           "selected_setup": null,
-          "virtual_order": false
+          "live_demo_order": false
         },
         {
-          "event_id": "FVG-LONG-477",
+          "event_id": "FVG-LONG-471",
           "kind": "FVG",
           "side": "LONG",
-          "structure_index": 477,
+          "structure_index": 471,
           "bias": "BEARISH",
           "confirmation": "CONFIRMED",
           "lifecycle_state": "PARTIAL_MITIGATION",
@@ -1468,13 +1332,13 @@
           "touch_event_id": "5m:XAUUSDT:1792015799999",
           "selection": "NO_SELECTION",
           "selected_setup": null,
-          "virtual_order": false
+          "live_demo_order": false
         },
         {
-          "event_id": "15m:479:CHoCH_MSS:SW-H-external_swing-473",
+          "event_id": "15m:473:CHoCH_MSS:SW-H-external_swing-467",
           "kind": "CHoCH_MSS",
           "side": "LONG",
-          "structure_index": 479,
+          "structure_index": 473,
           "bias": "BEARISH",
           "confirmation": "CONFIRMED",
           "lifecycle_state": "PARTIAL_MITIGATION",
@@ -1485,13 +1349,13 @@
           "touch_event_id": "5m:XAUUSDT:1792017299999",
           "selection": "NO_SELECTION",
           "selected_setup": null,
-          "virtual_order": false
+          "live_demo_order": false
         },
         {
-          "event_id": "FVG-SHORT-483",
+          "event_id": "FVG-SHORT-477",
           "kind": "FVG",
           "side": "SHORT",
-          "structure_index": 483,
+          "structure_index": 477,
           "bias": "BEARISH",
           "confirmation": "WAITING",
           "lifecycle_state": "INVALIDATED",
@@ -1502,13 +1366,13 @@
           "touch_event_id": "5m:XAUUSDT:1792020899999",
           "selection": "NO_SELECTION",
           "selected_setup": null,
-          "virtual_order": false
+          "live_demo_order": false
         },
         {
-          "event_id": "FVG-LONG-485",
+          "event_id": "FVG-LONG-479",
           "kind": "FVG",
           "side": "LONG",
-          "structure_index": 485,
+          "structure_index": 479,
           "bias": "BEARISH",
           "confirmation": "WAITING",
           "lifecycle_state": "ACTIVE",
@@ -1519,13 +1383,13 @@
           "touch_event_id": null,
           "selection": "NO_SELECTION",
           "selected_setup": null,
-          "virtual_order": false
+          "live_demo_order": false
         },
         {
-          "event_id": "FVG-LONG-486",
+          "event_id": "FVG-LONG-480",
           "kind": "FVG",
           "side": "LONG",
-          "structure_index": 486,
+          "structure_index": 480,
           "bias": "BEARISH",
           "confirmation": "WAITING",
           "lifecycle_state": "ACTIVE",
@@ -1536,13 +1400,13 @@
           "touch_event_id": null,
           "selection": "NO_SELECTION",
           "selected_setup": null,
-          "virtual_order": false
+          "live_demo_order": false
         },
         {
-          "event_id": "FVG-LONG-487",
+          "event_id": "FVG-LONG-481",
           "kind": "FVG",
           "side": "LONG",
-          "structure_index": 487,
+          "structure_index": 481,
           "bias": "BEARISH",
           "confirmation": "WAITING",
           "lifecycle_state": "ACTIVE",
@@ -1553,13 +1417,13 @@
           "touch_event_id": null,
           "selection": "NO_SELECTION",
           "selected_setup": null,
-          "virtual_order": false
+          "live_demo_order": false
         },
         {
-          "event_id": "FVG-LONG-488",
+          "event_id": "FVG-LONG-482",
           "kind": "FVG",
           "side": "LONG",
-          "structure_index": 488,
+          "structure_index": 482,
           "bias": "BEARISH",
           "confirmation": "CONFIRMED",
           "lifecycle_state": "PARTIAL_MITIGATION",
@@ -1570,33 +1434,33 @@
           "touch_event_id": "5m:XAUUSDT:1792028699999",
           "selection": "NO_SELECTION",
           "selected_setup": null,
-          "virtual_order": false
+          "live_demo_order": false
         },
         {
-          "event_id": "15m:497:BOS:SW-H-external_swing-491",
+          "event_id": "15m:491:BOS:SW-H-external_swing-485",
           "kind": "BOS",
           "side": "LONG",
-          "structure_index": 497,
+          "structure_index": 491,
           "bias": "RANGE",
           "confirmation": "WAITING",
-          "lifecycle_state": "ACTIVE",
+          "lifecycle_state": "PARTIAL_MITIGATION",
           "zone_bounds": {
             "low": 4144.24,
             "high": 4153.61
           },
-          "touch_event_id": null,
+          "touch_event_id": "5m:XAUUSDT:1792035299999",
           "selection": "NO_SELECTION",
           "selected_setup": null,
-          "virtual_order": false
+          "live_demo_order": false
         },
         {
-          "event_id": "FVG-LONG-498",
+          "event_id": "FVG-LONG-492",
           "kind": "FVG",
           "side": "LONG",
-          "structure_index": 498,
+          "structure_index": 492,
           "bias": "RANGE",
           "confirmation": "WAITING",
-          "lifecycle_state": "TOUCHED",
+          "lifecycle_state": "INVALIDATED",
           "zone_bounds": {
             "low": 4151.99,
             "high": 4159.89
@@ -1604,34 +1468,68 @@
           "touch_event_id": "5m:XAUUSDT:1792034399999",
           "selection": "NO_SELECTION",
           "selected_setup": null,
-          "virtual_order": false
+          "live_demo_order": false
+        },
+        {
+          "event_id": "FVG-SHORT-494",
+          "kind": "FVG",
+          "side": "SHORT",
+          "structure_index": 494,
+          "bias": "RANGE",
+          "confirmation": "WAITING",
+          "lifecycle_state": "ACTIVE",
+          "zone_bounds": {
+            "low": 4158.83,
+            "high": 4159.89
+          },
+          "touch_event_id": null,
+          "selection": "NO_SELECTION",
+          "selected_setup": null,
+          "live_demo_order": false
+        },
+        {
+          "event_id": "FVG-SHORT-496",
+          "kind": "FVG",
+          "side": "SHORT",
+          "structure_index": 496,
+          "bias": "RANGE",
+          "confirmation": "WAITING",
+          "lifecycle_state": "PARTIAL_MITIGATION",
+          "zone_bounds": {
+            "low": 4152.79,
+            "high": 4153.5
+          },
+          "touch_event_id": "5m:XAUUSDT:1792037999999",
+          "selection": "NO_SELECTION",
+          "selected_setup": null,
+          "live_demo_order": false
         }
       ]
     }
   },
   "latest_structure_event_ids": {
-    "BTCUSDT": "15m:483:BOS:SW-L-external_swing-464",
-    "ETHUSDT": "15m:475:BOS:SW-L-external_swing-465",
-    "SOLUSDT": "15m:494:BOS:SW-L-external_swing-472",
-    "XAUUSDT": "15m:497:BOS:SW-H-external_swing-491"
+    "BTCUSDT": "15m:477:BOS:SW-L-external_swing-458",
+    "ETHUSDT": "15m:469:BOS:SW-L-external_swing-459",
+    "SOLUSDT": "15m:488:BOS:SW-L-external_swing-466",
+    "XAUUSDT": "15m:491:BOS:SW-H-external_swing-485"
   },
   "latest_confirmed_structure_event_ids": {
     "BTCUSDT": null,
     "ETHUSDT": null,
     "SOLUSDT": null,
-    "XAUUSDT": "15m:479:CHoCH_MSS:SW-H-external_swing-473"
+    "XAUUSDT": "15m:473:CHoCH_MSS:SW-H-external_swing-467"
   },
   "execution_candidates": [
     {
-      "client_order_id": "jev_5c04a6601cc13f908fff1fb9",
+      "client_order_id": "jev_7435d0e4e0156d43d3af942f",
       "symbol": "BTCUSDT",
-      "structure_event_id": "FVG-SHORT-478",
-      "structure_index": 478,
-      "confirmation_index": 483,
-      "created_at_ms": 1792034556670,
+      "structure_event_id": "FVG-SHORT-472",
+      "structure_index": 472,
+      "confirmation_index": 466,
+      "created_at_ms": 1792039743272,
       "side": "SELL",
       "protected_level": null,
-      "current_close": 81238.4,
+      "current_close": 81496.3,
       "poi_type": "FVG",
       "poi_state": "PARTIAL_MITIGATION",
       "setup_id": "fvg_context",
@@ -1641,11 +1539,11 @@
       "rr": 3.6177484372264512,
       "status": "APPROVED_FOR_EXECUTION",
       "evidence": {
-        "event_id": "FVG-SHORT-478",
+        "event_id": "FVG-SHORT-472",
         "source_indices": [
-          476,
-          477,
-          478
+          470,
+          471,
+          472
         ],
         "rejection_event_id": "5m:BTCUSDT:1792026299999",
         "micro_break_event_id": "5m:BTCUSDT:1792029899999",
@@ -1655,15 +1553,15 @@
       }
     },
     {
-      "client_order_id": "jev_a3892f5e773c6c94b9153352",
+      "client_order_id": "jev_d4dfd23e667a85c6f8898aa6",
       "symbol": "ETHUSDT",
-      "structure_event_id": "FVG-SHORT-489",
-      "structure_index": 489,
-      "confirmation_index": 475,
-      "created_at_ms": 1792034556670,
+      "structure_event_id": "FVG-SHORT-483",
+      "structure_index": 483,
+      "confirmation_index": 458,
+      "created_at_ms": 1792039743272,
       "side": "SELL",
       "protected_level": null,
-      "current_close": 2369.27,
+      "current_close": 2381.49,
       "poi_type": "FVG",
       "poi_state": "PARTIAL_MITIGATION",
       "setup_id": "fvg_context",
@@ -1673,11 +1571,11 @@
       "rr": 3.75264956525476,
       "status": "APPROVED_FOR_EXECUTION",
       "evidence": {
-        "event_id": "FVG-SHORT-489",
+        "event_id": "FVG-SHORT-483",
         "source_indices": [
-          487,
-          488,
-          489
+          481,
+          482,
+          483
         ],
         "rejection_event_id": "5m:ETHUSDT:1792026899999",
         "micro_break_event_id": "5m:ETHUSDT:1792027499999",
@@ -1687,15 +1585,15 @@
       }
     },
     {
-      "client_order_id": "jev_4a1b6b9311203bd88ba46c3f",
+      "client_order_id": "jev_49c3b2e068ce213ce3421390",
       "symbol": "SOLUSDT",
-      "structure_event_id": "FVG-SHORT-461",
-      "structure_index": 461,
-      "confirmation_index": 389,
-      "created_at_ms": 1792034556670,
+      "structure_event_id": "FVG-SHORT-455",
+      "structure_index": 455,
+      "confirmation_index": 372,
+      "created_at_ms": 1792039743272,
       "side": "SELL",
       "protected_level": null,
-      "current_close": 102.81,
+      "current_close": 104.16,
       "poi_type": "FVG",
       "poi_state": "PARTIAL_MITIGATION",
       "setup_id": "fvg_context",
@@ -1705,11 +1603,11 @@
       "rr": 16.95594537102756,
       "status": "APPROVED_FOR_EXECUTION",
       "evidence": {
-        "event_id": "FVG-SHORT-461",
+        "event_id": "FVG-SHORT-455",
         "source_indices": [
-          459,
-          460,
-          461
+          453,
+          454,
+          455
         ],
         "rejection_event_id": "5m:SOLUSDT:1792001099999",
         "micro_break_event_id": "5m:SOLUSDT:1792001699999",
@@ -1720,15 +1618,15 @@
     }
   ],
   "totals": {
-    "bias_ready": 63,
+    "bias_ready": 65,
     "structure_events": 80,
-    "confirmed_5m": 17,
+    "confirmed_5m": 15,
     "selected": 3,
-    "paper_plans": 3,
-    "gate_rejections": 71,
-    "selected_events": 9
+    "live_demo_candidates": 3,
+    "gate_rejections": 72,
+    "selected_events": 8
   },
-  "execution_status": "PAPER_ONLY",
-  "virtual_entry_sl_tp": true,
-  "next_action": "Demo executor may process READY_FOR_DEMO_EXECUTION candidates."
+  "execution_status": "LIVE_DEMO",
+  "live_demo_plan": false,
+  "next_action": "Live Demo executor processes fresh APPROVED_FOR_EXECUTION candidates."
 }

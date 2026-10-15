@@ -156,7 +156,7 @@ v2/artifacts/SETUP_BOT_CORES.json
 v2/artifacts/SETUP_BOT_INTERFACES.json
 v2/scripts/setup_bots_executable.py
 v2/scripts/architecture_v2.py
-v2/scripts/paper_context.py
+v2/scripts/live_demo_context.py
 validators and active result schemas
 ```
 
