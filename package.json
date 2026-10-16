@@ -3,7 +3,8 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "start": "node --env-file=.env server.js"
+    "start": "node server.js",
+    "start:local": "node --env-file=.env server.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
