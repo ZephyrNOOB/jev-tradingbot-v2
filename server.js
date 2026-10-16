@@ -792,7 +792,7 @@ app.post('/api/keys', auth, async (req, res) => {
       [req.userId, exchange, encryptSecret(apiKey), encryptSecret(secretKey), encryptSecret(passphrase), String(label || 'default').slice(0, 64), new Date().toISOString(), 1, result.status, new Date().toISOString()]);
     res.json({ ok: true, exchange, status: result.status, detail: result.detail });
   } catch (e) {
-    res.status(401).json({ ok: false, exchange, status: 'rejected', error: e.message });
+    res.status(422).json({ ok: false, exchange, status: 'rejected', error: e.message });
   }
 });
 
