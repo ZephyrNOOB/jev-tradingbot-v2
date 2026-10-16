@@ -1,5 +1,7 @@
 # SetupBot Core Gap Analysis
 
+Status: HISTORICAL GAP RECORD. Superseded by current five-SetupBot runtime implementation in `SETUP_BOT_ARCHITECTURE_V2.md`.
+
 ## Finding 1 — Global trade plan defect
 
 Previous executable runner routed all six bots through one `SetupBot.plan()` function. It used one protected-level reference, one range-width geometry, and generic target ratios. This violated setup ownership. No setup had independent entry, invalidation, objective, or exit-state logic.

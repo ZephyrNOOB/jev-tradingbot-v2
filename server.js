@@ -669,7 +669,7 @@ function stopExecutionRunner(sid) {
   const artifactPath = path.join(__dirname, 'v2', 'artifacts', 'BINANCE_DEMO_LIVE_PIPELINE.json');
   try {
     const artifact = JSON.parse(fs.readFileSync(artifactPath, 'utf8'));
-    res.json({ ok: true, workflow: '1H Bias → 15M MarketStructureBot → 5M ConfirmationBot → SelectionBot → SetupBot', activeSetups: ['fvg_context', 'ob_context'], artifact });
+    res.json({ ok: true, workflow: '1H Bias → 15M MarketStructureBot → 5M ConfirmationBot → SelectionBot → SetupBot', activeSetups: ['fvg_context', 'ob_context', 'liquidity_sweep_reversal', 'breaker_block', 'rbs_sbr_continuation'], artifact });
   } catch {
     res.status(503).json({ ok: false, error: 'V2 Live Demo workflow artifact unavailable' });
   }
@@ -712,7 +712,21 @@ app.get('/api/chart/structure', auth, (req, res) => {
       bias: event.bias,
       confirmation: event.confirmation,
       selection: event.selection,
-      selected_setup: event.selected_setup,
+      selection_reason: event.selection_reason || null,
+      selection_method: event.selection_method || null,
+      primary_owner: event.primary_owner || null,
+      eligible_setup_candidates: event.eligible_setup_candidates || [],
+      contributing_contexts: event.contributing_contexts || [],
+      setup_strength_profiles: event.setup_strength_profiles || [],
+      setup_eligibility_ledger: event.setup_eligibility_ledger || [],
+      structure_layer: event.structure_layer || null,
+      level_classification: event.level_classification || null,
+      pool_id: event.pool_id || null,
+      sweep_level: event.sweep_level || null,
+      sweep_extreme: event.sweep_extreme || null,
+      continuation_state: event.continuation_state || null,
+      parent_event_id: event.parent_event_id || null,
+      source_event_ids: event.source_event_ids || [],
       live_demo_plan: event.live_demo_plan || null,
       plan_status: event.plan_status || null
     }));

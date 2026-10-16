@@ -16,7 +16,7 @@ Status: CORE DEFINITION / PRIMARY PIPELINE
 
 ## Core principle
 
-SelectionBot does not create new market evidence, bias, structure, or trade plan. It selects exactly one setup bot from 15M eligible categories after ConfirmationBot confirms the 15M structure on 5M.
+SelectionBot does not create new market evidence, bias, structure, or trade plan. It evaluates all five equal peer SetupBots after ConfirmationBot confirms the 15M structure on 5M, resolves one primary owner from equal-weight causal strength, and preserves other valid peers as contributing context. The selected SetupBot alone owns Entry, SL, TP, RR, and execution.
 
 ## Input
 
@@ -38,7 +38,7 @@ eligible setup categories must exist
 selected bot must match confirmed 15M market structure
 ```
 
-Any failed gate produces `NO_SELECTION`; no setup bot runs and no trade occurs.
+Any failed common gate produces `NO_SELECTION`; valid multi-peer confluence never produces `NO_SELECTION`. No setup bot runs when common gates fail.
 
 ## Selection logic
 
@@ -49,7 +49,9 @@ candidates = setup bots whose requirements match:
   eligible setup category
   5M CONFIRMED evidence
 
-selected_setup_bot = exactly_one_ranked_candidate(candidates)
+profiles = equal_weight_strength_profile(candidates)
+selected_setup_bot = causal_strength_resolver(profiles)
+contributing_contexts = candidates - {selected_setup_bot}
 ```
 
 Selection is exclusive. Parallel unranked setup execution is forbidden.
@@ -64,19 +66,13 @@ If multiple candidates qualify, rank using only available evidence:
 5. absence of conflicting evidence
 ```
 
-If ranking cannot produce one defensible candidate:
-
-```text
-NO_SELECTION
-WAIT
-no entry
-```
+When multiple candidates qualify, resolve one primary owner using equal-weight causal strength. Preserve other valid candidates as `contributing_contexts`; they are not rejected or ignored. `NO_SELECTION` is reserved for common-gate failure or zero valid causal contexts.
 
 ## Output
 
 ```text
 selected_setup_bot
-selection_state: SELECTED | NO_SELECTION
+selection_state: SELECTION_RESOLVED | NO_SELECTION
 selection_reason
 market_structure_reference
 confirmation_reference

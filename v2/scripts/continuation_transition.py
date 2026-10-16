@@ -16,7 +16,7 @@ class ContinuationEvent:
         if self.side == 'BULLISH':
             if self.state == 'BOS_CONFIRMED' and candle['low'] <= self.broken_level:
                 self.retest_source_indices = (index,)
-                self.state = 'RETEST_TOUCHED'
+                self.state = 'RETEST_HELD' if candle['close'] > self.broken_level else 'RETEST_TOUCHED'
             elif self.state == 'RETEST_TOUCHED' and candle['close'] > self.broken_level:
                 self.retest_source_indices += (index,)
                 self.state = 'RETEST_HELD'
@@ -28,7 +28,7 @@ class ContinuationEvent:
         else:
             if self.state == 'BOS_CONFIRMED' and candle['high'] >= self.broken_level:
                 self.retest_source_indices = (index,)
-                self.state = 'RETEST_TOUCHED'
+                self.state = 'RETEST_HELD' if candle['close'] < self.broken_level else 'RETEST_TOUCHED'
             elif self.state == 'RETEST_TOUCHED' and candle['close'] < self.broken_level:
                 self.retest_source_indices += (index,)
                 self.state = 'RETEST_HELD'

@@ -13,13 +13,13 @@ let state = { connected: false, error: null, updatedAt: null, closedCandles: 0 }
 function connect() {
   if (closedByApp || socket) return;
   try {
-    socket = new WebSocket(BASE + [...SYMBOLS.map(symbol => `${symbol}@markPrice@3s`), ...SYMBOLS.flatMap(symbol => INTERVALS.map(interval => `${symbol}@kline_${interval}`))].join('/'));
+    socket = new WebSocket(BASE + [...SYMBOLS.map(symbol => `${symbol}@markPrice`), ...SYMBOLS.flatMap(symbol => INTERVALS.map(interval => `${symbol}@kline_${interval}`))].join('/'));
     socket.addEventListener('open', () => { state = { ...state, connected: true, error: null }; });
     socket.addEventListener('message', event => {
       try {
         const payload = JSON.parse(event.data);
         const data = payload.data || payload;
-        if (data.s && data.p != null) prices.set(data.s, Number(data.p));
+        if (data.s && data.p != null) prices.set(data.s.toUpperCase(), Number(data.p));
         if (data.e === 'kline' && data.k) {
           const k = data.k;
           const key = `${k.s}:${k.i}`;

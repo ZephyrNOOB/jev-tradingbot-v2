@@ -1,6 +1,6 @@
 # SetupBot Loss / Signal Scarcity Root-Cause Analysis
 
-Status: ANALYSIS ONLY — no strategy patch, no backtest rerun.
+Status: HISTORICAL ANALYSIS ONLY — metrics are not current runtime state. Current live ownership is defined in `SETUP_BOT_ARCHITECTURE_V2.md`.
 
 ## Evidence snapshot
 

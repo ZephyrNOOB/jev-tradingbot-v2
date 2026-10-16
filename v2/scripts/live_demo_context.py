@@ -9,6 +9,9 @@ def update_event_lifecycle(event, bars, start, end):
     elif event.ob_source_index >= 0 and event.ob_zone_high > event.ob_zone_low:
         zone = Zone(event.ob_object_id, event.event_id, side, event.ob_zone_low,
                     event.ob_zone_high, source_indices=(event.ob_source_index,))
+    elif event.kind in ('BREAKER_BLOCK', 'LIQUIDITY_SWEEP') and event.zone_high > event.zone_low:
+        zone = Zone(event.object_id or event.event_id, event.parent_event_id or event.event_id, side,
+                    event.zone_low, event.zone_high, source_indices=tuple(event.source_indices))
     else:
         return None
     rejection = False
@@ -24,7 +27,7 @@ def update_event_lifecycle(event, bars, start, end):
     return zone, rejection, micro_break
 
 def lifecycle_context(event, bars, start, end):
-    return update_event_lifecycle(event, bars, start, end) if event.kind == 'FVG' or event.ob_source_index >= 0 else None
+    return update_event_lifecycle(event, bars, start, end) if event.kind == 'FVG' or event.ob_source_index >= 0 or event.kind in ('BREAKER_BLOCK', 'LIQUIDITY_SWEEP') else None
 
 def select_causal_target(side, entry, pivots, decision_index):
     direction = 'BULLISH' if side in ('LONG', 'BULLISH') else 'BEARISH'
@@ -54,5 +57,14 @@ def setup_context(bot, side, event, entry, bars, idx, all_hs, all_ls, confirmati
     if bot=='ob_context' and event.ob_source_index >= 0 and event.ob_zone_high > event.ob_zone_low and live:
         z,rejection,micro=live
         return {'side':side,'ob_zone':(event.ob_zone_low,event.ob_zone_high),'ob_state':z.state,'ob_object':z,'ob_parent_event_id':event.event_id,'ob_source_indices':[event.ob_source_index],'ob_displacement_event_id':event.event_id,'ob_source_candle':event.ob_source_index,'ob_zone_bounds':(event.ob_zone_low,event.ob_zone_high),'ob_rejection_confirmed':rejection,'local_structure_break':micro,'rejection_event_id':confirmation.get('rejection_event_id'),'micro_break_event_id':confirmation.get('micro_break_event_id'),'invalidation_buffer':buf,'parent_impulse_objective':objective,'target_evidence':target}
+    if bot=='liquidity_sweep_reversal' and event.pool_id and event.sweep_level is not None:
+        zone=(event.sweep_level-buf,event.sweep_level+buf)
+        return {'side':side,'reversal_zone':zone,'sweep_extreme':event.sweep_extreme or event.broken_level,'invalidation_buffer':buf,'target_zone':objective,'sweep_event_id':event.event_id,'pool_id':event.pool_id,'reclaim_event_id':confirmation.get('rejection_event_id') or event.event_id,'lifecycle_state':'REVERSAL_CONFIRMED' if confirmation.get('micro_break_event_id') else 'RECLAIM_CONFIRMED','rejection_confirmed':bool(confirmation.get('rejection_event_id')),'micro_break_confirmed':bool(confirmation.get('micro_break_event_id'))}
+    if bot=='breaker_block' and event.breaker_source_ob_id and event.flip_level is not None:
+        zone=(event.zone_low,event.zone_high)
+        return {'side':side,'breaker_zone':zone,'invalidation_level':event.flip_level,'invalidation_buffer':buf,'target_zone':objective,'breaker_event_id':event.event_id,'source_ob_id':event.breaker_source_ob_id,'lifecycle_state':'BREAKER_PARTIAL_MITIGATION' if confirmation.get('micro_break_event_id') else 'BREAKER_TOUCHED','rejection_confirmed':bool(confirmation.get('rejection_event_id')),'micro_break_confirmed':bool(confirmation.get('micro_break_event_id')),'continuation_state':confirmation.get('continuation_state', 'WAITING')}
+    if bot=='rbs_sbr_continuation' and event.broken_level and event.kind == 'BOS':
+        zone=(event.broken_level-buf,event.broken_level+buf)
+        return {'side':side,'flip_zone':zone,'invalidation_level':event.protected_level or event.broken_level,'invalidation_buffer':buf,'target_zone':objective,'bos_event_id':event.event_id,'continuation_state':confirmation.get('continuation_state', 'CONTINUATION_CONFIRMED')}
     return None
 

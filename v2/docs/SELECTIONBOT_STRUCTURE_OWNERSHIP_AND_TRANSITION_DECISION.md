@@ -1,6 +1,6 @@
 # SelectionBot Structure Ownership and StructureTransition Decision
 
-Status: ANALYSIS / RESEARCH DECISION. No backtest rerun.
+Status: HISTORICAL ARCHITECTURE DECISION / not runtime registry. Current live ownership is defined in `SETUP_BOT_ARCHITECTURE_V2.md`.
 
 ## Decision
 
@@ -37,8 +37,8 @@ State-machine run:
 Previous run:
   StructureTransitionBot: 39 trades, 5 wins, 34 losses, net -$60.00
 
-Latest parallel-candidate run:
-  StructureTransitionBot: 0 trades because ambiguous candidate sets became NO_SELECTION
+Latest legacy parallel-candidate run:
+  StructureTransitionBot: 0 trades because legacy ambiguous candidate sets became NO_SELECTION; this is historical evidence only, not current runtime behavior.
 ```
 
 The result is not a temporary scarcity problem. The bot's own contract overlaps with MarketStructureBot's CHoCH/MSS authority and produced no independent validated edge. The historical result remains evidence only; active promotion is rejected.
@@ -83,7 +83,7 @@ SelectionBot must first identify the structural thesis from confirmed 15M struct
 | BOS continuation | no valid FVG/OB owner | BullishContinuationBot or BearishContinuationBot | participation may qualify |
 | BOS continuation | valid causal FVG | FvgContextBot | continuation is parent thesis |
 | BOS continuation | valid causal OB | OrderBlockContextBot | continuation is parent thesis |
-| BOS continuation | valid FVG + OB | one POI owner only after explicit same-event ownership rule; otherwise NO_SELECTION | participation modifier |
+| BOS continuation | valid FVG + OB | causal-strength resolver chooses primary owner; other valid POI remains contributing context | participation modifier |
 | CHoCH/MSS | valid FVG/OB POI | FVG/OB context bot if their causal object owns entry | no StructureTransitionBot |
 | CHoCH/MSS | no valid FVG/OB POI | NO_SELECTION | CHoCH is structure evidence, not standalone setup |
 | any structure | participation only | base setup owner | participation cannot create trade |
@@ -101,8 +101,8 @@ This is not permanent ranking. It is causal ownership. A setup wins because its 
 6. Build candidates from causal ownership, not list order.
 7. If exactly one owner remains: SELECTED.
 8. If zero owners: NO_SELECTION / no trade.
-9. If multiple owners remain and no explicit lineage resolves ownership: NO_SELECTION.
-10. Record every candidate, owner relation, eligibility, and rejection reason.
+9. If multiple owners remain, apply equal-weight causal-strength resolver and preserve non-primary valid owners as contributing context.
+10. Record every candidate, strength profile, primary owner, contributing context, eligibility, and rejection reason.
 ```
 
 ## Why not score candidates globally

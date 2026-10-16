@@ -158,12 +158,12 @@ def collapse_active_plans(observations, candidates):
     return active
 def main():
     server_time = int(get("/fapi/v1/time")["serverTime"])
-    observations = {}; plan_candidates = []; latest_structure_event_ids = {}; latest_confirmed_structure_event_ids = {}; totals = {"bias_ready": 0, "structure_events": 0, "confirmed_5m": 0, "selected": 0, "live_demo_candidates": 0, "gate_rejections": 0}
+    observations = {}; plan_candidates = []; latest_structure_event_ids = {}; latest_confirmed_structure_event_ids = {}; totals = {"bias_ready": 0, "structure_events": 0, "confirmed_5m": 0, "selected_events": 0, "live_demo_candidates": 0, "gate_rejections": 0}
     for symbol in SYMBOLS:
         h, m, q = rows(symbol, "1h"), rows(symbol, "15m"), rows(symbol, "5m")
         closed = lambda data: [x for x in data if x["close_time"] < server_time]
         h, m, q = closed(h), closed(m), closed(q)
-        bias = MarketBiasBot(h); events = MarketStructureBot(m, symbol).build(); latest_structure_event_ids[symbol] = next((event.event_id for event in reversed(events) if event.kind in ("BOS", "CHoCH_MSS")), None); confirm = ConfirmationBot(q, symbol); selection = SelectionBot(); qtimes = [x["close_time"] for x in q]; hs, ls = pivots(m)
+        bias = MarketBiasBot(h); events = MarketStructureBot(m, symbol).build(); latest_structure_event_ids[symbol] = next((event.event_id for event in reversed(events) if event.kind in ("BOS", "CHoCH_MSS", "LIQUIDITY_SWEEP", "BREAKER_BLOCK")), None); confirm = ConfirmationBot(q, symbol); selection = SelectionBot(); qtimes = [x["close_time"] for x in q]; hs, ls = pivots(m)
         symbol_rows = []
         hs, ls = pivots(m)
         for event in events[-20:]:
@@ -174,10 +174,10 @@ def main():
             if c["state"] == "CONFIRMED": totals["confirmed_5m"] += 1
             decision = selection.select(event, b, c, m[event.index])
             if b.get("valid"): totals["bias_ready"] += 1
-            if decision["state"] == "SELECTED": totals["selected"] += 1
+            if decision["state"] == "SELECTION_RESOLVED": totals["selected_events"] += 1
             else: totals["gate_rejections"] += 1
-            row = {"event_id": event.event_id, "kind": event.kind, "side": event.side, "structure_index": event.index, "bias": b.get("state"), "confirmation": c["state"], "lifecycle_state": c.get("lifecycle_state"), "zone_bounds": c.get("zone_bounds"), "touch_event_id": c.get("touch_event_id"), "selection": decision["state"], "selected_setup": decision.get("selected"), "live_demo_order": False}
-            if decision["state"] == "SELECTED":
+            row = {"event_id": event.event_id, "kind": event.kind, "side": event.side, "structure_index": event.index, "structure_layer": getattr(event, "structure_layer", "SWING"), "level_classification": getattr(event, "level_classification", ""), "pool_id": getattr(event, "pool_id", ""), "sweep_level": getattr(event, "sweep_level", 0.0), "sweep_extreme": getattr(event, "sweep_extreme", 0.0), "source_event_ids": list(event.source_indices), "parent_event_id": event.parent_event_id, "bias": b.get("state"), "confirmation": c["state"], "continuation_state": c.get("continuation_state"), "lifecycle_state": c.get("lifecycle_state"), "zone_bounds": c.get("zone_bounds"), "touch_event_id": c.get("touch_event_id"), "selection": decision["state"], "selection_reason": decision.get("reason"), "selection_method": decision.get("selection_method"), "primary_owner": decision.get("primary_owner"), "eligible_setup_candidates": decision.get("candidates", []), "contributing_contexts": decision.get("contributing_contexts", []), "setup_strength_profiles": decision.get("setup_strength_profiles", []), "setup_eligibility_ledger": decision.get("ledger", []), "selected_setup": decision.get("selected"), "live_demo_order": False}
+            if decision["state"] == "SELECTION_RESOLVED":
                 entry_index = c["index"] + 1
                 if entry_index >= len(q):
                     row["gate_rejection"] = "entry_out_of_range"
@@ -199,21 +199,19 @@ def main():
                             elif not economics_ok:
                                 row["gate_rejection"] = economics_reason
                             else:
-                                row.update({"live_demo_order": False, "live_demo_plan": {"setup_id": plan.setup_id, "side": plan.side, "entry": plan.entry, "sl": plan.sl, "tp": plan.tp, "rr": plan.rr, "entry_reason": plan.entry_reason, "sl_reason": plan.sl_reason, "tp_reason": plan.tp_reason, "evidence": plan.evidence}})
+                                row.update({"live_demo_order": False, "live_demo_plan": {"setup_id": plan.setup_id, "side": plan.side, "entry": plan.entry, "sl": plan.sl, "tp": plan.tp, "rr": plan.rr, "entry_reason": plan.entry_reason, "sl_reason": plan.sl_reason, "tp_reason": plan.tp_reason, "invalidation": plan.invalidation, "entry_zone": plan.entry_zone, "tp_zone": plan.tp_zone, "evidence": plan.evidence}})
                                 client_order_id = "jev_" + hashlib.sha256(f"{symbol}:{plan.evidence['event_id']}".encode()).hexdigest()[:24]
                                 row["client_order_id"] = client_order_id
-                                plan_candidates.append({"client_order_id": client_order_id, "symbol": symbol, "structure_event_id": event.event_id, "structure_index": event.index, "confirmation_index": c["index"], "created_at_ms": max(int(m[event.index]["close_time"]), int(q[c["index"]]["close_time"])), "side": "BUY" if plan.side == "BULLISH" else "SELL", "protected_level": event.protected_level or None, "current_close": q[-1]["close"], "poi_type": plan.setup_id.split("_")[0].upper(), "poi_state": c.get("lifecycle_state"), "setup_id": plan.setup_id, "entry": plan.entry, "sl": plan.sl, "tp": plan.tp, "rr": plan.rr, "status": "APPROVED_FOR_EXECUTION", "evidence": plan.evidence})
+                                plan_candidates.append({"client_order_id": client_order_id, "symbol": symbol, "structure_event_id": event.event_id, "structure_index": event.index, "confirmation_index": c["index"], "created_at_ms": max(int(m[event.index]["close_time"]), int(q[c["index"]]["close_time"])), "side": "BUY" if plan.side == "BULLISH" else "SELL", "protected_level": event.protected_level or None, "current_close": q[-1]["close"], "poi_type": plan.setup_id.split("_")[0].upper(), "poi_state": c.get("lifecycle_state"), "setup_id": plan.setup_id, "entry": plan.entry, "sl": plan.sl, "tp": plan.tp, "rr": plan.rr, "invalidation": plan.invalidation, "entry_zone": plan.entry_zone, "tp_zone": plan.tp_zone, "status": "APPROVED_FOR_EXECUTION", "evidence": plan.evidence})
                                 totals["live_demo_candidates"] += 1
             symbol_rows.append(row)
-        latest_confirmed_structure_event_ids[symbol] = next((row["event_id"] for row in reversed(symbol_rows) if row.get("kind") in ("BOS", "CHoCH_MSS") and row.get("confirmation") == "CONFIRMED"), None)
+        latest_confirmed_structure_event_ids[symbol] = next((row["event_id"] for row in reversed(symbol_rows) if row.get("confirmation") == "CONFIRMED" and (row.get("selected_setup") or row.get("kind") in ("BOS", "CHoCH_MSS", "LIQUIDITY_SWEEP", "BREAKER_BLOCK"))), None)
         observations[symbol] = {"closed_counts": {"1h": len(h), "15m": len(m), "5m": len(q)}, "latest_closed_candle": {"1h": h[-1]["close_time"], "15m": m[-1]["close_time"], "5m": q[-1]["close_time"]}, "recent_events": symbol_rows}
 
     structure_events = {symbol: rows_data["recent_events"] for symbol, rows_data in observations.items()}
     plan_candidates = invalidate_stale_candidates(plan_candidates, latest_structure_event_ids, structure_events, server_time)
     rank_and_approve_candidates(plan_candidates, latest_structure_event_ids)
     execution_candidates = collapse_active_plans(observations, plan_candidates)
-    totals["selected_events"] = totals["selected"]
-    totals["selected"] = len(execution_candidates)
     totals["live_demo_candidates"] = len(execution_candidates)
 
     active_plan_by_symbol = {candidate["symbol"]: candidate for candidate in execution_candidates}

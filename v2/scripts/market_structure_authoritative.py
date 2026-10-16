@@ -40,6 +40,15 @@ class Event:
     ob_source_index: int = -1
     ob_zone_low: float | None = None
     ob_zone_high: float | None = None
+    structure_layer: str = "SWING"
+    level_classification: str = ""
+    pool_id: str | None = None
+    sweep_level: float | None = None
+    sweep_extreme: float | None = None
+    reclaim_index: int | None = None
+    breaker_source_ob_id: str | None = None
+    flip_level: float | None = None
+    lifecycle_state: str = "ACTIVE"
 
 
 def validate_event_contract(event):
@@ -278,11 +287,28 @@ def build_contexts(candles, rows_1h=None, upto=None, symbol=SYMBOL):
 def build_events(candles, upto=None, symbol=SYMBOL):
     contexts, _ = build_contexts(candles, upto=upto, symbol=symbol)
     events = []
+    active_obs = {}
+    emitted_breakers = set()
     for index, context in contexts.items():
+        row = candles[index]
         structure = context["structure_event"]
+        # Breaker lifecycle: prior causal OB invalidation flips zone function.
+        for ob_id, ob in list(active_obs.items()):
+            invalidated = (ob["side"] == "LONG" and row["close"] < ob["low"]) or (ob["side"] == "SHORT" and row["close"] > ob["high"])
+            if invalidated and ob_id not in emitted_breakers:
+                breaker_side = "SHORT" if ob["side"] == "LONG" else "LONG"
+                flip = ob["low"] if breaker_side == "SHORT" else ob["high"]
+                events.append(Event(f"BREAKER-{breaker_side}-{index}-{ob_id}", "BREAKER_BLOCK", "confirmed", breaker_side, index, [ob["source_index"], index], parent_event_id=ob["parent_event_id"], reason="source_ob_invalidated_and_function_flipped", broken_level=flip, protected_level=flip, object_id=f"BREAKER-{ob_id}", zone_low=ob["low"], zone_high=ob["high"], breaker_source_ob_id=ob_id, flip_level=flip, lifecycle_state="BREAKER_CONFIRMED"))
+                emitted_breakers.add(ob_id)
+        sweep = context["sweep_reclaim_evidence"]
         if structure:
             ob = structure.get("ob")
-            events.append(Event(event_id=structure["event_id"], kind=structure["kind"], state="confirmed", side=structure["side"], index=index, source_indices=structure["source_indices"], previous_state=structure["previous_state"], parent_swing_id=structure["parent_swing_id"], reason="close_beyond_external_swing_with_displacement", broken_level=structure["broken_level"], protected_level=structure["protected_level"], protected_swing_id=structure["protected_swing_id"], displacement_atr=structure["displacement_atr"], ob_source_index=ob["source_index"] if ob else -1, ob_zone_low=ob["low"] if ob else None, ob_zone_high=ob["high"] if ob else None))
+            events.append(Event(event_id=structure["event_id"], kind=structure["kind"], state="confirmed", side=structure["side"], index=index, source_indices=structure["source_indices"], previous_state=structure["previous_state"], parent_swing_id=structure["parent_swing_id"], reason="close_beyond_external_swing_with_displacement", broken_level=structure["broken_level"], protected_level=structure["protected_level"], protected_swing_id=structure["protected_swing_id"], displacement_atr=structure["displacement_atr"], ob_source_index=ob["source_index"] if ob else -1, ob_zone_low=ob["low"] if ob else None, ob_zone_high=ob["high"] if ob else None, level_classification="PROTECTED"))
+            if ob:
+                active_obs[f"OB-{structure['event_id']}"] = {**ob, "side": structure["side"], "parent_event_id": structure["event_id"]}
+        if sweep:
+            sweep_id = f"SWEEP-{sweep['side']}-{index}-{sweep['pool_id']}"
+            events.append(Event(sweep_id, "LIQUIDITY_SWEEP", "confirmed", sweep["side"], index, sweep["source_indices"], parent_pool_id=sweep["pool_id"], reason="liquidity_breach_and_reclaim", broken_level=sweep["level"], protected_level=sweep["level"], pool_id=sweep["pool_id"], sweep_level=sweep["level"], sweep_extreme=candles[index]["low"] if sweep["side"] == "LONG" else candles[index]["high"], reclaim_index=index, zone_low=sweep["level"] - (candles[index]["high"] - candles[index]["low"]) * 0.1, zone_high=sweep["level"] + (candles[index]["high"] - candles[index]["low"]) * 0.1))
         fvg = context["fvg_annotation"]
         if fvg:
             event_id = f"FVG-{fvg['side']}-{index}"

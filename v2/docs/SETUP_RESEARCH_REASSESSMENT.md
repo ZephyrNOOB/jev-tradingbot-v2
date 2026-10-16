@@ -1,6 +1,6 @@
 # Setup Research Reassessment
 
-Status: research shortlist only; no setup promoted.
+Status: HISTORICAL RESEARCH SHORTLIST ONLY. Current live runtime uses five SetupBots defined in `SETUP_BOT_ARCHITECTURE_V2.md`.
 
 ## Removal decision
 

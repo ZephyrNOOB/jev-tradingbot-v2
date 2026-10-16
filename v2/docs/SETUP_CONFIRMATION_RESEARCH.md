@@ -1,8 +1,8 @@
 # Setup Confirmation Research — Derived From New 15M Structure
 
-Status: historical pre-reassessment research artifact; no entry rules selected.
+Status: HISTORICAL REFERENCE ONLY; live entry ownership is defined in `SETUP_BOT_ARCHITECTURE_V2.md`.
 
-Scope note: this document and its nine-bot matrix predate the Stage 5A reassessment. The current frozen six-family research universe is `v2/artifacts/SETUP5A_CANDIDATE_UNIVERSE.json`; runtime remains limited to four active SetupBots.
+Scope note: this document and its nine-bot matrix are historical reference only. Live runtime uses five active SetupBots defined in `v2/docs/SETUP_BOT_ARCHITECTURE_V2.md`.
 
 ## Core conclusion
 

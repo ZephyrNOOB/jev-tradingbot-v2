@@ -94,7 +94,7 @@ validated 1H bias
 5M ConfirmationBot output
 ```
 
-SelectionBot selects exactly one setup bot. Failed gate or ambiguous ranking produces `NO_SELECTION`; no setup bot runs and no trade occurs. Parallel unranked candidate execution is forbidden.
+SelectionBot evaluates all five equal peer SetupBots. Equal-weight causal strength resolves one primary owner; other valid peers remain contributing context. Failed common gate or zero valid causal context produces `NO_SELECTION`; ambiguity between valid peers never does. Parallel unranked candidate execution is forbidden.
 
 ## Stage 5 — Setup Bot Trade Plan + Execution
 

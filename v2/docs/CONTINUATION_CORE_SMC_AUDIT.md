@@ -1,7 +1,7 @@
 # Bullish/Bearish Continuation Core — SMC Audit
 
-Status: AUDIT COMPLETE / UPSTREAM PATCH APPLIED / DOWNSTREAM SETUP PROMOTION STILL BLOCKED
-Scope: MarketStructureBot core → ConfirmationBot core → BullishContinuationBot / BearishContinuationBot core and executable path.
+Status: HISTORICAL REFERENCE ONLY / superseded by live five-SetupBot architecture in `SETUP_BOT_ARCHITECTURE_V2.md`
+Scope: historical MarketStructureBot/ConfirmationBot continuation audit. Current runtime continuation owner is `RbsSbrContinuationBot`.
 
 ## Executive finding
 
