@@ -17,6 +17,12 @@
       <a class="nav-item" href="/history.html">Trade History</a>
     </nav>
     <div class="sidebar-footer">
+      <section class="sidebar-clock macro-news-panel" aria-labelledby="macroNewsTitle">
+        <h2 id="macroNewsTitle" class="sidebar-clock-label">MACRO NEWS CALENDAR</h2>
+        <div id="macroNewsState" class="macro-news-state">LOADING...</div>
+        <div id="macroNewsList" class="macro-news-list" aria-live="polite"></div>
+        <a class="macro-news-source" href="https://www.financecalendar.com/api/" target="_blank" rel="noreferrer">SOURCE: FINANCECALENDAR.COM ↗</a>
+      </section>
       <button onclick="logout()">LOGOUT</button>
     </div>
   </aside>
@@ -196,6 +202,36 @@ setInterval(refreshAssets, 30_000);
 setInterval(refreshCharts, 30_000);
 setInterval(refreshBot, 60_000);
 setInterval(refreshV2, 5_000);
+const macroNewsUrl = '/macro-news';
+function escapeHtml(value) { return String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char])); }
+function renderMacroNews(events, fetchedAt) {
+  const state = document.getElementById('macroNewsState');
+  const list = document.getElementById('macroNewsList');
+  if (!state || !list) return;
+  state.textContent = events.length ? `HIGH IMPACT · ${events.length} EVENTS` : 'NO HIGH-IMPACT EVENTS';
+  state.className = 'macro-news-state' + (events.length ? ' has-events' : '');
+  list.innerHTML = events.length ? events.slice(0, 6).map(event => {
+    const date = new Date(event.time_utc);
+    const when = Number.isNaN(date.getTime()) ? 'TIME UNVERIFIED' : new Intl.DateTimeFormat(undefined, { weekday: 'short', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false, timeZoneName: 'short' }).format(date);
+    return `<article class="macro-news-event"><strong>${escapeHtml(event.title || event.name || 'Unnamed event')}</strong><span>${escapeHtml(when)}</span><small>${escapeHtml(event.consensus ? 'FCST ' + event.consensus : 'FCST —')} · ${escapeHtml(event.prior ? 'PREV ' + event.prior : 'PREV —')}</small></article>`;
+  }).join('') : '<p class="macro-news-empty">No verified high-impact releases in next 7 days.</p>';
+  state.title = 'Updated ' + new Date(fetchedAt).toLocaleTimeString();
+}
+async function refreshMacroNews() {
+  const state = document.getElementById('macroNewsState');
+  try {
+    const response = await fetch(macroNewsUrl, { headers: { accept: 'application/json' }, signal: AbortSignal.timeout(8_000) });
+    const payload = await response.json();
+    if (!response.ok || !Array.isArray(payload.events)) throw new Error('Calendar unavailable');
+    renderMacroNews(payload.events, Date.now());
+  } catch {
+    if (state) { state.textContent = 'DATA UNAVAILABLE'; state.className = 'macro-news-state is-error'; }
+    const list = document.getElementById('macroNewsList');
+    if (list) list.innerHTML = '<p class="macro-news-empty">Source unavailable. No event assumption made.</p>';
+  }
+}
+refreshMacroNews();
+setInterval(refreshMacroNews, 15 * 60_000);
 setInterval(() => { const el = document.getElementById('chartsUpdated'); if (el) el.textContent = `LIVE ${new Date().toLocaleTimeString()}`; }, 1_000);
 </script>
 </body>
