@@ -28,6 +28,7 @@
   </aside>
   <main class="main">
     <div class="page-header">
+      <span class="dashboard-marker" aria-hidden="true"></span>
 
       <div class="header-actions"><span id="userInfo" style="font-family:var(--mono);font-size:12px;color:var(--muted)"></span><span id="headerConnection" class="header-connection is-offline">CONNECTION OFFLINE</span><button id="botToggle" class="bot-toggle" onclick="toggleBot()">BOT OFF</button><span id="botRuntime" class="bot-runtime">LIVE DEMO OFF</span></div>
     </div><section class="market-charts" aria-labelledby="marketChartsTitle"><div class="charts-header"><div><h3 id="marketChartsTitle">LIVE MARKET CHARTS</h3><label class="chart-timeframe-picker">TIMEFRAME <select id="chartTimeframe" aria-label="Chart timeframe" onchange="changeChartTimeframe(this.value)"><option value="1h">1H</option><option value="15m" selected>15M</option><option value="5m">5M</option></select></label></div><span id="chartsUpdated" class="muted mono">LIVE --:--:--</span></div><div id="pairCharts" class="pair-charts"></div></section>
