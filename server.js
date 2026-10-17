@@ -789,13 +789,24 @@ app.get('/api/chart/tickers', auth, async (req, res) => {
 });
 app.get('/macro-news', auth, async (req, res) => {
   const today = new Date().toISOString().slice(0, 10);
-  const end = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
+  const end = new Date(Date.now() + 48 * 3600000).toISOString().slice(0, 10);
   try {
     const url = `https://www.financecalendar.com/wp-json/fc/v1/calendar?from=${today}&to=${end}&impact=high&limit=8`;
     const response = await fetch(url, { headers: { accept: 'application/json', 'user-agent': 'JEV-Trading-Bot/1.0' }, signal: AbortSignal.timeout(8_000) });
     const payload = await response.json();
     if (!response.ok || !Array.isArray(payload.events)) throw new Error('Macro calendar unavailable');
-    const events = payload.events.filter(event => event && typeof event.time_utc === 'string').slice(0, 8);
+    const events = payload.events.filter(event => event && typeof event.time_utc === 'string').slice(0, 8).map(event => ({
+      title: event.title || event.name || 'Unnamed event',
+      time_utc: event.time_utc,
+      currency: event.currency || 'SOURCE NOT PROVIDED',
+      impact: event.impact || 'SOURCE NOT PROVIDED',
+      forecast: event.forecast ?? event.consensus ?? 'NOT PROVIDED',
+      previous: event.previous ?? event.prior ?? 'NOT PROVIDED',
+      actual: event.actual ?? 'NOT RELEASED',
+      source: event.url || 'https://www.financecalendar.com/',
+      source_name: 'financecalendar.com',
+      data_status: 'VERIFIED'
+    }));
     res.json({ ok: true, source: 'financecalendar.com', source_url: 'https://www.financecalendar.com/api/', fetched_at: new Date().toISOString(), from: today, to: end, events });
   } catch {
     res.status(503).json({ ok: false, status: 'DATA_UNAVAILABLE', source: 'financecalendar.com' });

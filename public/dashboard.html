@@ -208,12 +208,14 @@ function renderMacroNews(events, fetchedAt) {
   const state = document.getElementById('macroNewsState');
   const list = document.getElementById('macroNewsList');
   if (!state || !list) return;
-  state.textContent = events.length ? `HIGH IMPACT · ${events.length} EVENTS` : 'NO HIGH-IMPACT EVENTS';
+  const upcoming = events.filter(event => { const ts = Date.parse(event.time_utc); return Number.isFinite(ts) && ts >= Date.now() && ts <= Date.now() + 48 * 3600000; });
+  state.textContent = '';
   state.className = 'macro-news-state' + (events.length ? ' has-events' : '');
-  list.innerHTML = events.length ? events.slice(0, 6).map(event => {
+  list.innerHTML = upcoming.length ? upcoming.slice(0, 3).map(event => {
     const date = new Date(event.time_utc);
     const when = Number.isNaN(date.getTime()) ? 'TIME UNVERIFIED' : new Intl.DateTimeFormat(undefined, { weekday: 'short', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false, timeZoneName: 'short' }).format(date);
-    return `<article class="macro-news-event"><strong>${escapeHtml(event.title || event.name || 'Unnamed event')}</strong><span>${escapeHtml(when)}</span><small>${escapeHtml(event.consensus ? 'FCST ' + event.consensus : 'FCST —')} · ${escapeHtml(event.prior ? 'PREV ' + event.prior : 'PREV —')}</small></article>`;
+    const actual = event.actual ?? '—';
+    return `<article class="macro-news-event"><strong>${escapeHtml(event.title || 'Unnamed event')}</strong><span>${escapeHtml(when)}</span><small>${escapeHtml('CURRENCY ' + (event.currency || 'SOURCE NOT PROVIDED'))} · ${escapeHtml('IMPACT ' + (event.impact || 'SOURCE NOT PROVIDED'))}</small><small>${escapeHtml(event.forecast != null ? 'FCST ' + event.forecast : 'FCST —')} · ${escapeHtml(event.previous != null ? 'PREV ' + event.previous : 'PREV —')} · ${escapeHtml('ACTUAL ' + actual)}</small><small>${escapeHtml(event.source_name || 'SOURCE —')} · ${escapeHtml(event.data_status || 'STATUS —')}</small></article>`;
   }).join('') : '<p class="macro-news-empty">No verified high-impact releases in next 7 days.</p>';
   state.title = 'Updated ' + new Date(fetchedAt).toLocaleTimeString();
 }
