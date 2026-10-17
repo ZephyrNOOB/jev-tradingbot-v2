@@ -57,9 +57,9 @@ def liquidity_sweep_reversal(c):
 def breaker_block(c):
     s=c['side']; z=_z(c,'breaker_zone'); t=_z(c,'target_zone'); entry=(z[0]+z[1])/2
     assert setup_entry_allowed('BREAKER_BLOCK', c.get('lifecycle_state', 'BREAKER_PARTIAL_MITIGATION'), c.get('rejection_confirmed', True), c.get('micro_break_confirmed', True))
-    sl=c['invalidation_level']-c['invalidation_buffer'] if s=='BULLISH' else c['invalidation_level']+c['invalidation_buffer']
+    sl=z[0]-c['invalidation_buffer'] if s=='BULLISH' else z[1]+c['invalidation_buffer']
     tp=t[0] if s=='BULLISH' else t[1]
-    return _p('breaker_block',s,z,entry,sl,t,tp,'breaker flip invalidation','failed OB flipped function + retest + 5M confirmation','price reclaims source side and breaks breaker function','opposing liquidity / DOL target',{'event_id':c['breaker_event_id'],'source_ob_id':c['source_ob_id'],'entry_source':'breaker_retest_zone','sl_source':'breaker_invalidation','tp_source':'opposing_liquidity'})
+    return _p('breaker_block',s,z,entry,sl,t,tp,'breaker zone boundary invalidation','failed OB flipped function + retest + 5M confirmation','close through breaker zone invalidates flipped function','opposing liquidity / DOL target',{'event_id':c['breaker_event_id'],'source_ob_id':c['source_ob_id'],'entry_source':'breaker_retest_zone','sl_source':'breaker_zone_boundary','tp_source':'opposing_liquidity'})
 
 def rbs_sbr_continuation(c):
     s=c['side']; z=_z(c,'flip_zone'); t=_z(c,'target_zone'); entry=(z[0]+z[1])/2

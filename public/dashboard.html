@@ -51,10 +51,10 @@ function changeChartTimeframe(interval) {
   refreshCharts();
 }
 function chartData(candles) { return candles.map(c => ({ time: Math.floor(c.ts / 1000), open: c.open, high: c.high, low: c.low, close: c.close })); }
-function volumeData(candles) { return candles.map(c => ({ time: Math.floor(c.ts / 1000), value: c.volume, color: c.close >= c.open ? '#00d99266' : '#f2364566' })); }
+function volumeData(candles) { return candles.map(c => ({ time: Math.floor(c.ts / 1000), value: c.volume, color: c.close >= c.open ? '#b8f36b66' : '#ff657566' })); }
 function createChart(container) {
-  const chart = LightweightCharts.createChart(container, { autoSize: true, handleScroll: { mouseWheel: true, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: true }, handleScale: { mouseWheel: true, pinch: true, axisPressedMouseMove: true }, layout: { background: { color: '#080b0a' }, textColor: '#8f9692', fontFamily: 'JetBrains Mono, monospace', fontSize: 9 }, grid: { vertLines: { color: '#18201d' }, horzLines: { color: '#18201d' } }, rightPriceScale: { borderColor: '#3d3a39', scaleMargins: { top: 0.08, bottom: 0.22 } }, timeScale: { borderColor: '#3d3a39', timeVisible: true, secondsVisible: false, rightOffset: 3 }, crosshair: { mode: LightweightCharts.CrosshairMode.Normal } });
-  const candles = chart.addSeries(LightweightCharts.CandlestickSeries, { upColor: '#00d992', downColor: '#f23645', borderVisible: false, wickUpColor: '#00d992', wickDownColor: '#f23645' });
+  const chart = LightweightCharts.createChart(container, { autoSize: true, handleScroll: { mouseWheel: true, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: true }, handleScale: { mouseWheel: true, pinch: true, axisPressedMouseMove: true }, layout: { background: { color: '#0b141b' }, textColor: '#78909a', fontFamily: 'JetBrains Mono, monospace', fontSize: 9 }, grid: { vertLines: { color: '#1b2a33' }, horzLines: { color: '#1b2a33' } }, rightPriceScale: { borderColor: '#263742', scaleMargins: { top: 0.08, bottom: 0.22 } }, timeScale: { borderColor: '#263742', timeVisible: true, secondsVisible: false, rightOffset: 3 }, crosshair: { mode: LightweightCharts.CrosshairMode.Normal } });
+  const candles = chart.addSeries(LightweightCharts.CandlestickSeries, { upColor: '#b6ff00', downColor: '#ff6575', borderVisible: false, wickUpColor: '#b6ff00', wickDownColor: '#ff6575' });
   const volume = chart.addSeries(LightweightCharts.HistogramSeries, { priceFormat: { type: 'volume' }, priceScaleId: '', lastValueVisible: false, priceLineVisible: false });
   volume.priceScale().applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
   return { chart, candles, volume, overlays: [], markers: null };
@@ -78,7 +78,7 @@ async function smcOverlay(view, raw, symbol, interval) {
     const bar = bars[index] || bars[Math.max(0, Math.min(bars.length - 1, offset))];
     if (!bar) return;
     const bullish = event.side === 'LONG';
-    markers.push({ time: bar.time, position: bullish ? 'belowBar' : 'aboveBar', color: bullish ? '#00d992' : '#f23645', shape: bullish ? 'arrowUp' : 'arrowDown', text: event.kind === 'CHoCH_MSS' ? 'CHoCH' : 'BOS' });
+    markers.push({ time: bar.time, position: bullish ? 'belowBar' : 'aboveBar', color: bullish ? '#b6ff00' : '#ff6575', shape: bullish ? 'arrowUp' : 'arrowDown', text: event.kind === 'CHoCH_MSS' ? 'CHoCH' : 'BOS' });
   });
   if (view.markers) view.markers.setMarkers([]);
   view.markers = LightweightCharts.createSeriesMarkers(view.candles, markers.slice(-40));
@@ -88,7 +88,7 @@ async function smcOverlay(view, raw, symbol, interval) {
     tp: candidate.tp
   }));
   for (const plan of plans) {
-    [['ENTRY', plan.entry, '#f2b84b'], ['SL', plan.sl, '#f23645'], ['TP', plan.tp, '#00d992']].forEach(([title, value, color]) => {
+    [['ENTRY', plan.entry, '#ffd166'], ['SL', plan.sl, '#ff6575'], ['TP', plan.tp, '#00fff7']].forEach(([title, value, color]) => {
       if (!Number.isFinite(Number(value))) return;
       const line = view.candles.createPriceLine({ price: Number(value), color, lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, axisLabelVisible: true, title });
       view.overlays.push(line);

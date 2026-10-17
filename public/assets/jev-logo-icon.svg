@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 180" role="img" aria-labelledby="title desc">
+  <title id="title">JEV interlocking mark</title>
+  <desc id="desc">Compact geometric JEV wordmark mark with a negative-space chevron.</desc>
+  <defs><linearGradient id="edge" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#00fff7"/><stop offset=".52" stop-color="#ff4edb"/><stop offset="1" stop-color="#b6ff00"/></linearGradient><filter id="glow"><feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M24 22v82c0 28 20 43 48 43 29 0 47-15 47-43V22" stroke="#fbf7ff" stroke-width="15"/>
+    <path d="M24 22h35M24 104h35" stroke="#00fff7" stroke-width="15"/>
+    <path d="M91 22h105M91 84h81M91 145h105M91 22v123" stroke="#fbf7ff" stroke-width="15"/>
+    <path d="M91 22h105M91 84h81M91 145h105" stroke="url(#edge)" stroke-width="5"/>
+    <path d="M115 84h34l16-16M149 84l16 16" stroke="#ff4edb" stroke-width="6" filter="url(#glow)"/>
+  </g>
+</svg>

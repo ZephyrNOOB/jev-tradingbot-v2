@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 680 180" role="img" aria-labelledby="title desc">
+  <title id="title">JEV wordmark</title>
+  <desc id="desc">Bold geometric JEV wordmark with an interlocking signal cutout.</desc>
+  <defs>
+    <linearGradient id="signal" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#00fff7"/><stop offset="1" stop-color="#ff4edb"/></linearGradient>
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  </defs>
+  <!-- One continuous, custom geometric wordmark. -->
+  <g fill="none" stroke="#fbf7ff" stroke-width="22" stroke-linecap="square" stroke-linejoin="miter">
+    <path d="M38 24v92c0 24 15 38 38 38s38-14 38-38V24"/>
+    <path d="M145 24h105M145 90h78M145 154h105"/>
+    <path d="M278 24l53 130 53-130M302 90h58"/>
+  </g>
+  <!-- Shared baseline creates interlock; colored edge is the only decoration. -->
+  <path d="M145 154h105M278 24l53 130 53-130" fill="none" stroke="url(#signal)" stroke-width="5" stroke-linecap="square"/>
+  <!-- Negative-space chevron between E and V. -->
+  <path d="M229 90h25l14-14M254 90l14 14" fill="none" stroke="#ff4edb" stroke-width="8" stroke-linecap="square" filter="url(#glow)"/>
+  <!-- Minimal signal nodes. -->
+  <circle cx="38" cy="24" r="6" fill="#00fff7" filter="url(#glow)"/>
+  <circle cx="250" cy="154" r="6" fill="#b6ff00" filter="url(#glow)"/>
+  <circle cx="384" cy="24" r="6" fill="#ff4edb" filter="url(#glow)"/>
+  <text x="444" y="94" fill="#9b91a8" font-family="IBM Plex Mono,monospace" font-size="11" letter-spacing="3">JEV</text>
+  <path d="M444 112h116" stroke="#382c52" stroke-width="2"/>
+  <text x="444" y="135" fill="#9b91a8" font-family="IBM Plex Mono,monospace" font-size="9" letter-spacing="2">EXECUTION SYSTEM</text>
+</svg>

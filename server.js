@@ -85,6 +85,35 @@ const executionAttempts = new Map();
 const marketObservers = new Map();
 const MARKET_INTERVAL_MS = 15 * 60_000;
 const EXECUTION_INTERVAL_MS = 5_000;
+const telegramSent = new Set();
+async function sendTelegram(text, dedupKey) {
+  if (process.env.TELEGRAM_NOTIFICATIONS_ENABLED !== 'true') return false;
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  const chatId = process.env.TELEGRAM_CHAT_ID;
+  if (!token || !chatId || (dedupKey && telegramSent.has(dedupKey))) return false;
+  try {
+    const response = await fetch('https://api.telegram.org/bot' + token + '/sendMessage', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId, text }),
+      signal: AbortSignal.timeout(10_000)
+    });
+    const result = await response.json().catch(() => null);
+    if (!response.ok || result?.ok !== true) return false;
+    if (dedupKey) telegramSent.add(dedupKey);
+    return true;
+  } catch { return false; }
+}
+function notifyTelegramExecution(event) {
+  const order = event?.o;
+  if (event?.e !== 'ORDER_TRADE_UPDATE' || order?.X !== 'FILLED' || !order?.i) return;
+  const key = 'EXEC:' + order.s + ':' + order.i + ':FILLED';
+  sendTelegram(
+    'JEV EXECUTION\nPair: ' + (order.s || '-') + '\nSide: ' + (order.S || '-') +
+    '\nOrderID: ' + order.i + '\nPrice: ' + (order.ap || '-') +
+    '\nQty: ' + (order.z || '-') + '\nStatus: FILLED', key
+  );
+}
 let marketCandleUnsubscribe = null;
 const LIVE_DEMO_STALE_AFTER_MS = 15 * 60_000;
 const MARKET_POLL_TIMEOUT_MS = 10_000;
@@ -360,7 +389,10 @@ app.post('/api/bot/toggle', auth, async (req, res) => {
   if (enabled) {
     const key = get("SELECT * FROM api_keys WHERE user_id = ? AND exchange = 'binanceTestnet' AND status = 'connected' ORDER BY id DESC LIMIT 1", [req.userId]);
     if (key) startBinanceUserStream(String(req.userId), decryptSecret(key.api_key), event => {
-      if (event?.e === 'ORDER_TRADE_UPDATE') demoExecutionSummaries.set(String(req.userId), { status: event.o?.X || 'ORDER_UPDATE', symbol: event.o?.s, orderId: event.o?.i, clientOrderId: event.o?.c, updatedAt: new Date().toISOString() });
+      if (event?.e === 'ORDER_TRADE_UPDATE') {
+        demoExecutionSummaries.set(String(req.userId), { status: event.o?.X || 'ORDER_UPDATE', symbol: event.o?.s, orderId: event.o?.i, clientOrderId: event.o?.c, updatedAt: new Date().toISOString() });
+        notifyTelegramExecution(event);
+      }
     }).catch(() => null);
   } else stopBinanceUserStream(String(req.userId));
 
@@ -381,7 +413,10 @@ app.get('/api/binance-demo/live-readiness', auth, async (req, res) => {
   try {
     const apiKey = decryptSecret(keyRow.api_key), secret = decryptSecret(keyRow.secret_key);
     startBinanceUserStream(String(req.userId), apiKey, event => {
-      if (event?.e === 'ORDER_TRADE_UPDATE') demoExecutionSummaries.set(String(req.userId), { status: event.o?.X || 'ORDER_UPDATE', symbol: event.o?.s, orderId: event.o?.i, clientOrderId: event.o?.c, updatedAt: new Date().toISOString() });
+      if (event?.e === 'ORDER_TRADE_UPDATE') {
+        demoExecutionSummaries.set(String(req.userId), { status: event.o?.X || 'ORDER_UPDATE', symbol: event.o?.s, orderId: event.o?.i, clientOrderId: event.o?.c, updatedAt: new Date().toISOString() });
+        notifyTelegramExecution(event);
+      }
     }).catch(() => null);
     const signed = async (method, apiPath, params = {}) => {
       const query = new URLSearchParams({ ...params, recvWindow: '5000', timestamp: String(Date.now()) });
@@ -569,7 +604,7 @@ async function executeDemoCandidate(req, res) {
     const entry = await signed('POST', '/fapi/v1/order', { symbol: candidate.symbol, side: candidate.side, type: 'LIMIT', timeInForce: 'GTC', quantity: sizing.quantity, price: sizing.price, newClientOrderId: candidate.client_order_id });
     demoExecutionSummaries.set(String(req.userId), { status: entry.status || 'ORDER_SENT', orderId: entry.orderId, clientOrderId: candidate.client_order_id, attemptAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
     let current = entry;
-    for (let i = 0; i < 5 && !['FILLED', 'CANCELED', 'EXPIRED', 'REJECTED'].includes(current.status); i++) {
+    while (!['FILLED', 'CANCELED', 'EXPIRED', 'REJECTED'].includes(current.status)) {
       await new Promise(resolve => setTimeout(resolve, 1000));
       const livePlan = assertCurrentActivePlan(candidate.client_order_id);
       if (!livePlan.ok) {
@@ -581,12 +616,12 @@ async function executeDemoCandidate(req, res) {
       current = await signed('GET', '/fapi/v1/order', { symbol: candidate.symbol, orderId: String(entry.orderId) });
     }
     if (current.status !== 'FILLED') {
-      const canceled = await signed('DELETE', '/fapi/v1/order', { symbol: candidate.symbol, orderId: String(entry.orderId) });
-      markCandidateInvalidated(candidate.client_order_id, 'ENTRY_TIMEOUT_NOT_FILLED');
-      demoExecutionSummaries.set(String(req.userId), { status: 'ENTRY_TIMEOUT_NOT_FILLED', symbol: candidate.symbol, orderId: entry.orderId, clientOrderId: candidate.client_order_id, attemptAt: new Date().toISOString(), updatedAt: new Date().toISOString(), cancelReason: 'ENTRY_WINDOW_5S_EXPIRED' });
-      return res.status(409).json({ ok: false, demoOnly: true, status: 'ENTRY_TIMEOUT_NOT_FILLED', entry: canceled, candidateStatus: 'ENTRY_TIMEOUT_NOT_FILLED', cancelReason: 'ENTRY_WINDOW_5S_EXPIRED', ordersSent: true, withdrawalsSent: false });
+      demoExecutionSummaries.set(String(req.userId), { status: current.status || 'ENTRY_TERMINAL', symbol: candidate.symbol, orderId: entry.orderId, clientOrderId: candidate.client_order_id, attemptAt: new Date().toISOString(), updatedAt: new Date().toISOString(), cancelReason: null });
+      return res.status(409).json({ ok: false, demoOnly: true, status: current.status || 'ENTRY_TERMINAL', entry: current, candidateStatus: current.status || 'ENTRY_TERMINAL', cancelReason: null, ordersSent: true, withdrawalsSent: false });
     }
     recordFilledTrade(req.userId, candidate, current);
+    const execDedup = 'EXEC:' + candidate.symbol + ':' + current.orderId + ':FILLED';
+    sendTelegram('<b>JEV EXECUTION</b>\nPair: ' + candidate.symbol + '\nSide: ' + (candidate.side || '-') + '\nOrderID: ' + current.orderId + '\nPrice: ' + (current.avgPrice || current.price || '-') + '\nQty: ' + (current.executedQty || '-') + '\nStatus: FILLED', execDedup);
     const protectionOrders = buildProtectionOrders(candidate, sizing, precision).orders;
     const protection = [];
     try {
@@ -630,6 +665,8 @@ async function runExecutionCycle(sid) {
   for (const candidate of (artifact.execution_candidates || [])) {
     const freshness = validateCandidateFreshness(artifact, candidate);
     if (!freshness.ok || candidate.status !== 'APPROVED_FOR_EXECUTION') continue;
+    const planDedup = 'PLAN:' + candidate.symbol + ':' + candidate.structure_event_id + ':' + candidate.client_order_id;
+    sendTelegram('<b>JEV ACTIVE PLAN</b>\nPair: ' + candidate.symbol + '\nSetup: ' + (candidate.setup_id || '-') + '\nSide: ' + (candidate.side || '-') + '\nEntry: ' + (candidate.entry || '-') + '\nSL: ' + (candidate.sl || '-') + '\nTP: ' + (candidate.tp || '-') + '\nStatus: APPROVED', planDedup);
     if (botStates.get(sid) !== true) return;
     const key = sid + ":" + candidate.client_order_id;
     if (!candidate.client_order_id || executionAttempts.has(key)) continue;
@@ -638,7 +675,7 @@ async function runExecutionCycle(sid) {
     const response = { statusCode: 200, status(code) { this.statusCode = code; return this; }, json(body) { payload = body; return this; } };
     await executeDemoCandidate({ userId: sessions.get(sid), cookies: { sid }, internalRunner: true, body: { clientOrderId: candidate.client_order_id, explicitApproval: false } }, response);
     demoExecutionSummaries.set(sid, { ...(payload || { ok: false, error: 'empty_executor_response' }), clientOrderId: candidate.client_order_id, attemptAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
-    if (!payload?.ordersSent && payload?.status !== 'ENTRY_TIMEOUT_NOT_FILLED') executionAttempts.delete(key);
+    if (!payload?.ordersSent && payload?.status !== 'ENTRY_ALREADY_OPEN') executionAttempts.delete(key);
   }
 }
 
@@ -819,7 +856,7 @@ app.delete('/api/keys/:id', auth, (req, res) => {
   res.json({ ok: true });
 });
 
-app.post('/api/binance-demo/order-test', auth, async (req, res) => {
+app.post('/api/binance-demo/order-test-disabled', auth, async (req, res) => {
   const { keyId, symbol, side, type = 'LIMIT', quantity, price, timeInForce = 'GTC' } = req.body || {};
   const allowedSymbols = new Set(SUPPORTED_SYMBOLS);
   if (Number(keyId) <= 0 || !allowedSymbols.has(String(symbol).toUpperCase()) || !['BUY', 'SELL'].includes(side) || type !== 'LIMIT' || timeInForce !== 'GTC') {
@@ -840,7 +877,7 @@ app.post('/api/binance-demo/order-test', auth, async (req, res) => {
     res.status(502).json({ ok: false, testOnly: true, error: 'Binance Demo order test failed' });
   }
 });
-app.post('/api/binance-demo/order', auth, async (req, res) => {
+app.post('/api/binance-demo/order-disabled', auth, async (req, res) => {
   const { keyId, symbol, side, quantity, price } = req.body || {};
   if (Number(keyId) <= 0 || String(symbol).toUpperCase() !== 'BTCUSDT' || side !== 'BUY') return res.status(400).json({ ok: false, error: 'Only BTCUSDT Demo BUY orders are allowed' });
   const qty = Number(quantity), limitPrice = Number(price);
@@ -857,7 +894,7 @@ app.post('/api/binance-demo/order', auth, async (req, res) => {
   } catch { res.status(502).json({ ok: false, demoOnly: true, error: 'Binance Demo order failed' }); }
 });
 
-app.post('/api/binance-demo/cancel', auth, async (req, res) => {
+app.post('/api/binance-demo/cancel-disabled', auth, async (req, res) => {
   const { keyId, symbol = 'BTCUSDT', orderId } = req.body || {};
   if (Number(keyId) <= 0 || String(symbol).toUpperCase() !== 'BTCUSDT' || !Number.isInteger(Number(orderId)) || Number(orderId) <= 0) return res.status(400).json({ ok: false, error: 'Invalid Demo cancel request' });
   const keyRow = get('SELECT * FROM api_keys WHERE id = ? AND user_id = ? AND exchange = ?', [Number(keyId), req.userId, 'binanceTestnet']);

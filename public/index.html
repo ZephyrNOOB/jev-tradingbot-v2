@@ -9,8 +9,18 @@
 <body class="auth-body">
 <div class="auth-card">
   <div class="auth-glow"></div>
-  <h1 class="auth-title">JEV<span class="emerald">.</span>BOT</h1>
-  <p class="auth-sub">Perpetual Trading Terminal</p>
+  <div class="auth-brand-stage" aria-label="JEV Interlock Ribbon logo">
+    <svg class="auth-brand-mark" viewBox="0 0 520 180" role="img" aria-labelledby="authLogoTitle authLogoDesc">
+      <title id="authLogoTitle">JEV Interlock Ribbon</title>
+      <desc id="authLogoDesc">Glowing JEV wordmark with moving pink ribbon lines and a green directional arrow.</desc>
+      <defs><filter id="authNeonGlow" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="4" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
+      <text class="auth-logo-text" x="10" y="130" font-size="142">JEV</text>
+      <path class="auth-ribbon auth-ribbon-a" d="M30 145C130 35 200 150 300 45S430 30 490 68" fill="none" stroke-width="7"/>
+      <path class="auth-ribbon auth-ribbon-b" d="M30 60C120 150 210 30 310 130s130-30 180-70" fill="none" stroke-width="3"/>
+      <path class="auth-arrow" d="M390 38l22 22-22 22" fill="none" stroke-width="7" tabindex="0"/>
+    </svg>
+  </div>
+  <p class="auth-sub">KESUKSESAN ITU DIBANGUN, BELIEVE WHAT YOU DO</p>
   <form id="authForm">
     <input type="text" id="username" placeholder="Username" autocomplete="username" required>
     <input type="password" id="password" placeholder="Password" autocomplete="current-password" required>
