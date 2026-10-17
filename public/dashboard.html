@@ -141,9 +141,25 @@ async function refreshAssets(){
     table.innerHTML=rows.length?'<table><thead><tr><th>ASSET</th><th>WALLET</th><th>AVAILABLE</th><th>UNREALIZED PNL</th></tr></thead><tbody>'+rows.map(x=>`<tr><td>${x.asset}</td><td>${Number(x.walletBalance).toFixed(4)}</td><td>${Number(x.availableBalance).toFixed(4)}</td><td class="${x.unrealizedProfit>=0?'pos':'neg'}">${Number(x.unrealizedProfit).toFixed(4)}</td></tr>`).join('')+'</tbody></table>':'<p class="muted mono">No USDT/USDC asset returned</p>';
   } catch(error) { table.innerHTML=`<p class="neg mono">${error.message}</p>`; }
 }
+let tickerState = { bot: null, v2: null, online: false };
+function renderTradingTicker() {
+  const { bot, v2, online } = tickerState;
+  const totals = v2?.artifact?.totals || {};
+  const candidates = Number(totals.live_demo_candidates || 0);
+  const stream = bot?.marketStream?.connected ? 'MARKET DATA LIVE' : 'MARKET DATA OFFLINE';
+  const plan = candidates > 0 ? `${candidates} VALIDATED PLAN${candidates === 1 ? '' : 'S'}` : 'NO VALIDATED PLAN';
+  const connection = online ? 'JEV CONNECTION ONLINE' : 'JEV CONNECTION OFFLINE';
+  const cycles = Number.isFinite(Number(bot?.cycles)) ? `CYCLES ${bot.cycles}` : 'CYCLES --';
+  const freshness = v2?.artifact?.generated_at ? `UPDATED ${new Date(v2.artifact.generated_at).toLocaleTimeString()}` : 'UPDATED --';
+  const message = `RISK FIRST · ${connection} · ${stream} · ${cycles} · ${plan} · MACRO NEWS INFORMATIONAL ONLY · EXECUTION REQUIRES VALIDATED PLAN · ${freshness}`;
+  const ticker = document.getElementById('userTradingTicker');
+  if (ticker) ticker.textContent = `${message}   ·   ${message}   ·   ${message}`;
+}
 async function refreshV2() {
   const v2 = await api('/v2/status');
   if (!v2?.ok) return;
+  tickerState.v2 = v2;
+  renderTradingTicker();
   const t = v2.artifact.totals;
   const rooms = [['BIAS BOT','1H','Reads closed 1H candles; sets market direction.',t.bias_ready > 0 ? 'READY' : 'WAITING'],['MARKET STRUCTURE BOT','15M','Builds SMC structure, liquidity, BOS / CHoCH evidence.',t.structure_events > 0 ? 'ANALYZING' : 'WAITING'],['CONFIRMATION BOT','5M','Checks retest, rejection, micro-break, and continuation state.',t.confirmed_5m > 0 ? 'CONFIRMED' : 'WAITING'],['SELECTION BOT','GATE','Routes one causal owner among five peer SetupBots.',(t.selected_events ?? t.selected) > 0 ? 'RESOLVED' : 'WAITING'],['SETUP BOT','PLAN','Owns setup-specific Entry / SL / TP / RR and reasons.',t.live_demo_candidates > 0 ? 'LIVE_DEMO READY' : 'WAITING']];
   const track = document.getElementById('workflowTrack');
@@ -168,12 +184,18 @@ async function init() {
     conn.textContent = online ? 'CONNECTION ONLINE' : 'CONNECTION OFFLINE';
     conn.classList.toggle('is-online', online);
     conn.classList.toggle('is-offline', !online);
+    tickerState.online = online;
+    renderTradingTicker();
   }
 }
 
 async function refreshBot() {
   const bot = await api('/bot/status');
-  if (bot?.ok) renderBot(bot);
+  if (bot?.ok) {
+    tickerState.bot = bot;
+    renderBot(bot);
+    renderTradingTicker();
+  }
 }function renderBot(bot) {
   const button = document.getElementById('botToggle');
   button.textContent = bot.enabled ? 'BOT ON' : 'BOT OFF';
