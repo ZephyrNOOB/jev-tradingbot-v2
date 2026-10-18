@@ -169,6 +169,7 @@ async function refreshCharts() {
         view.volume.setData(volumeData(result.candles));
         if (visibleRange) view.chart.timeScale().setVisibleLogicalRange(visibleRange);
         else view.chart.timeScale().fitContent();
+        await new Promise(requestAnimationFrame);
         await smcOverlay(view, result.candles, symbol, interval);
         charts.set(key, view);
         state.textContent = `LIVE ${ticker.prices[symbol]} · ${interval.toUpperCase()}`;
