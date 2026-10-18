@@ -80,6 +80,7 @@ async function smcOverlay(view, raw, symbol, interval) {
   const visuals = structure.structure_visuals || structure.events || [];
   const lastBar = bars[bars.length - 1];
   const chartStart = bars[0]?.time, chartEnd = lastBar?.time;
+  const visualStats = { events: 0, swings: 0, nodes: 0 };
   const chartTime = time => { const value = Number(time); return Number.isFinite(value) ? (value > 1e12 ? Math.floor(value / 1000) : value) : null; }; // ponytail: nearest-bar mapping handles exchange candle boundary drift; replace with keyed timestamps if gaps require exact audit
   const nearestBar = time => {
     const target = chartTime(time);
@@ -105,6 +106,7 @@ async function smcOverlay(view, raw, symbol, interval) {
   const visualSvg = [];
   const labelKeys = new Set();
   const selectedVisuals = visuals.filter(event => event.lifecycle_state !== 'INVALIDATED' && timeWindow(event.event_time, event.event_time)).slice(-32);
+  visualStats.events = selectedVisuals.length;
   const pushLabel = (x, y, color, text) => {
     const key = `${text}:${Math.round(x / 8)}:${Math.round(y / 8)}`;
     if (labelKeys.has(key)) return;
@@ -113,7 +115,7 @@ async function smcOverlay(view, raw, symbol, interval) {
   };
   (structure.swing_visuals || []).filter(swing => timeWindow(swing.time, swing.time)).slice(-24).forEach(swing => {
     const x = xFor(chartTime(swing.time)), y = yFor(swing.price);
-    if (Number.isFinite(x) && Number.isFinite(y)) pushLabel(x, y + (swing.kind === 'high' ? -8 : 14), swing.kind === 'high' ? '#F23645' : '#089981', swing.label);
+    if (Number.isFinite(x) && Number.isFinite(y)) { visualStats.swings += 1; pushLabel(x, y + (swing.kind === 'high' ? -8 : 14), swing.kind === 'high' ? '#F23645' : '#089981', swing.label); }
   });
   selectedVisuals.forEach(event => {
     const bar = eventBar(event);
@@ -148,6 +150,9 @@ async function smcOverlay(view, raw, symbol, interval) {
   svg.setAttribute('viewBox', `0 0 ${svg.clientWidth || 1} ${svg.clientHeight || 1}`);
   svg.replaceChildren();
   if (visualSvg.length) svg.innerHTML = visualSvg.join('');
+  visualStats.nodes = visualSvg.length;
+  const state = document.getElementById(`chartState-${symbol}`);
+  if (state && visualStats.nodes) state.dataset.structure = `${visualStats.events}/${visualStats.swings}/${visualStats.nodes}`;
   requestAnimationFrame(() => {
     svg.setAttribute('viewBox', `0 0 ${svg.clientWidth || 1} ${svg.clientHeight || 1}`);
   });
