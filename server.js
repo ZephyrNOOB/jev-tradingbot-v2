@@ -773,6 +773,9 @@ app.get('/api/chart/structure', auth, (req, res) => {
       pool_id: event.pool_id || null,
       sweep_level: event.sweep_level || null,
       sweep_extreme: event.sweep_extreme || null,
+      structure_index: Number.isFinite(Number(event.structure_index)) ? Number(event.structure_index) : null,
+      zone_bounds: event.zone_bounds || null,
+      lifecycle_state: event.lifecycle_state || null,
       continuation_state: event.continuation_state || null,
       parent_event_id: event.parent_event_id || null,
       source_event_ids: event.source_event_ids || [],
@@ -780,7 +783,7 @@ app.get('/api/chart/structure', auth, (req, res) => {
       plan_status: event.plan_status || null
     }));
     const latestId = artifact.latest_structure_event_ids?.[symbol] || null;
-    const structure_visuals = events.filter(event => ['BOS', 'CHoCH_MSS', 'FVG', 'LIQUIDITY_SWEEP', 'ORDER_BLOCK'].includes(event.kind)).map(event => ({ event_id: event.event_id, kind: event.kind, side: event.side, structure_index: symbolState.recent_events?.find(item => item.event_id === event.event_id)?.structure_index ?? null, zone_bounds: symbolState.recent_events?.find(item => item.event_id === event.event_id)?.zone_bounds ?? null, sweep_level: symbolState.recent_events?.find(item => item.event_id === event.event_id)?.sweep_level ?? null, source_event_ids: event.source_event_ids || [] }));
+    const structure_visuals = events.filter(event => ['BOS', 'CHoCH_MSS', 'FVG', 'LIQUIDITY_SWEEP', 'ORDER_BLOCK', 'BREAKER_BLOCK'].includes(event.kind)).map(event => ({ event_id: event.event_id, kind: event.kind, side: event.side, structure_index: event.structure_index, zone_bounds: event.zone_bounds, sweep_level: event.sweep_level, lifecycle_state: event.lifecycle_state, source_event_ids: event.source_event_ids }));
     const active_candidates = (artifact.execution_candidates || []).filter(candidate =>
       candidate.symbol === symbol &&
       candidate.status === 'APPROVED_FOR_EXECUTION' &&
