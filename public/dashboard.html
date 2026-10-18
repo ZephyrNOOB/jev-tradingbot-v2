@@ -84,27 +84,24 @@ async function smcOverlay(view, raw, symbol, interval) {
     if (Number.isFinite(exactTime)) return bars.find(bar => Math.abs(bar.ts - exactTime) <= 1000) || null;
     return null;
   };
-  const sourceBar = event => {
-    const times = Array.isArray(event.source_times) ? event.source_times : [];
-    const exactTime = Number(times[0]);
-    return Number.isFinite(exactTime) ? bars.find(bar => Math.abs(bar.ts - exactTime) <= 1000) || null : null;
-  };
+  const barAtTime = time => Number.isFinite(Number(time)) ? bars.find(bar => Math.abs(bar.ts - Number(time)) <= 1000) || null : null;
+  const sourceBar = event => barAtTime(event.pivot_time || event.source_times?.[0]);
   const svg = view.structureSvg;
   const esc = text => String(text).replace(/[&<>"']/g, char => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[char]));
   const xFor = time => { const coordinate = view.chart.timeScale().timeToCoordinate(time); return Number.isFinite(coordinate) ? coordinate : null; };
   const yFor = price => { const coordinate = view.candles.priceToCoordinate(Number(price)); return Number.isFinite(coordinate) ? coordinate : null; };
   const visualSvg = [];
-  const selectedVisuals = visuals.filter(event => event.lifecycle_state !== 'INVALIDATED').slice(-16);
+  const selectedVisuals = visuals.filter(event => event.lifecycle_state !== 'INVALIDATED' && (event.event_time || event.break_time || event.pivot_time)).slice(-16);
   selectedVisuals.forEach(event => {
     const bar = eventBar(event);
     if (!bar) return;
     const bullish = event.side === 'LONG', color = bullish ? '#089981' : '#F23645';
     if (['BOS', 'CHoCH_MSS'].includes(event.kind)) {
-      const pivot = sourceBar(event);
-      const price = Number(event.zone_bounds?.high ?? event.zone_bounds?.low ?? (bullish ? pivot?.high : pivot?.low) ?? bar.close);
+      const pivot = sourceBar(event), breakBar = barAtTime(event.break_time || event.event_time);
+      const price = Number(event.break_price ?? event.broken_level ?? event.event_price);
       const label = event.kind === 'CHoCH_MSS' ? 'CHoCH' : 'BOS';
       if (pivot) {
-        const x1=xFor(pivot.time), x2=xFor(bar.time), y=yFor(price);
+        const x1=xFor(pivot.time), x2=xFor((breakBar || bar).time), y=yFor(price);
         if ([x1,x2,y].every(Number.isFinite)) {
           const lx=(x1+x2)/2;
           visualSvg.push(`<line x1="${x1}" y1="${y}" x2="${x2}" y2="${y}" stroke="${color}" stroke-width="1.2"/><text x="${lx}" y="${y-5}" fill="${color}" font-size="9" font-family="Aquatico,monospace" text-anchor="middle">${label}</text>`);

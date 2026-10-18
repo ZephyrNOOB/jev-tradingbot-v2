@@ -788,13 +788,21 @@ app.get('/api/chart/structure', auth, (req, res) => {
       parent_event_id: event.parent_event_id || null,
       source_event_ids: event.source_event_ids || [],
       event_time: Number.isFinite(Number(event.event_time)) ? Number(event.event_time) : null,
+      event_price: Number.isFinite(Number(event.event_price)) ? Number(event.event_price) : null,
+      pivot_index: Number.isFinite(Number(event.pivot_index)) ? Number(event.pivot_index) : null,
+      pivot_time: Number.isFinite(Number(event.pivot_time)) ? Number(event.pivot_time) : null,
+      pivot_price: Number.isFinite(Number(event.pivot_price)) ? Number(event.pivot_price) : null,
+      break_index: Number.isFinite(Number(event.break_index)) ? Number(event.break_index) : null,
+      break_time: Number.isFinite(Number(event.break_time)) ? Number(event.break_time) : null,
+      break_price: Number.isFinite(Number(event.break_price)) ? Number(event.break_price) : null,
       source_times: Array.isArray(event.source_times) ? event.source_times : [],
       ob_source_time: Number.isFinite(Number(event.ob_source_time)) ? Number(event.ob_source_time) : null,
+      ob_source_price: Number.isFinite(Number(event.ob_source_price)) ? Number(event.ob_source_price) : null,
       live_demo_plan: event.live_demo_plan || null,
       plan_status: event.plan_status || null
     }));
     const latestId = artifact.latest_structure_event_ids?.[symbol] || null;
-    const structure_visuals = events.filter(event => ['BOS', 'CHoCH_MSS', 'FVG', 'LIQUIDITY_SWEEP', 'ORDER_BLOCK', 'BREAKER_BLOCK'].includes(event.kind)).map(event => ({ event_id: event.event_id, kind: event.kind, side: event.side, structure_index: event.structure_index, event_time: event.event_time, source_times: event.source_times, ob_source_time: event.ob_source_time, broken_level: event.broken_level, protected_level: event.protected_level, ob_source_index: event.ob_source_index, ob_zone_low: event.ob_zone_low, ob_zone_high: event.ob_zone_high, flip_level: event.flip_level, zone_bounds: event.zone_bounds, sweep_level: event.sweep_level, lifecycle_state: event.lifecycle_state, source_event_ids: event.source_event_ids }));
+    const structure_visuals = events.filter(event => ['BOS', 'CHoCH_MSS', 'FVG', 'LIQUIDITY_SWEEP', 'ORDER_BLOCK', 'BREAKER_BLOCK'].includes(event.kind)).map(event => ({ event_id: event.event_id, kind: event.kind, side: event.side, structure_index: event.structure_index, event_time: event.event_time, event_price: event.event_price, pivot_index: event.pivot_index, pivot_time: event.pivot_time, pivot_price: event.pivot_price, break_index: event.break_index, break_time: event.break_time, break_price: event.break_price, source_times: event.source_times, ob_source_time: event.ob_source_time, ob_source_price: event.ob_source_price, broken_level: event.broken_level, protected_level: event.protected_level, ob_source_index: event.ob_source_index, ob_zone_low: event.ob_zone_low, ob_zone_high: event.ob_zone_high, flip_level: event.flip_level, zone_bounds: event.zone_bounds, sweep_level: event.sweep_level, lifecycle_state: event.lifecycle_state, source_event_ids: event.source_event_ids }));
     const active_candidates = (artifact.execution_candidates || []).filter(candidate =>
       candidate.symbol === symbol &&
       candidate.status === 'APPROVED_FOR_EXECUTION' &&

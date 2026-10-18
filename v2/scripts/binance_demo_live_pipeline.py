@@ -156,6 +156,28 @@ def collapse_active_plans(observations, candidates):
                 row["live_demo_order"] = False
                 row["plan_status"] = "ELIMINATED_REPLACED"
     return active
+def event_visual_geometry(event, candles):
+    """Read-only chart projection; does not alter structure or workflow decisions."""
+    def candle_at(index):
+        return candles[index] if isinstance(index, int) and 0 <= index < len(candles) else None
+    source = list(event.source_indices or [])
+    pivot_index = source[0] if source else None
+    pivot = candle_at(pivot_index)
+    break_candle = candle_at(event.index)
+    ob_candle = candle_at(event.ob_source_index)
+    return {
+        "event_time": break_candle.get("close_time") if break_candle else None,
+        "event_price": break_candle.get("close") if break_candle else None,
+        "pivot_index": pivot_index,
+        "pivot_time": pivot.get("close_time") if pivot else None,
+        "pivot_price": (pivot.get("high") if event.side == "SHORT" else pivot.get("low")) if pivot else None,
+        "break_index": event.index,
+        "break_time": break_candle.get("close_time") if break_candle else None,
+        "break_price": event.broken_level or (break_candle.get("close") if break_candle else None),
+        "ob_source_time": ob_candle.get("close_time") if ob_candle else None,
+        "ob_source_price": ob_candle.get("close") if ob_candle else None,
+    }
+
 def main():
     server_time = int(get("/fapi/v1/time")["serverTime"])
     observations = {}; plan_candidates = []; latest_structure_event_ids = {}; latest_confirmed_structure_event_ids = {}; totals = {"bias_ready": 0, "structure_events": 0, "confirmed_5m": 0, "selected_events": 0, "live_demo_candidates": 0, "gate_rejections": 0}
@@ -176,7 +198,7 @@ def main():
             if b.get("valid"): totals["bias_ready"] += 1
             if decision["state"] == "SELECTION_RESOLVED": totals["selected_events"] += 1
             else: totals["gate_rejections"] += 1
-            row = {"event_id": event.event_id, "kind": event.kind, "side": event.side, "structure_index": event.index, "event_time": m[event.index]["close_time"], "source_times": [m[i]["close_time"] for i in event.source_indices if 0 <= i < len(m)], "broken_level": event.broken_level, "protected_level": event.protected_level, "ob_source_index": event.ob_source_index, "ob_source_time": m[event.ob_source_index]["close_time"] if 0 <= event.ob_source_index < len(m) else None, "ob_zone_low": event.ob_zone_low, "ob_zone_high": event.ob_zone_high, "flip_level": event.flip_level, "structure_layer": getattr(event, "structure_layer", "SWING"), "level_classification": getattr(event, "level_classification", ""), "pool_id": getattr(event, "pool_id", ""), "sweep_level": getattr(event, "sweep_level", 0.0), "sweep_extreme": getattr(event, "sweep_extreme", 0.0), "source_event_ids": list(event.source_indices), "parent_event_id": event.parent_event_id, "bias": b.get("state"), "confirmation": c["state"], "continuation_state": c.get("continuation_state"), "lifecycle_state": c.get("lifecycle_state"), "zone_bounds": c.get("zone_bounds"), "touch_event_id": c.get("touch_event_id"), "selection": decision["state"], "selection_reason": decision.get("reason"), "selection_method": decision.get("selection_method"), "primary_owner": decision.get("primary_owner"), "eligible_setup_candidates": decision.get("candidates", []), "contributing_contexts": decision.get("contributing_contexts", []), "setup_strength_profiles": decision.get("setup_strength_profiles", []), "setup_eligibility_ledger": decision.get("ledger", []), "selected_setup": decision.get("selected"), "live_demo_order": False}
+            row = {"event_id": event.event_id, "kind": event.kind, "side": event.side, "structure_index": event.index, **event_visual_geometry(event, m), "source_times": [m[i]["close_time"] for i in event.source_indices if 0 <= i < len(m)], "broken_level": event.broken_level, "protected_level": event.protected_level, "ob_source_index": event.ob_source_index, "ob_source_time": m[event.ob_source_index]["close_time"] if 0 <= event.ob_source_index < len(m) else None, "ob_zone_low": event.ob_zone_low, "ob_zone_high": event.ob_zone_high, "flip_level": event.flip_level, "structure_layer": getattr(event, "structure_layer", "SWING"), "level_classification": getattr(event, "level_classification", ""), "pool_id": getattr(event, "pool_id", ""), "sweep_level": getattr(event, "sweep_level", 0.0), "sweep_extreme": getattr(event, "sweep_extreme", 0.0), "source_event_ids": list(event.source_indices), "parent_event_id": event.parent_event_id, "bias": b.get("state"), "confirmation": c["state"], "continuation_state": c.get("continuation_state"), "lifecycle_state": c.get("lifecycle_state"), "zone_bounds": c.get("zone_bounds"), "touch_event_id": c.get("touch_event_id"), "selection": decision["state"], "selection_reason": decision.get("reason"), "selection_method": decision.get("selection_method"), "primary_owner": decision.get("primary_owner"), "eligible_setup_candidates": decision.get("candidates", []), "contributing_contexts": decision.get("contributing_contexts", []), "setup_strength_profiles": decision.get("setup_strength_profiles", []), "setup_eligibility_ledger": decision.get("ledger", []), "selected_setup": decision.get("selected"), "live_demo_order": False}
             if decision["state"] == "SELECTION_RESOLVED":
                 entry_index = c["index"] + 1
                 if entry_index >= len(q):
