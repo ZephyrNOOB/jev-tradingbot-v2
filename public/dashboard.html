@@ -69,7 +69,23 @@ function createChart(container) {
   structureSvg.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:4;overflow:visible';
   container.style.position = 'relative';
   container.appendChild(structureSvg);
-  return { chart, candles, volume, overlays: [], markers: null, structureSvg, structureSeries: [] };
+  const structurePrimitive = new StructurePrimitive(chart, candles);
+  candles.attachPrimitive(structurePrimitive);
+  return { chart, candles, volume, overlays: [], markers: null, structureSvg, structureSeries: [], structurePrimitive };
+}
+class StructurePrimitive {
+  constructor(chart, series) { this.chart=chart; this.series=series; this.visuals=[]; this.swings=[]; this.requestUpdate=()=>{}; }
+  attached({requestUpdate}) { this.requestUpdate=requestUpdate; }
+  detached() { this.requestUpdate=()=>{}; }
+  update(visuals, swings) { this.visuals=visuals; this.swings=swings; this.requestUpdate(); }
+  paneViews() { return [{ renderer: { draw: target => target.useBitmapCoordinateSpace(scope => this.draw(scope)) } }]; }
+  draw({context,horizontalPixelRatio:hx,verticalPixelRatio:hy}) {
+    const x=t=>{const v=Number(t), q=v>1e12?Math.floor(v/1000):v, c=this.chart.timeScale().timeToCoordinate(q);return Number.isFinite(c)?c*hx:null};
+    const y=p=>{const c=this.series.priceToCoordinate(Number(p));return Number.isFinite(c)?c*hy:null};
+    const label=(s,px,py,color)=>{if(![px,py].every(Number.isFinite))return;context.fillStyle=color;context.font=`${9*hy}px Aquatico,monospace`;context.textAlign='center';context.fillText(s,px,py)};
+    for(const s of this.swings.slice(-24)){const px=x(s.time),py=y(s.price);label(s.label,px,py+(s.kind==='high'?-8*hy:14*hy),s.kind==='high'?'#F23645':'#089981')}
+    for(const e of this.visuals.filter(e=>e.lifecycle_state!=='INVALIDATED').slice(-32)){const color=e.side==='LONG'?'#089981':'#F23645';if(['BOS','CHoCH_MSS'].includes(e.kind)){const x1=x(e.pivot_time),x2=x(e.break_time),py=y(e.break_price);if([x1,x2,py].every(Number.isFinite)){context.strokeStyle=color;context.beginPath();context.moveTo(x1,py);context.lineTo(x2,py);context.stroke();label(e.kind==='CHoCH_MSS'?'CHoCH':'BOS',(x1+x2)/2,py-5*hy,color)}}const lo=Number(e.ob_zone_low??e.zone_bounds?.low),hi=Number(e.ob_zone_high??e.zone_bounds?.high),sx=x(e.ob_source_time||e.source_times?.[0]||e.event_time),ex=x(this.chart.timeScale().getVisibleRange()?.to||e.event_time),y1=y(hi),y2=y(lo);if([sx,ex,y1,y2].every(Number.isFinite)&&ex>=sx){context.fillStyle=`${color}18`;context.strokeStyle=`${color}99`;context.fillRect(sx,Math.min(y1,y2),Math.max(1,ex-sx),Math.abs(y2-y1));context.strokeRect(sx,Math.min(y1,y2),Math.max(1,ex-sx),Math.abs(y2-y1))}if(e.kind==='LIQUIDITY_SWEEP'){const py=y(e.sweep_level),sx=x(e.event_time);if([py,sx].every(Number.isFinite)){context.setLineDash([4*hx,3*hx]);context.strokeStyle='#D4A72C';context.beginPath();context.moveTo(sx,py);context.lineTo(context.canvas.width,py);context.stroke();context.setLineDash([])}}}
+  }
 }
 async function smcOverlay(view, raw, symbol, interval) {
   view.overlays.forEach(line => view.candles.removePriceLine(line));
@@ -78,6 +94,8 @@ async function smcOverlay(view, raw, symbol, interval) {
   if (!structure?.ok || structure.artifact_status !== 'PASS') throw new Error('Authoritative structure unavailable');
   const bars = raw.map(c => ({ ...c, time: Math.floor(c.ts / 1000) }));
   const visuals = structure.structure_visuals || structure.events || [];
+  view.structurePrimitive.update(visuals, structure.swing_visuals || []);
+  view.structureSvg.replaceChildren();
   const lastBar = bars[bars.length - 1];
   const chartStart = bars[0]?.time, chartEnd = lastBar?.time;
   const visualStats = { events: 0, swings: 0, nodes: 0, coordinates: 0, rejected: 0 }; // ponytail: diagnostics stay in chartState dataset; remove after browser proof is stable
