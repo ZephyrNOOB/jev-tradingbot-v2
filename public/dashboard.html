@@ -74,21 +74,32 @@ async function smcOverlay(view, raw, symbol, interval) {
   const bars = raw.map(c => ({ ...c, time: Math.floor(c.ts / 1000) }));
   const markerTimes = bars.map(c => c.time);
   const markers = [];
-  const indexFromId = eventId => {
-    const match = String(eventId || '').match(/^(?:15m:)?(\d+):/);
-    return match ? Number(match[1]) : null;
+  const lines = [];
+  const indexFromId = eventId => { const match = String(eventId || '').match(/^(?:15m:)?(\d+):/); return match ? Number(match[1]) : null; };
+  const barForIndex = index => {
+    const offset = index - (structure.latest_closed_candle[interval] ? bars.length - 1 : 0);
+    return bars[index] || bars[Math.max(0, Math.min(bars.length - 1, offset))];
   };
   structure.events.forEach(event => {
-    const index = indexFromId(event.event_id);
-    if (index === null || !['BOS', 'CHoCH_MSS'].includes(event.kind)) return;
-    const offset = index - (structure.latest_closed_candle[interval] ? bars.length - 1 : 0);
-    const bar = bars[index] || bars[Math.max(0, Math.min(bars.length - 1, offset))];
+    const index = indexFromId(event.event_id), bar = index === null ? null : barForIndex(index);
     if (!bar) return;
-    const bullish = event.side === 'LONG';
-    markers.push({ time: bar.time, position: bullish ? 'belowBar' : 'aboveBar', color: bullish ? '#b6ff00' : '#ff6575', shape: bullish ? 'arrowUp' : 'arrowDown', text: event.kind === 'CHoCH_MSS' ? 'CHoCH' : 'BOS' });
+    const bullish = event.side === 'LONG', color = bullish ? '#b6ff00' : '#ff6575';
+    if (['BOS', 'CHoCH_MSS'].includes(event.kind)) {
+      markers.push({ time: bar.time, position: bullish ? 'belowBar' : 'aboveBar', color, shape: 'circle', text: event.kind === 'CHoCH_MSS' ? 'CHoCH' : 'BOS' });
+      const source = (event.event_id.match(/SW-[LH]-[^-]+-(\d+)/) || [])[1];
+      const pivot = source ? barForIndex(Number(source)) : null;
+      if (pivot) lines.push({ from: pivot.time, to: bar.time, price: Number(event.zone_bounds?.high || event.zone_bounds?.low || bar.close), color, title: event.kind === 'CHoCH_MSS' ? 'CHoCH' : 'BOS' });
+    }
+    if (event.kind === 'FVG' && event.zone_bounds?.low != null && event.zone_bounds?.high != null) lines.push({ from: bar.time, to: bars[bars.length - 1].time, low: Number(event.zone_bounds.low), high: Number(event.zone_bounds.high), color: bullish ? '#00fff7' : '#ff4edb', title: 'FVG' });
+    if (event.kind === 'LIQUIDITY_SWEEP' && event.sweep_level) lines.push({ from: bar.time, to: bars[bars.length - 1].time, price: Number(event.sweep_level), color: '#ffd166', title: 'SSL/BSL' });
   });
   if (view.markers) view.markers.setMarkers([]);
   view.markers = LightweightCharts.createSeriesMarkers(view.candles, markers.slice(-40));
+  view.overlays.forEach(line => view.candles.removePriceLine(line)); view.overlays = [];
+  lines.slice(-40).forEach(item => {
+    if (item.price != null) view.overlays.push(view.candles.createPriceLine({ price:item.price, color:item.color, lineWidth:1, lineStyle:LightweightCharts.LineStyle.Dashed, axisLabelVisible:true, title:item.title }));
+    if (item.low != null) { view.overlays.push(view.candles.createPriceLine({ price:item.low, color:item.color, lineWidth:1, lineStyle:LightweightCharts.LineStyle.Dotted, axisLabelVisible:true, title:item.title+' L' })); view.overlays.push(view.candles.createPriceLine({ price:item.high, color:item.color, lineWidth:1, lineStyle:LightweightCharts.LineStyle.Dotted, axisLabelVisible:true, title:item.title+' H' })); }
+  });
   const plans = (structure.active_candidates || []).map(candidate => ({
     entry: candidate.entry,
     sl: candidate.sl,
