@@ -17,6 +17,7 @@ CANDLE_CACHE_PATH = ART / "MARKET_CANDLE_CACHE.json"
 SYMBOLS = ("BTCUSDT", "ETHUSDT", "SOLUSDT", "XAUUSDT")
 sys.path.insert(0, str(ROOT / "v2" / "scripts"))
 from architecture_v2 import ConfirmationBot, MarketBiasBot, MarketStructureBot, SelectionBot, load_csv, pivots
+from market_structure_authoritative import confirmed_pivots
 from live_demo_context import lifecycle_context, setup_context
 from setup_bots_executable import build_plan, validate_entry_sl_provenance, validate_plan_economics
 
@@ -156,6 +157,17 @@ def collapse_active_plans(observations, candidates):
                 row["live_demo_order"] = False
                 row["plan_status"] = "ELIMINATED_REPLACED"
     return active
+def swing_visuals(candles):
+    confirmed = confirmed_pivots(candles)
+    highs, lows = [], []
+    for items in confirmed.values():
+        for item in items:
+            target = highs if item['kind'] == 'high' else lows
+            previous = target[-1]['price'] if target else None
+            target.append({**item, 'time': candles[item['index']]['close_time'], 'label': ('HH' if item['kind'] == 'high' and previous is not None and item['price'] > previous else 'LH' if item['kind'] == 'high' else 'HL' if previous is not None and item['price'] > previous else 'LL')})
+    return highs + lows
+
+
 def event_visual_geometry(event, candles):
     """Read-only chart projection; does not alter structure or workflow decisions."""
     def candle_at(index):
@@ -230,7 +242,7 @@ def main():
                                 totals["live_demo_candidates"] += 1
             symbol_rows.append(row)
         latest_confirmed_structure_event_ids[symbol] = next((row["event_id"] for row in reversed(symbol_rows) if row.get("confirmation") == "CONFIRMED" and (row.get("selected_setup") or row.get("kind") in ("BOS", "CHoCH_MSS", "LIQUIDITY_SWEEP", "BREAKER_BLOCK"))), None)
-        observations[symbol] = {"closed_counts": {"1h": len(h), "15m": len(m), "5m": len(q)}, "latest_closed_candle": {"1h": h[-1]["close_time"], "15m": m[-1]["close_time"], "5m": q[-1]["close_time"]}, "recent_events": symbol_rows}
+        observations[symbol] = {"closed_counts": {"1h": len(h), "15m": len(m), "5m": len(q)}, "latest_closed_candle": {"1h": h[-1]["close_time"], "15m": m[-1]["close_time"], "5m": q[-1]["close_time"]}, "recent_events": symbol_rows, "swing_visuals": swing_visuals(m)}
 
     structure_events = {symbol: rows_data["recent_events"] for symbol, rows_data in observations.items()}
     plan_candidates = invalidate_stale_candidates(plan_candidates, latest_structure_event_ids, structure_events, server_time)

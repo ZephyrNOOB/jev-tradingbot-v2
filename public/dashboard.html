@@ -99,6 +99,10 @@ async function smcOverlay(view, raw, symbol, interval) {
     labelKeys.add(key);
     visualSvg.push(`<text x="${x}" y="${y}" fill="${color}" font-size="9" font-family="Aquatico,monospace" text-anchor="middle">${text}</text>`);
   };
+  (structure.swing_visuals || []).slice(-24).forEach(swing => {
+    const x = xFor(swing.time), y = yFor(swing.price);
+    if (Number.isFinite(x) && Number.isFinite(y)) pushLabel(x, y + (swing.kind === 'high' ? -8 : 14), swing.kind === 'high' ? '#F23645' : '#089981', swing.label);
+  });
   selectedVisuals.forEach(event => {
     const bar = eventBar(event);
     if (!bar) return;
