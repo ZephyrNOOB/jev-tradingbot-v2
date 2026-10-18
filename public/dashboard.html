@@ -79,19 +79,15 @@ async function smcOverlay(view, raw, symbol, interval) {
   const bars = raw.map(c => ({ ...c, time: Math.floor(c.ts / 1000) }));
   const visuals = structure.structure_visuals || structure.events || [];
   const lastBar = bars[bars.length - 1];
-  const chartStart = bars[0]?.ts ?? 0;
-  const chartEnd = bars[bars.length - 1]?.ts ?? 0;
-  const latestIndex = Math.max(...(structure.events || visuals).map(event => Number(event.structure_index)).filter(Number.isFinite), 0);
-  const latestStructureTime = Number(structure.latest_closed_candle?.['15m'] || 0);
-  const structureStep = interval === '1h' ? 3600000 : interval === '5m' ? 300000 : 900000;
-  const timeToBar = ts => {
-    if (!Number.isFinite(Number(ts)) || chartEnd <= chartStart) return null;
-    const ratio = (Number(ts) - chartStart) / (chartEnd - chartStart);
-    return bars[Math.max(0, Math.min(bars.length - 1, Math.round(ratio * (bars.length - 1))))];
+  const eventBar = event => {
+    const exactTime = Number(event.event_time);
+    if (Number.isFinite(exactTime)) return bars.find(bar => Math.abs(bar.ts - exactTime) <= 1000) || null;
+    return null;
   };
-  const eventTime = event => {
-    const index = Number(event.structure_index);
-    return Number.isFinite(index) && latestIndex && latestStructureTime ? latestStructureTime - (latestIndex - index) * structureStep : null;
+  const sourceBar = event => {
+    const times = Array.isArray(event.source_times) ? event.source_times : [];
+    const exactTime = Number(times[0]);
+    return Number.isFinite(exactTime) ? bars.find(bar => Math.abs(bar.ts - exactTime) <= 1000) || null : null;
   };
   const svg = view.structureSvg;
   const esc = text => String(text).replace(/[&<>"']/g, char => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[char]));
@@ -100,11 +96,11 @@ async function smcOverlay(view, raw, symbol, interval) {
   const visualSvg = [];
   const selectedVisuals = visuals.filter(event => event.lifecycle_state !== 'INVALIDATED').slice(-16);
   selectedVisuals.forEach(event => {
-    const bar = timeToBar(eventTime(event));
+    const bar = eventBar(event);
     if (!bar) return;
     const bullish = event.side === 'LONG', color = bullish ? '#089981' : '#F23645';
     if (['BOS', 'CHoCH_MSS'].includes(event.kind)) {
-      const pivot = timeToBar(eventTime({ structure_index: Number(event.source_event_ids?.[0]) }));
+      const pivot = sourceBar(event);
       const price = Number(event.zone_bounds?.high ?? event.zone_bounds?.low ?? (bullish ? pivot?.high : pivot?.low) ?? bar.close);
       const label = event.kind === 'CHoCH_MSS' ? 'CHoCH' : 'BOS';
       if (pivot) {
