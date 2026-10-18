@@ -70,8 +70,17 @@ function createChart(container) {
 }
 class StructurePrimitive {
   constructor(chart, series) { this.chart=chart; this.series=series; this.visuals=[]; this.swings=[]; this.requestUpdate=()=>{}; }
-  attached({requestUpdate}) { this.requestUpdate=requestUpdate; }
-  detached() { this.requestUpdate=()=>{}; }
+  attached({requestUpdate}) {
+    this.requestUpdate=requestUpdate;
+    this._onRange=()=>this.requestUpdate();
+    this.chart.timeScale().subscribeVisibleLogicalRangeChange(this._onRange);
+    this.chart.timeScale().subscribeVisibleTimeRangeChange(this._onRange);
+  }
+  detached() {
+    this.chart.timeScale().unsubscribeVisibleLogicalRangeChange(this._onRange);
+    this.chart.timeScale().unsubscribeVisibleTimeRangeChange(this._onRange);
+    this.requestUpdate=()=>{};
+  }
   update(visuals, swings) { this.visuals=visuals; this.swings=swings; this.requestUpdate(); }
   paneViews() { return [{ renderer: { draw: target => target.useBitmapCoordinateSpace(scope => this.draw(scope)) } }]; }
   draw({context,horizontalPixelRatio:hx,verticalPixelRatio:hy}) {
@@ -144,7 +153,8 @@ async function refreshCharts() {
         const [eventCount, swingCount, nodeCount, coordinateCount, rejectedCount] = structureCount.split('/').map(Number);
         const price = ticker.prices?.[symbol];
         state.textContent = `${price == null ? 'LIVE —' : `LIVE ${price}`} · ${interval.toUpperCase()} · S:${structureCount}`;
-        state.title = `events=${eventCount || 0} swings=${swingCount || 0} svgNodes=${nodeCount || 0} coordinates=${coordinateCount || 0} rejected=${rejectedCount || 0}`;
+        const renderStats = view.structurePrimitive.stats;
+        state.title = `events=${eventCount || 0} swings=${swingCount || 0} primitiveObjects=${renderStats.objects || 0} draws=${renderStats.draws || 0} rejected=${renderStats.rejected || 0}`;
       } catch (error) { state.textContent = 'ERROR'; state.title = error?.message || 'chart_render_failed'; console.error(`[chart:${symbol}]`, error); }
     }));
     document.getElementById('chartsUpdated').textContent = new Date().toLocaleTimeString();
