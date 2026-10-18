@@ -93,79 +93,12 @@ async function smcOverlay(view, raw, symbol, interval) {
   const lastBar = bars[bars.length - 1];
   const chartStart = bars[0]?.time, chartEnd = lastBar?.time;
   const visualStats = { events: 0, swings: 0, nodes: 0, coordinates: 0, rejected: 0 }; // ponytail: diagnostics stay in chartState dataset; remove after browser proof is stable
-  const visualSvg = []; // legacy diagnostics only; primitive is sole renderer
-  const labelKeys = new Set();
-  const chartTime = time => { const value = Number(time); return Number.isFinite(value) ? (value > 1e12 ? Math.floor(value / 1000) : value) : null; }; // ponytail: nearest-bar mapping handles exchange candle boundary drift; replace with keyed timestamps if gaps require exact audit
-  const nearestBar = time => {
-    const target = chartTime(time);
-    if (target == null || !bars.length || target < chartStart || target > chartEnd) return null;
-    return bars.reduce((best, bar) => Math.abs(bar.time - target) < Math.abs(best.time - target) ? bar : best, bars[0]);
-  };
-  const eventBar = event => nearestBar(event.event_time);
-  const barAtTime = time => nearestBar(time);
-  const sourceBar = event => barAtTime(event.pivot_time || event.source_times?.[0]);
-  const chartX = time => {
-    const bar = nearestBar(time);
-    const coordinate = bar ? view.chart.timeScale().timeToCoordinate(bar.time) : null;
-    return Number.isFinite(coordinate) ? coordinate : null;
-  }; // ponytail: chart coordinates use loaded candle keys, not arbitrary event times; exact event-to-bar mapping can replace nearestBar when chart supports gaps natively.
-  const xFor = chartX;
-  const timeWindow = (start, end) => {
-    const a = chartTime(start), b = chartTime(end);
-    return a != null && b != null && b >= chartStart && a <= chartEnd ? [Math.max(a, chartStart), Math.min(b, chartEnd)] : null;
-  };
-  const yFor = price => { const coordinate = view.candles.priceToCoordinate(Number(price)); return Number.isFinite(coordinate) ? coordinate : null; };
-
-  const selectedVisuals = visuals.filter(event => event.lifecycle_state !== 'INVALIDATED' && timeWindow(event.event_time, event.event_time)).slice(-32);
-  visualStats.events = selectedVisuals.length;
-  const pushLabel = (x, y, color, text) => {
-    const key = `${text}:${Math.round(x / 8)}:${Math.round(y / 8)}`;
-    if (labelKeys.has(key)) return;
-    labelKeys.add(key);
-    visualSvg.push(`<text x="${x}" y="${y}" fill="${color}" font-size="9" font-family="Aquatico,monospace" text-anchor="middle">${text}</text>`);
-  };
-  (structure.swing_visuals || []).filter(swing => timeWindow(swing.time, swing.time)).slice(-24).forEach(swing => {
-    const x = xFor(chartTime(swing.time)), y = yFor(swing.price);
-    if (Number.isFinite(x) && Number.isFinite(y)) { visualStats.swings += 1; visualStats.coordinates += 1; pushLabel(x, y + (swing.kind === 'high' ? -8 : 14), swing.kind === 'high' ? '#F23645' : '#089981', swing.label); } else visualStats.rejected += 1;
-  });
-  selectedVisuals.forEach(event => {
-    const bar = eventBar(event);
-    if (!bar) return;
-    const bullish = event.side === 'LONG', color = bullish ? '#089981' : '#F23645';
-    if (['BOS', 'CHoCH_MSS'].includes(event.kind) && event.pivot_time && event.break_time && Number.isFinite(Number(event.break_price))) {
-      const x1=xFor(event.pivot_time), x2=xFor(event.break_time), y=yFor(event.break_price);
-      if ([x1,x2,y].every(Number.isFinite) && x2 >= x1) {
-        const label = event.kind === 'CHoCH_MSS' ? 'CHoCH' : 'BOS';
-        visualStats.coordinates += 1;
-        visualSvg.push(`<line x1="${x1}" y1="${y}" x2="${x2}" y2="${y}" stroke="${color}" stroke-width="1.2"/>`);
-        pushLabel((x1+x2)/2, y-5, color, label);
-      }
-    }
-    const obLow = Number(event.ob_zone_low), obHigh = Number(event.ob_zone_high); // ponytail: render persisted OB geometry even when event kind is breaker/FVG; promote explicit ORDER_BLOCK events when pipeline emits them
-    const hasObZone = Number.isFinite(obLow) && Number.isFinite(obHigh) && obHigh > obLow;
-    const hasZone = event.zone_bounds?.low != null && event.zone_bounds?.high != null;
-    if ((['FVG','ORDER_BLOCK','BREAKER_BLOCK'].includes(event.kind) && hasZone) || hasObZone) {
-      const isFvg = event.kind === 'FVG' && hasZone;
-      const zoneColor = isFvg ? (bullish ? '#00b8a9' : '#d85ca8') : color;
-      const zoneLow = hasObZone && !isFvg ? obLow : Number(event.zone_bounds.low);
-      const zoneHigh = hasObZone && !isFvg ? obHigh : Number(event.zone_bounds.high);
-      const startTime = event.ob_source_time || event.source_times?.[0] || event.event_time;
-      const window = timeWindow(startTime, lastBar.time);
-      const x1=xFor(window?.[0]), x2=xFor(window?.[1]), y1=yFor(zoneHigh), y2=yFor(zoneLow);
-      if ([x1,x2,y1,y2].every(Number.isFinite) && x2 >= x1 && Math.abs(y2-y1) >= 2) { visualStats.coordinates += 1; visualSvg.push(`<rect x="${x1}" y="${Math.min(y1,y2)}" width="${Math.max(1,x2-x1)}" height="${Math.abs(y2-y1)}" fill="${zoneColor}" fill-opacity=".08" stroke="${zoneColor}" stroke-opacity=".45" stroke-width="1"/>`); } else visualStats.rejected += 1;
-    }
-    if (event.kind === 'LIQUIDITY_SWEEP' && Number.isFinite(Number(event.sweep_level))) {
-      const y=yFor(event.sweep_level), x1=xFor(event.event_time), x2=xFor(lastBar.time);
-      if ([x1,x2,y].every(Number.isFinite) && x2 >= x1) { visualStats.coordinates += 1; visualSvg.push(`<line x1="${x1}" y1="${y}" x2="${x2}" y2="${y}" stroke="#D4A72C" stroke-width="1" stroke-dasharray="4 3"/>`); } else visualStats.rejected += 1;
-    }
-  });
-  visualStats.nodes = visualStats.coordinates;
+  visualStats.events = visuals.filter(event => event.lifecycle_state !== 'INVALIDATED').length;
+  visualStats.swings = (structure.swing_visuals || []).length;
+  visualStats.nodes = visualStats.coordinates = visualStats.events + visualStats.swings;
   if (!visualStats.nodes) console.warn(`[chart:${symbol}] structure empty`, { events: visualStats.events, swings: visualStats.swings, chartStart, chartEnd });
   const state = document.getElementById(`chartState-${symbol}`);
   if (state) state.dataset.structure = `${visualStats.events}/${visualStats.swings}/${visualStats.nodes}/${visualStats.coordinates}/${visualStats.rejected}`;
-  requestAnimationFrame(() => {
-    svg.setAttribute('viewBox', `0 0 ${svg.clientWidth || 1} ${svg.clientHeight || 1}`);
-  });
   if (view.markers) view.markers.setMarkers([]);
   view.markers = null;
   view.overlays.forEach(line => view.candles.removePriceLine(line)); view.overlays = [];
