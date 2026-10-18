@@ -91,11 +91,12 @@ async function smcOverlay(view, raw, symbol, interval) {
   const sourceBar = event => barAtTime(event.pivot_time || event.source_times?.[0]);
   const svg = view.structureSvg;
   const esc = text => String(text).replace(/[&<>"']/g, char => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[char]));
-  const xFor = time => {
+  const chartX = time => {
     const value = chartTime(time);
     const coordinate = value == null ? null : view.chart.timeScale().timeToCoordinate(value);
     return Number.isFinite(coordinate) ? coordinate : null;
   };
+  const xFor = chartX;
   const yFor = price => { const coordinate = view.candles.priceToCoordinate(Number(price)); return Number.isFinite(coordinate) ? coordinate : null; };
   const visualSvg = [];
   const labelKeys = new Set();
@@ -134,8 +135,11 @@ async function smcOverlay(view, raw, symbol, interval) {
     }
   });
   svg.setAttribute('viewBox', `0 0 ${svg.clientWidth || 1} ${svg.clientHeight || 1}`);
-  svg.innerHTML = visualSvg.join('');
-  requestAnimationFrame(() => { svg.setAttribute('viewBox', `0 0 ${svg.clientWidth || 1} ${svg.clientHeight || 1}`); });
+  svg.replaceChildren();
+  if (visualSvg.length) svg.insertAdjacentHTML('beforeend', visualSvg.join(''));
+  requestAnimationFrame(() => {
+    svg.setAttribute('viewBox', `0 0 ${svg.clientWidth || 1} ${svg.clientHeight || 1}`);
+  });
   if (view.markers) view.markers.setMarkers([]);
   view.markers = null;
   view.overlays.forEach(line => view.candles.removePriceLine(line)); view.overlays = [];
