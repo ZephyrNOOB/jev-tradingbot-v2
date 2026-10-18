@@ -176,6 +176,8 @@ def event_visual_geometry(event, candles):
         "break_price": event.broken_level or (break_candle.get("close") if break_candle else None),
         "ob_source_time": ob_candle.get("close_time") if ob_candle else None,
         "ob_source_price": ob_candle.get("close") if ob_candle else None,
+        "label_time": break_candle.get("close_time") if break_candle else None,
+        "label_price": event.broken_level or (break_candle.get("close") if break_candle else None),
     }
 
 def main():

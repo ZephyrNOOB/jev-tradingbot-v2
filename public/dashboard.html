@@ -91,31 +91,36 @@ async function smcOverlay(view, raw, symbol, interval) {
   const xFor = time => { const coordinate = view.chart.timeScale().timeToCoordinate(time); return Number.isFinite(coordinate) ? coordinate : null; };
   const yFor = price => { const coordinate = view.candles.priceToCoordinate(Number(price)); return Number.isFinite(coordinate) ? coordinate : null; };
   const visualSvg = [];
-  const selectedVisuals = visuals.filter(event => event.lifecycle_state !== 'INVALIDATED' && (event.event_time || event.break_time || event.pivot_time)).slice(-16);
+  const labelKeys = new Set();
+  const selectedVisuals = visuals.filter(event => event.lifecycle_state !== 'INVALIDATED' && event.event_time).slice(-16);
+  const pushLabel = (x, y, color, text) => {
+    const key = `${text}:${Math.round(x / 8)}:${Math.round(y / 8)}`;
+    if (labelKeys.has(key)) return;
+    labelKeys.add(key);
+    visualSvg.push(`<text x="${x}" y="${y}" fill="${color}" font-size="9" font-family="Aquatico,monospace" text-anchor="middle">${text}</text>`);
+  };
   selectedVisuals.forEach(event => {
     const bar = eventBar(event);
     if (!bar) return;
     const bullish = event.side === 'LONG', color = bullish ? '#089981' : '#F23645';
-    if (['BOS', 'CHoCH_MSS'].includes(event.kind)) {
-      const pivot = sourceBar(event), breakBar = barAtTime(event.break_time || event.event_time);
-      const price = Number(event.break_price ?? event.broken_level ?? event.event_price);
-      const label = event.kind === 'CHoCH_MSS' ? 'CHoCH' : 'BOS';
-      if (pivot) {
-        const x1=xFor(pivot.time), x2=xFor((breakBar || bar).time), y=yFor(price);
-        if ([x1,x2,y].every(Number.isFinite)) {
-          const lx=(x1+x2)/2;
-          visualSvg.push(`<line x1="${x1}" y1="${y}" x2="${x2}" y2="${y}" stroke="${color}" stroke-width="1.2"/><text x="${lx}" y="${y-5}" fill="${color}" font-size="9" font-family="Aquatico,monospace" text-anchor="middle">${label}</text>`);
-        }
+    if (['BOS', 'CHoCH_MSS'].includes(event.kind) && event.pivot_time && event.break_time && Number.isFinite(Number(event.break_price))) {
+      const pivot = barAtTime(event.pivot_time), breakBar = barAtTime(event.break_time);
+      const x1=xFor(pivot?.time), x2=xFor(breakBar?.time), y=yFor(event.break_price);
+      if ([x1,x2,y].every(Number.isFinite) && x2 > x1) {
+        const label = event.kind === 'CHoCH_MSS' ? 'CHoCH' : 'BOS';
+        visualSvg.push(`<line x1="${x1}" y1="${y}" x2="${x2}" y2="${y}" stroke="${color}" stroke-width="1.2"/>`);
+        pushLabel((x1+x2)/2, y-5, color, label);
       }
     }
     if (['FVG','ORDER_BLOCK','BREAKER_BLOCK'].includes(event.kind) && event.zone_bounds?.low != null && event.zone_bounds?.high != null) {
       const zoneColor = event.kind === 'FVG' ? (bullish ? '#00b8a9' : '#d85ca8') : color;
-      const x1=xFor(bar.time), x2=xFor(lastBar.time), y1=yFor(event.zone_bounds.high), y2=yFor(event.zone_bounds.low);
-      if ([x1,x2,y1,y2].every(Number.isFinite)) visualSvg.push(`<rect x="${Math.min(x1,x2)}" y="${Math.min(y1,y2)}" width="${Math.max(1,Math.abs(x2-x1))}" height="${Math.max(1,Math.abs(y2-y1))}" fill="${zoneColor}" fill-opacity=".08" stroke="${zoneColor}" stroke-opacity=".45" stroke-width="1"/>`);
+      const start = barAtTime(event.source_times?.[0] || event.ob_source_time || event.event_time);
+      const x1=xFor(start?.time), x2=xFor(lastBar.time), y1=yFor(event.zone_bounds.high), y2=yFor(event.zone_bounds.low);
+      if ([x1,x2,y1,y2].every(Number.isFinite) && x2 > x1 && Math.abs(y2-y1) >= 2) visualSvg.push(`<rect x="${x1}" y="${Math.min(y1,y2)}" width="${x2-x1}" height="${Math.abs(y2-y1)}" fill="${zoneColor}" fill-opacity=".08" stroke="${zoneColor}" stroke-opacity=".45" stroke-width="1"/>`);
     }
     if (event.kind === 'LIQUIDITY_SWEEP' && Number.isFinite(Number(event.sweep_level))) {
       const y=yFor(event.sweep_level), x1=xFor(bar.time), x2=xFor(lastBar.time);
-      if ([x1,x2,y].every(Number.isFinite)) visualSvg.push(`<line x1="${x1}" y1="${y}" x2="${x2}" y2="${y}" stroke="#D4A72C" stroke-width="1" stroke-dasharray="4 3"/>`);
+      if ([x1,x2,y].every(Number.isFinite) && x2 > x1) visualSvg.push(`<line x1="${x1}" y1="${y}" x2="${x2}" y2="${y}" stroke="#D4A72C" stroke-width="1" stroke-dasharray="4 3"/>`);
     }
   });
   svg.setAttribute('viewBox', `0 0 ${svg.clientWidth || 1} ${svg.clientHeight || 1}`);
