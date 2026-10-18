@@ -64,7 +64,7 @@ function createChart(container) {
   const candles = chart.addSeries(LightweightCharts.CandlestickSeries, { upColor: '#b6ff00', downColor: '#ff6575', borderVisible: false, wickUpColor: '#b6ff00', wickDownColor: '#ff6575' });
   const volume = chart.addSeries(LightweightCharts.HistogramSeries, { priceFormat: { type: 'volume' }, priceScaleId: '', lastValueVisible: false, priceLineVisible: false });
   volume.priceScale().applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
-  const structureSvg = document.createElement('svg');
+  const structureSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   structureSvg.setAttribute('aria-hidden', 'true');
   structureSvg.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:4;overflow:visible';
   container.style.position = 'relative';
@@ -80,7 +80,7 @@ async function smcOverlay(view, raw, symbol, interval) {
   const visuals = structure.structure_visuals || structure.events || [];
   const lastBar = bars[bars.length - 1];
   const chartStart = bars[0]?.time, chartEnd = lastBar?.time;
-  const visualStats = { events: 0, swings: 0, nodes: 0 };
+  const visualStats = { events: 0, swings: 0, nodes: 0 }; // ponytail: diagnostics stay in chartState dataset; remove after browser proof is stable
   const chartTime = time => { const value = Number(time); return Number.isFinite(value) ? (value > 1e12 ? Math.floor(value / 1000) : value) : null; }; // ponytail: nearest-bar mapping handles exchange candle boundary drift; replace with keyed timestamps if gaps require exact audit
   const nearestBar = time => {
     const target = chartTime(time);
@@ -198,7 +198,7 @@ async function refreshCharts() {
         await smcOverlay(view, result.candles, symbol, interval);
         charts.set(key, view);
         state.textContent = `LIVE ${ticker.prices[symbol]} · ${interval.toUpperCase()}`;
-      } catch { state.textContent = 'ERROR'; }
+      } catch (error) { state.textContent = 'ERROR'; state.title = error?.message || 'chart_render_failed'; console.error(`[chart:${symbol}]`, error); }
     }));
     document.getElementById('chartsUpdated').textContent = new Date().toLocaleTimeString();
   } finally { chartsRefreshing = false; }
