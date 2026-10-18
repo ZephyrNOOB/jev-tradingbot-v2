@@ -79,34 +79,32 @@ async function smcOverlay(view, raw, symbol, interval) {
   const bars = raw.map(c => ({ ...c, time: Math.floor(c.ts / 1000) }));
   const visuals = structure.structure_visuals || structure.events || [];
   const lastBar = bars[bars.length - 1];
+  const chartStart = bars[0]?.ts ?? 0;
+  const chartEnd = bars[bars.length - 1]?.ts ?? 0;
+  const latestIndex = Math.max(...visuals.map(event => Number(event.structure_index)).filter(Number.isFinite), 0);
+  const latestStructureTime = Number(structure.latest_closed_candle?.['15m'] || 0);
+  const structureStep = interval === '1h' ? 3600000 : interval === '5m' ? 300000 : 900000;
+  const timeToBar = ts => {
+    if (!Number.isFinite(Number(ts)) || chartEnd <= chartStart) return null;
+    const ratio = (Number(ts) - chartStart) / (chartEnd - chartStart);
+    return bars[Math.max(0, Math.min(bars.length - 1, Math.round(ratio * (bars.length - 1))))];
+  };
+  const eventTime = event => {
+    const index = Number(event.structure_index);
+    return Number.isFinite(index) && latestIndex && latestStructureTime ? latestStructureTime - (latestIndex - index) * structureStep : null;
+  };
   const svg = view.structureSvg;
   const esc = text => String(text).replace(/[&<>"']/g, char => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[char]));
   const xFor = time => { const coordinate = view.chart.timeScale().timeToCoordinate(time); return Number.isFinite(coordinate) ? coordinate : null; };
   const yFor = price => { const coordinate = view.candles.priceToCoordinate(Number(price)); return Number.isFinite(coordinate) ? coordinate : null; };
   const visualSvg = [];
-  const ranked = visuals.filter(event => !['FVG', 'ORDER_BLOCK', 'BREAKER_BLOCK'].includes(event.kind) || event.lifecycle_state !== 'INVALIDATED');
-  const selectedVisuals = [
-    ...ranked.filter(event => ['BOS', 'CHoCH_MSS'].includes(event.kind)).slice(-4),
-    ...ranked.filter(event => event.kind === 'FVG').slice(-2),
-    ...ranked.filter(event => ['ORDER_BLOCK', 'BREAKER_BLOCK', 'LIQUIDITY_SWEEP'].includes(event.kind)).slice(-2)
-  ];
-  const eventIndices = selectedVisuals.flatMap(event => [event.structure_index, ...(event.source_event_ids || [])].map(Number)).filter(Number.isFinite);
-  const latestStructureIndex = Math.max(...eventIndices, 0);
-  const barForIndex = index => {
-    if (!Number.isFinite(index) || !bars.length || !latestStructureIndex) return null;
-    return bars[Math.max(0, Math.min(bars.length - 1, bars.length - 1 - (latestStructureIndex - index)))];
-  };
-  const sourceIndex = event => {
-    const fromId = (String(event.event_id || '').match(/SW-[LH]-[^-]+-(\d+)/) || [])[1];
-    return Number.isFinite(Number(fromId)) ? Number(fromId) : Number(event.source_event_ids?.[0]);
-  };
+  const selectedVisuals = visuals.filter(event => event.lifecycle_state !== 'INVALIDATED').slice(-16);
   selectedVisuals.forEach(event => {
-    const index = Number.isFinite(Number(event.structure_index)) ? Number(event.structure_index) : null;
-    const bar = barForIndex(index);
+    const bar = timeToBar(eventTime(event));
     if (!bar) return;
     const bullish = event.side === 'LONG', color = bullish ? '#089981' : '#F23645';
     if (['BOS', 'CHoCH_MSS'].includes(event.kind)) {
-      const pivot = barForIndex(sourceIndex(event));
+      const pivot = timeToBar(eventTime({ structure_index: Number(event.source_event_ids?.[0]) }));
       const price = Number(event.zone_bounds?.high ?? event.zone_bounds?.low ?? (bullish ? pivot?.high : pivot?.low) ?? bar.close);
       const label = event.kind === 'CHoCH_MSS' ? 'CHoCH' : 'BOS';
       if (pivot) {
