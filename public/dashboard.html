@@ -81,7 +81,7 @@ async function smcOverlay(view, raw, symbol, interval) {
   const lastBar = bars[bars.length - 1];
   const chartStart = bars[0]?.ts ?? 0;
   const chartEnd = bars[bars.length - 1]?.ts ?? 0;
-  const latestIndex = Math.max(...visuals.map(event => Number(event.structure_index)).filter(Number.isFinite), 0);
+  const latestIndex = Math.max(...(structure.events || visuals).map(event => Number(event.structure_index)).filter(Number.isFinite), 0);
   const latestStructureTime = Number(structure.latest_closed_candle?.['15m'] || 0);
   const structureStep = interval === '1h' ? 3600000 : interval === '5m' ? 300000 : 900000;
   const timeToBar = ts => {
