@@ -610,7 +610,7 @@ async function executeDemoCandidate(req, res) {
     if (existing?.status === 'FILLED') return res.json({ ok: true, demoOnly: true, idempotent: true, status: 'ENTRY_ALREADY_FILLED', entry: existing, ordersSent: true, withdrawalsSent: false });
     if (existing && ['NEW', 'PARTIALLY_FILLED'].includes(existing.status)) return res.status(409).json({ ok: false, demoOnly: true, status: 'ENTRY_ALREADY_OPEN', entry: existing, ordersSent: true, withdrawalsSent: false });
     demoExecutionSummaries.set(String(req.userId), { status: 'ORDER_SUBMIT', clientOrderId: candidate.client_order_id, leverage: settings.leverage, marginMode: settings.marginMode, attemptAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
-    try { await signed('POST', '/fapi/v1/marginType', { symbol: candidate.symbol, marginType: settings.marginMode }); } catch (error) { if (!/No need to change margin type/i.test(error.message)) throw error; }
+    try { await signed('POST', '/fapi/v1/marginType', { symbol: candidate.symbol, marginType: settings.marginMode === 'CROSS' ? 'CROSSED' : 'ISOLATED' }); } catch (error) { if (!/No need to change margin type/i.test(error.message)) throw error; }
     await signed('POST', '/fapi/v1/leverage', { symbol: candidate.symbol, leverage: String(settings.leverage) });
     const entry = await signed('POST', '/fapi/v1/order', { symbol: candidate.symbol, side: candidate.side, type: 'LIMIT', timeInForce: 'GTC', quantity: sizing.quantity, price: sizing.price, newClientOrderId: candidate.client_order_id });
     demoExecutionSummaries.set(String(req.userId), { status: entry.status || 'ORDER_SENT', orderId: entry.orderId, clientOrderId: candidate.client_order_id, attemptAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
