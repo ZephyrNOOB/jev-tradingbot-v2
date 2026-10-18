@@ -93,10 +93,10 @@ async function smcOverlay(view, raw, symbol, interval) {
   const svg = view.structureSvg;
   const esc = text => String(text).replace(/[&<>"']/g, char => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[char]));
   const chartX = time => {
-    const value = chartTime(time);
-    const coordinate = value == null ? null : view.chart.timeScale().timeToCoordinate(value);
+    const bar = nearestBar(time);
+    const coordinate = bar ? view.chart.timeScale().timeToCoordinate(bar.time) : null;
     return Number.isFinite(coordinate) ? coordinate : null;
-  };
+  }; // ponytail: chart coordinates use loaded candle keys, not arbitrary event times; exact event-to-bar mapping can replace nearestBar when chart supports gaps natively.
   const xFor = chartX;
   const timeWindow = (start, end) => {
     const a = chartTime(start), b = chartTime(end);
