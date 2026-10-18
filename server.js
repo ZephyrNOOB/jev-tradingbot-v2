@@ -898,7 +898,7 @@ app.post('/api/telegram', auth, async (req, res) => {
   const token = String(req.body?.botToken || '').trim();
   const chatId = String(req.body?.chatId || '').trim();
   const enabled = req.body?.enabled === true;
-  if (token.length < 20 || token.length > 256 || !/^-?\\d{1,32}$/.test(chatId)) return res.status(400).json({ ok: false, error: 'Invalid Telegram token or chat ID' });
+  if (token.length < 1 || token.length > 256 || chatId.length < 1 || chatId.length > 128) return res.status(400).json({ ok: false, error: 'Telegram token and chat ID are required' });
   try {
     await verifyTelegram(token, chatId, true);
     const now = new Date().toISOString();
