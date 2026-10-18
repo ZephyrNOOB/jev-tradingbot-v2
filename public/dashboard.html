@@ -151,8 +151,9 @@ async function smcOverlay(view, raw, symbol, interval) {
   svg.replaceChildren();
   if (visualSvg.length) svg.innerHTML = visualSvg.join('');
   visualStats.nodes = visualSvg.length;
+  if (!visualSvg.length) console.warn(`[chart:${symbol}] structure empty`, { events: visualStats.events, swings: visualStats.swings, chartStart, chartEnd });
   const state = document.getElementById(`chartState-${symbol}`);
-  if (state && visualStats.nodes) state.dataset.structure = `${visualStats.events}/${visualStats.swings}/${visualStats.nodes}`;
+  if (state) state.dataset.structure = `${visualStats.events}/${visualStats.swings}/${visualStats.nodes}`;
   requestAnimationFrame(() => {
     svg.setAttribute('viewBox', `0 0 ${svg.clientWidth || 1} ${svg.clientHeight || 1}`);
   });
@@ -197,7 +198,11 @@ async function refreshCharts() {
         await new Promise(requestAnimationFrame);
         await smcOverlay(view, result.candles, symbol, interval);
         charts.set(key, view);
-        state.textContent = `LIVE ${ticker.prices[symbol]} · ${interval.toUpperCase()}`;
+        const structureCount = state.dataset.structure || '0/0/0';
+        const [eventCount, swingCount, nodeCount] = structureCount.split('/').map(Number);
+        const price = ticker.prices?.[symbol];
+        state.textContent = `${price == null ? 'LIVE —' : `LIVE ${price}`} · ${interval.toUpperCase()} · S:${structureCount}`;
+        state.title = `events=${eventCount || 0} swings=${swingCount || 0} svgNodes=${nodeCount || 0}`;
       } catch (error) { state.textContent = 'ERROR'; state.title = error?.message || 'chart_render_failed'; console.error(`[chart:${symbol}]`, error); }
     }));
     document.getElementById('chartsUpdated').textContent = new Date().toLocaleTimeString();
