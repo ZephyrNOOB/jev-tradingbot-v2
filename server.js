@@ -86,11 +86,11 @@ const marketObservers = new Map();
 const MARKET_INTERVAL_MS = 15 * 60_000;
 const EXECUTION_INTERVAL_MS = 5_000;
 const telegramSent = new Set();
-async function sendTelegram(text, dedupKey) {
-  if (process.env.TELEGRAM_NOTIFICATIONS_ENABLED !== 'true') return false;
-  const token = process.env.TELEGRAM_BOT_TOKEN;
-  const chatId = process.env.TELEGRAM_CHAT_ID;
-  if (!token || !chatId || (dedupKey && telegramSent.has(dedupKey))) return false;
+async function sendTelegram(text, dedupKey, userId) {
+  const configured = userId ? get('SELECT * FROM telegram_connections WHERE user_id = ?', [userId]) : null;
+  const token = configured?.bot_token_encrypted ? decryptSecret(configured.bot_token_encrypted) : process.env.TELEGRAM_BOT_TOKEN;
+  const chatId = configured?.chat_id || process.env.TELEGRAM_CHAT_ID;
+  if ((configured && Number(configured.enabled) !== 1) || (!configured && process.env.TELEGRAM_NOTIFICATIONS_ENABLED !== 'true') || !token || !chatId || (dedupKey && telegramSent.has(dedupKey))) return false;
   try {
     const response = await fetch('https://api.telegram.org/bot' + token + '/sendMessage', {
       method: 'POST',
@@ -104,14 +104,14 @@ async function sendTelegram(text, dedupKey) {
     return true;
   } catch { return false; }
 }
-function notifyTelegramExecution(event) {
+function notifyTelegramExecution(event, userId) {
   const order = event?.o;
   if (event?.e !== 'ORDER_TRADE_UPDATE' || order?.X !== 'FILLED' || !order?.i) return;
   const key = 'EXEC:' + order.s + ':' + order.i + ':FILLED';
   sendTelegram(
     'JEV EXECUTION\nPair: ' + (order.s || '-') + '\nSide: ' + (order.S || '-') +
     '\nOrderID: ' + order.i + '\nPrice: ' + (order.ap || '-') +
-    '\nQty: ' + (order.z || '-') + '\nStatus: FILLED', key
+    '\nQty: ' + (order.z || '-') + '\nStatus: FILLED', key, userId
   );
 }
 let marketCandleUnsubscribe = null;
@@ -216,6 +216,7 @@ async function initDb() {
   try { run('ALTER TABLE trade_history ADD COLUMN status TEXT DEFAULT \'FILLED\''); } catch {}
   run('CREATE TABLE IF NOT EXISTS sessions (sid_hash TEXT PRIMARY KEY, user_id INTEGER NOT NULL, expires_at INTEGER NOT NULL)');
   run('CREATE TABLE IF NOT EXISTS trade_amounts (user_id INTEGER PRIMARY KEY, amount_usdt REAL NOT NULL, updated_at TEXT NOT NULL)');
+  run('CREATE TABLE IF NOT EXISTS telegram_connections (user_id INTEGER PRIMARY KEY, bot_token_encrypted TEXT NOT NULL, chat_id TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT \'unknown\', verified_at TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)');
 }
 
 function migrateApiKeys() {
@@ -391,7 +392,7 @@ app.post('/api/bot/toggle', auth, async (req, res) => {
     if (key) startBinanceUserStream(String(req.userId), decryptSecret(key.api_key), event => {
       if (event?.e === 'ORDER_TRADE_UPDATE') {
         demoExecutionSummaries.set(String(req.userId), { status: event.o?.X || 'ORDER_UPDATE', symbol: event.o?.s, orderId: event.o?.i, clientOrderId: event.o?.c, updatedAt: new Date().toISOString() });
-        notifyTelegramExecution(event);
+        notifyTelegramExecution(event, req.userId);
       }
     }).catch(() => null);
   } else stopBinanceUserStream(String(req.userId));
@@ -415,7 +416,7 @@ app.get('/api/binance-demo/live-readiness', auth, async (req, res) => {
     startBinanceUserStream(String(req.userId), apiKey, event => {
       if (event?.e === 'ORDER_TRADE_UPDATE') {
         demoExecutionSummaries.set(String(req.userId), { status: event.o?.X || 'ORDER_UPDATE', symbol: event.o?.s, orderId: event.o?.i, clientOrderId: event.o?.c, updatedAt: new Date().toISOString() });
-        notifyTelegramExecution(event);
+        notifyTelegramExecution(event, req.userId);
       }
     }).catch(() => null);
     const signed = async (method, apiPath, params = {}) => {
@@ -621,7 +622,7 @@ async function executeDemoCandidate(req, res) {
     }
     recordFilledTrade(req.userId, candidate, current);
     const execDedup = 'EXEC:' + candidate.symbol + ':' + current.orderId + ':FILLED';
-    sendTelegram('<b>JEV EXECUTION</b>\nPair: ' + candidate.symbol + '\nSide: ' + (candidate.side || '-') + '\nOrderID: ' + current.orderId + '\nPrice: ' + (current.avgPrice || current.price || '-') + '\nQty: ' + (current.executedQty || '-') + '\nStatus: FILLED', execDedup);
+    sendTelegram('<b>JEV EXECUTION</b>\nPair: ' + candidate.symbol + '\nSide: ' + (candidate.side || '-') + '\nOrderID: ' + current.orderId + '\nPrice: ' + (current.avgPrice || current.price || '-') + '\nQty: ' + (current.executedQty || '-') + '\nStatus: FILLED', execDedup, req.userId);
     const protectionOrders = buildProtectionOrders(candidate, sizing, precision).orders;
     const protection = [];
     try {
@@ -652,6 +653,7 @@ async function executeDemoCandidate(req, res) {
 app.post('/api/binance-demo/execute-candidate', auth, executeDemoCandidate);
 
 async function runExecutionCycle(sid) {
+  const userId = sessions.get(sid);
   if (botStates.get(sid) !== true) return;
   let artifact;
   try { artifact = JSON.parse(fs.readFileSync(path.join(__dirname, 'v2', 'artifacts', 'BINANCE_DEMO_LIVE_PIPELINE.json'), 'utf8')); } catch (error) {
@@ -666,7 +668,7 @@ async function runExecutionCycle(sid) {
     const freshness = validateCandidateFreshness(artifact, candidate);
     if (!freshness.ok || candidate.status !== 'APPROVED_FOR_EXECUTION') continue;
     const planDedup = 'PLAN:' + candidate.symbol + ':' + candidate.structure_event_id + ':' + candidate.client_order_id;
-    sendTelegram('<b>JEV ACTIVE PLAN</b>\nPair: ' + candidate.symbol + '\nSetup: ' + (candidate.setup_id || '-') + '\nSide: ' + (candidate.side || '-') + '\nEntry: ' + (candidate.entry || '-') + '\nSL: ' + (candidate.sl || '-') + '\nTP: ' + (candidate.tp || '-') + '\nStatus: APPROVED', planDedup);
+    sendTelegram('<b>JEV ACTIVE PLAN</b>\nPair: ' + candidate.symbol + '\nSetup: ' + (candidate.setup_id || '-') + '\nSide: ' + (candidate.side || '-') + '\nEntry: ' + (candidate.entry || '-') + '\nSL: ' + (candidate.sl || '-') + '\nTP: ' + (candidate.tp || '-') + '\nStatus: APPROVED', planDedup, userId);
     if (botStates.get(sid) !== true) return;
     const key = sid + ":" + candidate.client_order_id;
     if (!candidate.client_order_id || executionAttempts.has(key)) continue;
@@ -875,6 +877,49 @@ app.post('/api/keys/:id/verify', auth, async (req, res) => {
     res.status(401).json({ ok: false, exchange: row.exchange, status: 'rejected', error: e.message });
   }
 });
+
+async function verifyTelegram(token, chatId, sendTest = false) {
+  const meResponse = await fetch('https://api.telegram.org/bot' + token + '/getMe', { signal: AbortSignal.timeout(10_000) });
+  const me = await meResponse.json().catch(() => null);
+  if (!meResponse.ok || me?.ok !== true) throw new Error('Invalid Telegram bot token');
+  if (sendTest) {
+    const message = await fetch('https://api.telegram.org/bot' + token + '/sendMessage', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ chat_id: chatId, text: 'JEV Telegram connected — test message' }), signal: AbortSignal.timeout(10_000) });
+    const result = await message.json().catch(() => null);
+    if (!message.ok || result?.ok !== true) throw new Error(result?.description || 'Telegram chat ID rejected');
+  }
+  return me.result;
+}
+app.get('/api/telegram', auth, (req, res) => {
+  const row = get('SELECT chat_id, enabled, status, verified_at, updated_at FROM telegram_connections WHERE user_id = ?', [req.userId]);
+  res.json(row ? { ok: true, configured: true, ...row, enabled: Number(row.enabled) === 1 } : { ok: true, configured: false });
+});
+app.post('/api/telegram', auth, async (req, res) => {
+  if (!rateLimit(apiAttempts, clientIp(req) + ':telegram:' + req.userId, 10, 15 * 60 * 1000)) return res.status(429).json({ ok: false, error: 'Too many Telegram attempts' });
+  const token = String(req.body?.botToken || '').trim();
+  const chatId = String(req.body?.chatId || '').trim();
+  const enabled = req.body?.enabled === true;
+  if (token.length < 20 || token.length > 256 || !/^-?\\d{1,32}$/.test(chatId)) return res.status(400).json({ ok: false, error: 'Invalid Telegram token or chat ID' });
+  try {
+    await verifyTelegram(token, chatId, true);
+    const now = new Date().toISOString();
+    run('INSERT OR REPLACE INTO telegram_connections (user_id, bot_token_encrypted, chat_id, enabled, status, verified_at, created_at, updated_at) VALUES (?,?,?,?,?,?,COALESCE((SELECT created_at FROM telegram_connections WHERE user_id = ?),?),?)', [req.userId, encryptSecret(token), chatId, enabled ? 1 : 0, 'connected', now, req.userId, now, now]);
+    res.json({ ok: true, configured: true, enabled, status: 'connected', verifiedAt: now });
+  } catch (error) { res.status(422).json({ ok: false, status: 'rejected', error: error.message }); }
+});
+app.post('/api/telegram/test', auth, async (req, res) => {
+  const row = get('SELECT * FROM telegram_connections WHERE user_id = ?', [req.userId]);
+  if (!row) return res.status(404).json({ ok: false, error: 'Telegram is not configured' });
+  try { await verifyTelegram(decryptSecret(row.bot_token_encrypted), row.chat_id, true); run('UPDATE telegram_connections SET status=?, verified_at=?, updated_at=? WHERE user_id=?', ['connected', new Date().toISOString(), new Date().toISOString(), req.userId]); res.json({ ok: true, status: 'connected' }); }
+  catch (error) { run('UPDATE telegram_connections SET status=?, updated_at=? WHERE user_id=?', ['rejected', new Date().toISOString(), req.userId]); res.status(422).json({ ok: false, status: 'rejected', error: error.message }); }
+});
+app.put('/api/telegram', auth, (req, res) => {
+  const enabled = req.body?.enabled === true;
+  const row = get('SELECT id FROM telegram_connections WHERE user_id = ?', [req.userId]);
+  if (!row) return res.status(404).json({ ok: false, error: 'Telegram is not configured' });
+  run('UPDATE telegram_connections SET enabled=?, updated_at=? WHERE user_id=?', [enabled ? 1 : 0, new Date().toISOString(), req.userId]);
+  res.json({ ok: true, enabled });
+});
+app.delete('/api/telegram', auth, (req, res) => { run('DELETE FROM telegram_connections WHERE user_id=?', [req.userId]); res.json({ ok: true }); });
 
 app.delete('/api/keys/:id', auth, (req, res) => {
   run('DELETE FROM api_keys WHERE id = ? AND user_id = ?', [Number(req.params.id), req.userId]);
