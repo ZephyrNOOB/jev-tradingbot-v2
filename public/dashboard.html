@@ -100,7 +100,7 @@ async function smcOverlay(view, raw, symbol, interval) {
   const yFor = price => { const coordinate = view.candles.priceToCoordinate(Number(price)); return Number.isFinite(coordinate) ? coordinate : null; };
   const visualSvg = [];
   const labelKeys = new Set();
-  const selectedVisuals = visuals.filter(event => event.lifecycle_state !== 'INVALIDATED' && chartTime(event.event_time) != null && chartTime(event.event_time) >= chartStart && chartTime(event.event_time) <= chartEnd).slice(-16);
+  const selectedVisuals = visuals.filter(event => event.lifecycle_state !== 'INVALIDATED' && chartTime(event.event_time) != null && chartTime(event.event_time) >= chartStart && chartTime(event.event_time) <= chartEnd).slice(-32);
   const pushLabel = (x, y, color, text) => {
     const key = `${text}:${Math.round(x / 8)}:${Math.round(y / 8)}`;
     if (labelKeys.has(key)) return;
@@ -123,10 +123,16 @@ async function smcOverlay(view, raw, symbol, interval) {
         pushLabel((x1+x2)/2, y-5, color, label);
       }
     }
-    if (['FVG','ORDER_BLOCK','BREAKER_BLOCK'].includes(event.kind) && event.zone_bounds?.low != null && event.zone_bounds?.high != null) {
-      const zoneColor = event.kind === 'FVG' ? (bullish ? '#00b8a9' : '#d85ca8') : color;
-      const startTime = event.source_times?.[0] || event.ob_source_time || event.event_time;
-      const x1=xFor(startTime), x2=xFor(lastBar.time), y1=yFor(event.zone_bounds.high), y2=yFor(event.zone_bounds.low);
+    const obLow = Number(event.ob_zone_low), obHigh = Number(event.ob_zone_high); // ponytail: render persisted OB geometry even when event kind is breaker/FVG; promote explicit ORDER_BLOCK events when pipeline emits them
+    const hasObZone = Number.isFinite(obLow) && Number.isFinite(obHigh) && obHigh > obLow;
+    const hasZone = event.zone_bounds?.low != null && event.zone_bounds?.high != null;
+    if ((['FVG','ORDER_BLOCK','BREAKER_BLOCK'].includes(event.kind) && hasZone) || hasObZone) {
+      const isFvg = event.kind === 'FVG' && hasZone;
+      const zoneColor = isFvg ? (bullish ? '#00b8a9' : '#d85ca8') : color;
+      const zoneLow = hasObZone && !isFvg ? obLow : Number(event.zone_bounds.low);
+      const zoneHigh = hasObZone && !isFvg ? obHigh : Number(event.zone_bounds.high);
+      const startTime = event.ob_source_time || event.source_times?.[0] || event.event_time;
+      const x1=xFor(startTime), x2=xFor(lastBar.time), y1=yFor(zoneHigh), y2=yFor(zoneLow);
       if ([x1,x2,y1,y2].every(Number.isFinite) && x2 > x1 && Math.abs(y2-y1) >= 2) visualSvg.push(`<rect x="${x1}" y="${Math.min(y1,y2)}" width="${x2-x1}" height="${Math.abs(y2-y1)}" fill="${zoneColor}" fill-opacity=".08" stroke="${zoneColor}" stroke-opacity=".45" stroke-width="1"/>`);
     }
     if (event.kind === 'LIQUIDITY_SWEEP' && Number.isFinite(Number(event.sweep_level))) {
