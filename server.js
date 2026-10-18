@@ -217,7 +217,9 @@ async function initDb() {
   try { run('ALTER TABLE trade_history ADD COLUMN structure_event_id TEXT'); } catch {}
   try { run('ALTER TABLE trade_history ADD COLUMN status TEXT DEFAULT \'FILLED\''); } catch {}
   run('CREATE TABLE IF NOT EXISTS sessions (sid_hash TEXT PRIMARY KEY, user_id INTEGER NOT NULL, expires_at INTEGER NOT NULL)');
-  run('CREATE TABLE IF NOT EXISTS trade_amounts (user_id INTEGER PRIMARY KEY, amount_usdt REAL NOT NULL, updated_at TEXT NOT NULL)');
+  run('CREATE TABLE IF NOT EXISTS trade_amounts (user_id INTEGER PRIMARY KEY, amount_usdt REAL NOT NULL, leverage INTEGER NOT NULL DEFAULT 1, margin_mode TEXT NOT NULL DEFAULT \'ISOLATED\', updated_at TEXT NOT NULL)');
+  try { run("ALTER TABLE trade_amounts ADD COLUMN leverage INTEGER NOT NULL DEFAULT 1"); } catch {}
+  try { run("ALTER TABLE trade_amounts ADD COLUMN margin_mode TEXT NOT NULL DEFAULT 'ISOLATED'"); } catch {}
   run('CREATE TABLE IF NOT EXISTS telegram_connections (user_id INTEGER PRIMARY KEY, bot_token_encrypted TEXT NOT NULL, chat_id TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT \'unknown\', verified_at TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)');
 }
 
@@ -280,20 +282,24 @@ app.post('/api/logout', (req, res) => {
   res.json({ ok: true });
 });
 
-function parseTradeAmount(body) {
+function parseTradeSettings(body) {
   const amountUsdt = Number(body?.amountUsdt);
-  return Number.isFinite(amountUsdt) && amountUsdt > 0 ? amountUsdt : null;
+  const leverage = Number(body?.leverage);
+  const marginMode = String(body?.marginMode || '').toUpperCase();
+  return Number.isFinite(amountUsdt) && amountUsdt > 0 && Number.isInteger(leverage) && leverage >= 1 && leverage <= 125 && ['CROSS', 'ISOLATED'].includes(marginMode)
+    ? { amountUsdt, leverage, marginMode } : null;
 }
 app.get('/api/trade-amount', auth, (req, res) => {
-  const row = get('SELECT amount_usdt, updated_at FROM trade_amounts WHERE user_id = ?', [req.userId]);
-  res.json(row ? { ok: true, configured: true, amountUsdt: Number(row.amount_usdt), updatedAt: row.updated_at } : { ok: true, configured: false, warning: 'Trade amount is optional' });
+  const row = get('SELECT amount_usdt, leverage, margin_mode, updated_at FROM trade_amounts WHERE user_id = ?', [req.userId]);
+  res.json(row ? { ok: true, configured: true, amountUsdt: Number(row.amount_usdt), leverage: Number(row.leverage), marginMode: row.margin_mode, updatedAt: row.updated_at } : { ok: true, configured: false, warning: 'Trade settings are optional' });
 });
 app.put('/api/trade-amount', auth, (req, res) => {
-  const amountUsdt = parseTradeAmount(req.body);
-  if (!amountUsdt) return res.status(400).json({ ok: false, error: 'Enter a positive USDT amount' });
-  run('INSERT OR REPLACE INTO trade_amounts VALUES (?,?,?)', [req.userId, amountUsdt, new Date().toISOString()]);
-  res.json({ ok: true, configured: true, amountUsdt });
-});app.get('/api/me', auth, (req, res) => {
+  const settings = parseTradeSettings(req.body);
+  if (!settings) return res.status(400).json({ ok: false, error: 'Enter valid USDT amount, leverage 1-125, and Cross or Isolated margin mode' });
+  run('INSERT OR REPLACE INTO trade_amounts (user_id, amount_usdt, leverage, margin_mode, updated_at) VALUES (?,?,?,?,?)', [req.userId, settings.amountUsdt, settings.leverage, settings.marginMode, new Date().toISOString()]);
+  res.json({ ok: true, configured: true, ...settings });
+});
+app.get('/api/me', auth, (req, res) => {
   const u = get('SELECT id, username FROM users WHERE id = ?', [req.userId]);
   res.json(u || {});
 });
@@ -409,7 +415,7 @@ app.post('/api/bot/toggle', auth, async (req, res) => {
 app.get('/api/binance-demo/live-readiness', auth, async (req, res) => {
   const blockers = [];
   const keyRow = get("SELECT * FROM api_keys WHERE id = (SELECT id FROM api_keys WHERE user_id = ? AND exchange = 'binanceTestnet' AND status = 'connected' ORDER BY id DESC LIMIT 1)", [req.userId]);
-  const tradeAmount = get('SELECT amount_usdt FROM trade_amounts WHERE user_id = ?', [req.userId]);
+  const tradeAmount = get('SELECT amount_usdt, leverage, margin_mode FROM trade_amounts WHERE user_id = ?', [req.userId]);
   if (!keyRow) blockers.push('CONNECTED_DEMO_KEY_REQUIRED');
   if (!demoExecutionEnabled) blockers.push('DEMO_EXECUTION_FLAG_DISABLED');
   if (blockers.length) return res.json({ ok: true, ready: false, executionMode: 'READ_ONLY', demoOnly: true, blockers, ordersSent: null, withdrawalsSent: null });
@@ -430,7 +436,7 @@ app.get('/api/binance-demo/live-readiness', auth, async (req, res) => {
     const [exchangeInfo, account, positions, income] = await Promise.all([fetchExchangeInfo(), signed('GET', '/fapi/v2/account'), signed('GET', '/fapi/v2/positionRisk'), signed('GET', '/fapi/v1/income', { incomeType: 'REALIZED_PNL', startTime: String(Date.now() - 24 * 60 * 60 * 1000), limit: '1000' })]);
     const filters = Object.fromEntries(exchangeInfo.symbols.filter(x => SUPPORTED_SYMBOLS.includes(x.symbol)).map(x => [x.symbol, { filters: x.filters.filter(f => ['LOT_SIZE', 'PRICE_FILTER', 'MIN_NOTIONAL', 'NOTIONAL'].includes(f.filterType)) }]));
     const balances = (account.assets || []).filter(x => x.asset === 'USDT').map(x => ({ asset: x.asset, availableBalance: Number(x.availableBalance) }));
-    const executionPolicy = { tradeAmountUsdt: Number(tradeAmount?.amount_usdt) };
+    const executionPolicy = { tradeAmountUsdt: Number(tradeAmount?.amount_usdt), leverage: Number(tradeAmount?.leverage || 1), marginMode: tradeAmount?.margin_mode || 'ISOLATED' };
     const artifact = JSON.parse(fs.readFileSync(path.join(__dirname, 'v2', 'artifacts', 'BINANCE_DEMO_LIVE_PIPELINE.json'), 'utf8'));
     const dailyPnl = Array.isArray(income) ? income.reduce((total, row) => total + Number(row.income || 0), 0) : 0;
     const artifactFreshness = validateCandidateFreshness(artifact, artifact.execution_candidates?.[0]);
@@ -445,7 +451,7 @@ app.get('/api/binance-demo/live-readiness', auth, async (req, res) => {
   } catch (error) { res.status(502).json({ ok: false, ready: false, executionMode: 'READ_ONLY', demoOnly: true, blockers: ['BINANCE_DEMO_READINESS_FAILED'], error: error.message, ordersSent: null, withdrawalsSent: null }); }
 });app.get('/api/binance-demo/execution-preflight', auth, async (req, res) => {
   const keyRow = get("SELECT * FROM api_keys WHERE id = (SELECT id FROM api_keys WHERE user_id = ? AND exchange = 'binanceTestnet' AND status = 'connected' ORDER BY id DESC LIMIT 1)", [req.userId]);
-  const tradeAmount = get('SELECT amount_usdt FROM trade_amounts WHERE user_id = ?', [req.userId]);
+  const tradeAmount = get('SELECT amount_usdt, leverage, margin_mode FROM trade_amounts WHERE user_id = ?', [req.userId]);
   if (!keyRow) return res.status(400).json({ ok: false, error: 'Connected Binance Demo key required' });
   try {
     const apiKey = decryptSecret(keyRow.api_key), secret = decryptSecret(keyRow.secret_key);
@@ -461,12 +467,12 @@ app.get('/api/binance-demo/live-readiness', auth, async (req, res) => {
     const filters = Object.fromEntries(exchangeInfo.symbols.filter(x => SUPPORTED_SYMBOLS.includes(x.symbol)).map(x => [x.symbol, { status: x.status, quantityPrecision: x.quantityPrecision, pricePrecision: x.pricePrecision, filters: x.filters.filter(f => ['LOT_SIZE', 'PRICE_FILTER', 'MIN_NOTIONAL', 'NOTIONAL'].includes(f.filterType)) }]));
     const balances = (account.assets || []).filter(x => ['USDT', 'USDC'].includes(x.asset)).map(x => ({ asset: x.asset, walletBalance: Number(x.walletBalance), availableBalance: Number(x.availableBalance), unrealizedProfit: Number(x.unrealizedProfit) }));
     const openPositions = positions.filter(x => Number(x.positionAmt) !== 0).map(x => ({ symbol: x.symbol, positionAmt: Number(x.positionAmt), entryPrice: Number(x.entryPrice), unrealizedProfit: Number(x.unRealizedProfit), isolated: x.marginType === 'isolated' }));
-    const executionPolicy = { tradeAmountUsdt: Number(tradeAmount?.amount_usdt) };
+    const executionPolicy = { tradeAmountUsdt: Number(tradeAmount?.amount_usdt), leverage: Number(tradeAmount?.leverage || 1), marginMode: tradeAmount?.margin_mode || 'ISOLATED' };
     const artifact = JSON.parse(fs.readFileSync(path.join(__dirname, 'v2', 'artifacts', 'BINANCE_DEMO_LIVE_PIPELINE.json'), 'utf8'));
     const dailyPnl = Array.isArray(income) ? income.reduce((total, row) => total + Number(row.income || 0), 0) : 0;
     const candidates = (artifact.execution_candidates || []).map(candidate => { const freshness = validateCandidateFreshness(artifact, candidate); const normalized = normalizeCandidatePrices(candidate, filters[candidate.symbol]); const sizing = sizeCandidate(normalized, executionPolicy, balances.find(x => x.asset === 'USDT') || {}, filters[candidate.symbol]); return { ...candidate, freshness, normalized, sizing, precisionValidation: validateCandidatePrecision(normalized, sizing, filters[candidate.symbol]) }; });
     const validCandidates = candidates.filter(x => x.freshness.ok && x.sizing.status === 'SIZED' && x.precisionValidation === 'VALID');
-    res.json({ ok: true, executionMode: 'READ_ONLY', demoOnly: true, status: validCandidates.length ? 'PREFLIGHT_READY' : 'PREFLIGHT_BLOCKED', tradeAmountUsdt: executionPolicy.tradeAmountUsdt, balances, openPositions, dailyPnl: Number(dailyPnl), filters, candidates, validCandidateCount: validCandidates.length, ordersSent: null, withdrawalsSent: null });
+    res.json({ ok: true, executionMode: 'READ_ONLY', demoOnly: true, status: validCandidates.length ? 'PREFLIGHT_READY' : 'PREFLIGHT_BLOCKED', tradeAmountUsdt: executionPolicy.tradeAmountUsdt, leverage: executionPolicy.leverage, marginMode: executionPolicy.marginMode, balances, openPositions, dailyPnl: Number(dailyPnl), filters, candidates, validCandidateCount: validCandidates.length, ordersSent: null, withdrawalsSent: null });
   } catch (error) { res.status(502).json({ ok: false, executionMode: 'READ_ONLY', demoOnly: true, error: error.message || 'Demo execution preflight failed', ordersSent: null, withdrawalsSent: null }); }
 });
 app.get('/api/binance-demo/reconciliation', auth, async (req, res) => {
@@ -500,7 +506,7 @@ app.get('/api/binance-demo/reconciliation', auth, async (req, res) => {
 });
 async function loadServerExecutionCandidate(userId, candidateId) {
   const keyRow = get("SELECT * FROM api_keys WHERE id = (SELECT id FROM api_keys WHERE user_id = ? AND exchange = 'binanceTestnet' AND status = 'connected' ORDER BY id DESC LIMIT 1)", [userId]);
-  const tradeAmountRow = get('SELECT amount_usdt FROM trade_amounts WHERE user_id = ?', [userId]);
+  const tradeAmountRow = get('SELECT amount_usdt, leverage, margin_mode FROM trade_amounts WHERE user_id = ?', [userId]);
   if (!keyRow) return { error: 'Connected Binance Demo key required' };
   const apiKey = decryptSecret(keyRow.api_key), secret = decryptSecret(keyRow.secret_key);
   const signed = async (method, apiPath, params = {}) => {
@@ -525,7 +531,7 @@ async function loadServerExecutionCandidate(userId, candidateId) {
   ]);
   const filters = Object.fromEntries(exchangeInfo.symbols.filter(x => SUPPORTED_SYMBOLS.includes(x.symbol)).map(x => [x.symbol, { filters: x.filters.filter(f => ['LOT_SIZE', 'PRICE_FILTER', 'MIN_NOTIONAL', 'NOTIONAL'].includes(f.filterType)) }]));
   const balance = (account.assets || []).find(x => x.asset === 'USDT');
-  const settings = { tradeAmountUsdt: Number(tradeAmountRow?.amount_usdt) };
+  const settings = { tradeAmountUsdt: Number(tradeAmountRow?.amount_usdt), leverage: Number(tradeAmountRow?.leverage || 1), marginMode: tradeAmountRow?.margin_mode || 'ISOLATED' };
   const dailyPnl = Array.isArray(income) ? income.reduce((total, row) => total + Number(row.income || 0), 0) : 0;
     const artifact = JSON.parse(fs.readFileSync(path.join(__dirname, 'v2', 'artifacts', 'BINANCE_DEMO_LIVE_PIPELINE.json'), 'utf8'));
   const candidate = (artifact.execution_candidates || []).find(x => x.client_order_id === candidateId);
@@ -588,8 +594,8 @@ async function executeDemoCandidate(req, res) {
     const candidateId = String(req.body?.clientOrderId || '');
     const context = await loadServerExecutionCandidate(req.userId, candidateId);
     if (context.error) return res.status(context.error === 'Execution candidate not found' ? 404 : 409).json({ ok: false, demoOnly: true, error: context.error, ordersSent: false, withdrawalsSent: false });
-    const { candidate, sizing, precision, signed } = context;
-    demoExecutionSummaries.set(String(req.userId), { status: 'PRECHECK', clientOrderId: candidate.client_order_id, attemptAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
+    const { candidate, sizing, precision, signed, settings } = context;
+    demoExecutionSummaries.set(String(req.userId), { status: 'PRECHECK', clientOrderId: candidate.client_order_id, leverage: settings.leverage, marginMode: settings.marginMode, attemptAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
     const order = buildDemoEntryOrder(candidate, sizing, precision);
     if (sizing.status !== 'SIZED') return res.status(409).json({ ok: false, demoOnly: true, reason: sizing.status, order, ordersSent: false, withdrawalsSent: false });
     const enabled = demoExecutionEnabled;
@@ -603,7 +609,9 @@ async function executeDemoCandidate(req, res) {
     }
     if (existing?.status === 'FILLED') return res.json({ ok: true, demoOnly: true, idempotent: true, status: 'ENTRY_ALREADY_FILLED', entry: existing, ordersSent: true, withdrawalsSent: false });
     if (existing && ['NEW', 'PARTIALLY_FILLED'].includes(existing.status)) return res.status(409).json({ ok: false, demoOnly: true, status: 'ENTRY_ALREADY_OPEN', entry: existing, ordersSent: true, withdrawalsSent: false });
-    demoExecutionSummaries.set(String(req.userId), { status: 'ORDER_SUBMIT', clientOrderId: candidate.client_order_id, attemptAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
+    demoExecutionSummaries.set(String(req.userId), { status: 'ORDER_SUBMIT', clientOrderId: candidate.client_order_id, leverage: settings.leverage, marginMode: settings.marginMode, attemptAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
+    try { await signed('POST', '/fapi/v1/marginType', { symbol: candidate.symbol, marginType: settings.marginMode }); } catch (error) { if (!/No need to change margin type/i.test(error.message)) throw error; }
+    await signed('POST', '/fapi/v1/leverage', { symbol: candidate.symbol, leverage: String(settings.leverage) });
     const entry = await signed('POST', '/fapi/v1/order', { symbol: candidate.symbol, side: candidate.side, type: 'LIMIT', timeInForce: 'GTC', quantity: sizing.quantity, price: sizing.price, newClientOrderId: candidate.client_order_id });
     demoExecutionSummaries.set(String(req.userId), { status: entry.status || 'ORDER_SENT', orderId: entry.orderId, clientOrderId: candidate.client_order_id, attemptAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
     let current = entry;

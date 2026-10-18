@@ -12,6 +12,7 @@ export function sizeCandidate(candidate, settings, balance, symbolFilters) {
   const entry = Number(candidate.entry);
   const available = Number(balance?.availableBalance);
   const tradeAmount = Number(settings?.tradeAmountUsdt);
+  const leverage = Number.isInteger(Number(settings?.leverage)) && Number(settings.leverage) >= 1 ? Number(settings.leverage) : 1;
   const lot = filter(symbolFilters, 'LOT_SIZE');
   const priceFilter = filter(symbolFilters, 'PRICE_FILTER');
   const notionalFilter = filter(symbolFilters, 'NOTIONAL').minNotional
@@ -30,14 +31,14 @@ export function sizeCandidate(candidate, settings, balance, symbolFilters) {
   const price = roundDown(entry, tick);
   const places = decimalPlaces(stepText);
   const pricePlaces = decimalPlaces(tickText);
-  let quantity = roundDown(tradeAmount / price, step);
+  let quantity = roundDown((tradeAmount * leverage) / price, step);
   if (minNotional > 0 && quantity * price < minNotional) quantity = Math.ceil((minNotional / price) / step - Number.EPSILON) * step;
   quantity = Number(quantity.toFixed(places));
   const notional = quantity * price;
   if (quantity < minQty) return { status: 'REJECTED_BELOW_MIN_QTY', quantity: quantity.toFixed(places), price: price.toFixed(pricePlaces) };
   if (quantity > maxQty) return { status: 'REJECTED_ABOVE_MAX_QTY', quantity: quantity.toFixed(places), price: price.toFixed(pricePlaces) };
   if (minNotional > 0 && notional < minNotional) return { status: 'REJECTED_BELOW_MIN_NOTIONAL', quantity: quantity.toFixed(places), price: price.toFixed(pricePlaces), notional: notional.toFixed(8), minNotional };
-  return { status: 'SIZED', quantity: quantity.toFixed(places), price: price.toFixed(pricePlaces), notional: notional.toFixed(8), tradeAmountUsdt: tradeAmount.toFixed(8) };
+  return { status: 'SIZED', quantity: quantity.toFixed(places), price: price.toFixed(pricePlaces), notional: notional.toFixed(8), tradeAmountUsdt: tradeAmount.toFixed(8), leverage };
 }
 
 export function normalizeCandidatePrices(candidate, symbolFilters) {
