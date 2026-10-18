@@ -92,7 +92,7 @@ async function smcOverlay(view, raw, symbol, interval) {
   const yFor = price => { const coordinate = view.candles.priceToCoordinate(Number(price)); return Number.isFinite(coordinate) ? coordinate : null; };
   const visualSvg = [];
   const labelKeys = new Set();
-  const selectedVisuals = visuals.filter(event => event.lifecycle_state !== 'INVALIDATED' && event.event_time).slice(-16);
+  const selectedVisuals = visuals.filter(event => event.lifecycle_state !== 'INVALIDATED' && event.event_time && (event.event_time >= bars[0].ts && event.event_time <= lastBar.ts)).slice(-16);
   const pushLabel = (x, y, color, text) => {
     const key = `${text}:${Math.round(x / 8)}:${Math.round(y / 8)}`;
     if (labelKeys.has(key)) return;
