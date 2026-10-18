@@ -80,7 +80,7 @@ async function smcOverlay(view, raw, symbol, interval) {
   const visuals = structure.structure_visuals || structure.events || [];
   const lastBar = bars[bars.length - 1];
   const chartStart = bars[0]?.time, chartEnd = lastBar?.time;
-  const visualStats = { events: 0, swings: 0, nodes: 0 }; // ponytail: diagnostics stay in chartState dataset; remove after browser proof is stable
+  const visualStats = { events: 0, swings: 0, nodes: 0, coordinates: 0, rejected: 0 }; // ponytail: diagnostics stay in chartState dataset; remove after browser proof is stable
   const chartTime = time => { const value = Number(time); return Number.isFinite(value) ? (value > 1e12 ? Math.floor(value / 1000) : value) : null; }; // ponytail: nearest-bar mapping handles exchange candle boundary drift; replace with keyed timestamps if gaps require exact audit
   const nearestBar = time => {
     const target = chartTime(time);
@@ -115,7 +115,7 @@ async function smcOverlay(view, raw, symbol, interval) {
   };
   (structure.swing_visuals || []).filter(swing => timeWindow(swing.time, swing.time)).slice(-24).forEach(swing => {
     const x = xFor(chartTime(swing.time)), y = yFor(swing.price);
-    if (Number.isFinite(x) && Number.isFinite(y)) { visualStats.swings += 1; pushLabel(x, y + (swing.kind === 'high' ? -8 : 14), swing.kind === 'high' ? '#F23645' : '#089981', swing.label); }
+    if (Number.isFinite(x) && Number.isFinite(y)) { visualStats.swings += 1; visualStats.coordinates += 1; pushLabel(x, y + (swing.kind === 'high' ? -8 : 14), swing.kind === 'high' ? '#F23645' : '#089981', swing.label); } else visualStats.rejected += 1;
   });
   selectedVisuals.forEach(event => {
     const bar = eventBar(event);
@@ -125,6 +125,7 @@ async function smcOverlay(view, raw, symbol, interval) {
       const x1=xFor(event.pivot_time), x2=xFor(event.break_time), y=yFor(event.break_price);
       if ([x1,x2,y].every(Number.isFinite) && x2 >= x1) {
         const label = event.kind === 'CHoCH_MSS' ? 'CHoCH' : 'BOS';
+        visualStats.coordinates += 1;
         visualSvg.push(`<line x1="${x1}" y1="${y}" x2="${x2}" y2="${y}" stroke="${color}" stroke-width="1.2"/>`);
         pushLabel((x1+x2)/2, y-5, color, label);
       }
@@ -140,11 +141,11 @@ async function smcOverlay(view, raw, symbol, interval) {
       const startTime = event.ob_source_time || event.source_times?.[0] || event.event_time;
       const window = timeWindow(startTime, lastBar.time);
       const x1=xFor(window?.[0]), x2=xFor(window?.[1]), y1=yFor(zoneHigh), y2=yFor(zoneLow);
-      if ([x1,x2,y1,y2].every(Number.isFinite) && x2 >= x1 && Math.abs(y2-y1) >= 2) visualSvg.push(`<rect x="${x1}" y="${Math.min(y1,y2)}" width="${Math.max(1,x2-x1)}" height="${Math.abs(y2-y1)}" fill="${zoneColor}" fill-opacity=".08" stroke="${zoneColor}" stroke-opacity=".45" stroke-width="1"/>`);
+      if ([x1,x2,y1,y2].every(Number.isFinite) && x2 >= x1 && Math.abs(y2-y1) >= 2) { visualStats.coordinates += 1; visualSvg.push(`<rect x="${x1}" y="${Math.min(y1,y2)}" width="${Math.max(1,x2-x1)}" height="${Math.abs(y2-y1)}" fill="${zoneColor}" fill-opacity=".08" stroke="${zoneColor}" stroke-opacity=".45" stroke-width="1"/>`); } else visualStats.rejected += 1;
     }
     if (event.kind === 'LIQUIDITY_SWEEP' && Number.isFinite(Number(event.sweep_level))) {
       const y=yFor(event.sweep_level), x1=xFor(event.event_time), x2=xFor(lastBar.time);
-      if ([x1,x2,y].every(Number.isFinite) && x2 > x1) visualSvg.push(`<line x1="${x1}" y1="${y}" x2="${x2}" y2="${y}" stroke="#D4A72C" stroke-width="1" stroke-dasharray="4 3"/>`);
+      if ([x1,x2,y].every(Number.isFinite) && x2 >= x1) { visualStats.coordinates += 1; visualSvg.push(`<line x1="${x1}" y1="${y}" x2="${x2}" y2="${y}" stroke="#D4A72C" stroke-width="1" stroke-dasharray="4 3"/>`); } else visualStats.rejected += 1;
     }
   });
   svg.setAttribute('viewBox', `0 0 ${svg.clientWidth || 1} ${svg.clientHeight || 1}`);
@@ -153,7 +154,7 @@ async function smcOverlay(view, raw, symbol, interval) {
   visualStats.nodes = visualSvg.length;
   if (!visualSvg.length) console.warn(`[chart:${symbol}] structure empty`, { events: visualStats.events, swings: visualStats.swings, chartStart, chartEnd });
   const state = document.getElementById(`chartState-${symbol}`);
-  if (state) state.dataset.structure = `${visualStats.events}/${visualStats.swings}/${visualStats.nodes}`;
+  if (state) state.dataset.structure = `${visualStats.events}/${visualStats.swings}/${visualStats.nodes}/${visualStats.coordinates}/${visualStats.rejected}`;
   requestAnimationFrame(() => {
     svg.setAttribute('viewBox', `0 0 ${svg.clientWidth || 1} ${svg.clientHeight || 1}`);
   });
@@ -198,11 +199,11 @@ async function refreshCharts() {
         await new Promise(requestAnimationFrame);
         await smcOverlay(view, result.candles, symbol, interval);
         charts.set(key, view);
-        const structureCount = state.dataset.structure || '0/0/0';
-        const [eventCount, swingCount, nodeCount] = structureCount.split('/').map(Number);
+        const structureCount = state.dataset.structure || '0/0/0/0/0';
+        const [eventCount, swingCount, nodeCount, coordinateCount, rejectedCount] = structureCount.split('/').map(Number);
         const price = ticker.prices?.[symbol];
         state.textContent = `${price == null ? 'LIVE —' : `LIVE ${price}`} · ${interval.toUpperCase()} · S:${structureCount}`;
-        state.title = `events=${eventCount || 0} swings=${swingCount || 0} svgNodes=${nodeCount || 0}`;
+        state.title = `events=${eventCount || 0} swings=${swingCount || 0} svgNodes=${nodeCount || 0} coordinates=${coordinateCount || 0} rejected=${rejectedCount || 0}`;
       } catch (error) { state.textContent = 'ERROR'; state.title = error?.message || 'chart_render_failed'; console.error(`[chart:${symbol}]`, error); }
     }));
     document.getElementById('chartsUpdated').textContent = new Date().toLocaleTimeString();
