@@ -79,12 +79,12 @@ async function smcOverlay(view, raw, symbol, interval) {
   const bars = raw.map(c => ({ ...c, time: Math.floor(c.ts / 1000) }));
   const visuals = structure.structure_visuals || structure.events || [];
   const lastBar = bars[bars.length - 1];
+  const chartTime = time => { const value = Number(time); return Number.isFinite(value) ? (value > 1e12 ? Math.floor(value / 1000) : value) : null; };
   const eventBar = event => {
-    const exactTime = Number(event.event_time);
-    if (Number.isFinite(exactTime)) return bars.find(bar => Math.abs(bar.ts - exactTime) <= 1000) || null;
-    return null;
+    const exactTime = chartTime(event.event_time);
+    return exactTime == null ? null : bars.find(bar => Math.abs(bar.ts - exactTime) <= 60) || null;
   };
-  const barAtTime = time => Number.isFinite(Number(time)) ? bars.find(bar => Math.abs(bar.ts - Number(time)) <= 1000) || null : null;
+  const barAtTime = time => { const exactTime = chartTime(time); return exactTime == null ? null : bars.find(bar => Math.abs(bar.ts - exactTime) <= 60) || null; };
   const sourceBar = event => barAtTime(event.pivot_time || event.source_times?.[0]);
   const svg = view.structureSvg;
   const esc = text => String(text).replace(/[&<>"']/g, char => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[char]));
@@ -99,8 +99,8 @@ async function smcOverlay(view, raw, symbol, interval) {
     labelKeys.add(key);
     visualSvg.push(`<text x="${x}" y="${y}" fill="${color}" font-size="9" font-family="Aquatico,monospace" text-anchor="middle">${text}</text>`);
   };
-  (structure.swing_visuals || []).slice(-24).forEach(swing => {
-    const x = xFor(swing.time), y = yFor(swing.price);
+  (structure.swing_visuals || []).filter(swing => chartTime(swing.time) >= bars[0].ts && chartTime(swing.time) <= lastBar.ts).slice(-24).forEach(swing => {
+    const x = xFor(chartTime(swing.time)), y = yFor(swing.price);
     if (Number.isFinite(x) && Number.isFinite(y)) pushLabel(x, y + (swing.kind === 'high' ? -8 : 14), swing.kind === 'high' ? '#F23645' : '#089981', swing.label);
   });
   selectedVisuals.forEach(event => {
