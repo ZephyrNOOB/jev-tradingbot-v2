@@ -85,8 +85,8 @@ async function smcOverlay(view, raw, symbol, interval) {
   const svg = view.structureSvg;
   const esc = text => String(text).replace(/[&<>"']/g, char => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[char]));
   const xFor = time => { const coordinate = view.chart.timeScale().timeToCoordinate(time); return Number.isFinite(coordinate) ? coordinate : null; };
-  const yFor = price => { const coordinate = view.candles.priceToCoordinate(Number(price)); return Number.isFinite(coordinate) ? coordinate : null; }; 
-  const visualSvg = []; 
+  const yFor = price => { const coordinate = view.candles.priceToCoordinate(Number(price)); return Number.isFinite(coordinate) ? coordinate : null; };
+  const visualSvg = [];
   const eventIndices = visuals.flatMap(event => [event.structure_index, ...(event.source_event_ids || [])].map(Number)).filter(Number.isFinite);
   const latestStructureIndex = Math.max(...eventIndices, 0);
   const barForIndex = index => {
