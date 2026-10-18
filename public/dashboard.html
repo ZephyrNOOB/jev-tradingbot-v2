@@ -79,7 +79,7 @@ async function smcOverlay(view, raw, symbol, interval) {
   const bars = raw.map(c => ({ ...c, time: Math.floor(c.ts / 1000) }));
   const visuals = structure.structure_visuals || structure.events || [];
   const lastBar = bars[bars.length - 1];
-  const chartStart = bars[0]?.ts, chartEnd = lastBar?.ts;
+  const chartStart = bars[0]?.time, chartEnd = lastBar?.time;
   const chartTime = time => { const value = Number(time); return Number.isFinite(value) ? (value > 1e12 ? Math.floor(value / 1000) : value) : null; };
   const eventBar = event => {
     const exactTime = chartTime(event.event_time);
@@ -93,7 +93,7 @@ async function smcOverlay(view, raw, symbol, interval) {
   const yFor = price => { const coordinate = view.candles.priceToCoordinate(Number(price)); return Number.isFinite(coordinate) ? coordinate : null; };
   const visualSvg = [];
   const labelKeys = new Set();
-  const selectedVisuals = visuals.filter(event => event.lifecycle_state !== 'INVALIDATED' && chartTime(event.event_time) != null && chartTime(event.event_time) >= bars[0].ts && chartTime(event.event_time) <= lastBar.ts).slice(-16);
+  const selectedVisuals = visuals.filter(event => event.lifecycle_state !== 'INVALIDATED' && chartTime(event.event_time) != null && chartTime(event.event_time) >= chartStart && chartTime(event.event_time) <= chartEnd).slice(-16);
   const pushLabel = (x, y, color, text) => {
     const key = `${text}:${Math.round(x / 8)}:${Math.round(y / 8)}`;
     if (labelKeys.has(key)) return;
