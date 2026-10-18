@@ -142,7 +142,7 @@ async function smcOverlay(view, raw, symbol, interval) {
   });
   svg.setAttribute('viewBox', `0 0 ${svg.clientWidth || 1} ${svg.clientHeight || 1}`);
   svg.replaceChildren();
-  if (visualSvg.length) svg.insertAdjacentHTML('beforeend', visualSvg.join(''));
+  if (visualSvg.length) svg.innerHTML = visualSvg.join('');
   requestAnimationFrame(() => {
     svg.setAttribute('viewBox', `0 0 ${svg.clientWidth || 1} ${svg.clientHeight || 1}`);
   });
