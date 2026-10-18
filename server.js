@@ -122,6 +122,8 @@ const DB_PATH = path.join(__dirname, 'jev.db');
 const KEY_PATH = path.join(__dirname, '.jev-master-key');
 const isProduction = process.env.NODE_ENV === 'production';
 const isHttps = process.env.HTTPS === 'true';
+const runtimeConfig = JSON.parse(fs.readFileSync(path.join(__dirname, 'config', 'runtime.json'), 'utf8'));
+const demoExecutionEnabled = runtimeConfig.demoExecutionEnabled === true;
 let db;
 
 function loadMasterKey() {
@@ -382,7 +384,7 @@ function startMarketStructureStreamTrigger() {
 }app.get('/api/bot/status', auth, (req, res) => {
   const runner = botRunners.get('execution:' + req.cookies.sid) || botRunners.get('global');
   const observer = marketObservers.get('global');
-  res.json({ ok: true, enabled: botStates.get(req.cookies.sid) === true, observing: Boolean(observer?.timer), running: Boolean(runner?.running), cycles: runner?.cycles || 0, error: runner?.error || null, observer_error: observer?.error || null, last_started_at: runner?.last_started_at || null, last_finished_at: runner?.last_finished_at || null, last_polled_at: observer?.last_polled_at || null, watermark: observer?.watermark || {}, mode: 'demo_execution', marketStream: getBinanceStreamState(), demoCycle: demoCycleSummaries.get('global') || null, demoExecution: demoExecutionSummaries.get(req.cookies.sid) || null, ordersEnabled: process.env.DEMO_EXECUTION_ENABLED === 'true' });
+  res.json({ ok: true, enabled: botStates.get(req.cookies.sid) === true, observing: Boolean(observer?.timer), running: Boolean(runner?.running), cycles: runner?.cycles || 0, error: runner?.error || null, observer_error: observer?.error || null, last_started_at: runner?.last_started_at || null, last_finished_at: runner?.last_finished_at || null, last_polled_at: observer?.last_polled_at || null, watermark: observer?.watermark || {}, mode: 'demo_execution', marketStream: getBinanceStreamState(), demoCycle: demoCycleSummaries.get('global') || null, demoExecution: demoExecutionSummaries.get(req.cookies.sid) || null, ordersEnabled: demoExecutionEnabled });
 });
 
 app.post('/api/bot/toggle', auth, async (req, res) => {
@@ -402,7 +404,7 @@ app.post('/api/bot/toggle', auth, async (req, res) => {
   if (enabled) startExecutionRunner(req.cookies.sid); else stopExecutionRunner(req.cookies.sid);
   const runner = botRunners.get('execution:' + req.cookies.sid) || botRunners.get('global');
   const observer = marketObservers.get('global');
-  res.json({ ok: true, enabled, observing: Boolean(observer?.timer), running: Boolean(runner?.running), cycles: runner?.cycles || 0, last_started_at: runner?.last_started_at || null, last_finished_at: runner?.last_finished_at || null, error: runner?.error || null, mode: 'demo_execution', marketStream: getBinanceStreamState(), demoCycle: demoCycleSummaries.get('global') || null, demoExecution: demoExecutionSummaries.get(req.cookies.sid) || null, ordersEnabled: process.env.DEMO_EXECUTION_ENABLED === 'true' });
+  res.json({ ok: true, enabled, observing: Boolean(observer?.timer), running: Boolean(runner?.running), cycles: runner?.cycles || 0, last_started_at: runner?.last_started_at || null, last_finished_at: runner?.last_finished_at || null, error: runner?.error || null, mode: 'demo_execution', marketStream: getBinanceStreamState(), demoCycle: demoCycleSummaries.get('global') || null, demoExecution: demoExecutionSummaries.get(req.cookies.sid) || null, ordersEnabled: demoExecutionEnabled });
 });
 app.get('/api/binance-demo/live-readiness', auth, async (req, res) => {
   const blockers = [];
@@ -590,7 +592,7 @@ async function executeDemoCandidate(req, res) {
     demoExecutionSummaries.set(String(req.userId), { status: 'PRECHECK', clientOrderId: candidate.client_order_id, attemptAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
     const order = buildDemoEntryOrder(candidate, sizing, precision);
     if (sizing.status !== 'SIZED') return res.status(409).json({ ok: false, demoOnly: true, reason: sizing.status, order, ordersSent: false, withdrawalsSent: false });
-    const enabled = process.env.DEMO_EXECUTION_ENABLED === 'true';
+    const enabled = demoExecutionEnabled;
     const permission = demoExecutionGate({ botEnabled: botStates.get(req.cookies.sid) === true, ordersEnabled: enabled, protectiveOrdersReady: true, riskStatus: 'ALLOWED', demoExecutionEnabled: enabled });
     if (!permission.allowed) return res.status(409).json({ ok: false, demoOnly: true, ...permission, order, ordersSent: false, withdrawalsSent: false });
     if (req.body?.explicitApproval !== true && req.internalRunner !== true) return res.status(409).json({ ok: false, demoOnly: true, status: 'EXPLICIT_APPROVAL_REQUIRED', reason: 'First Demo order requires immediate user approval', order, ordersSent: false, withdrawalsSent: false });
@@ -1079,7 +1081,7 @@ async function fetchBinanceCandles(symbol, interval, limit) {
 }
 app.get('/healthz', (req, res) => {
   const observer = marketObservers.get('global');
-  res.json({ ok: true, observer: Boolean(observer?.timer), observer_error: observer?.error || null, ordersEnabled: process.env.DEMO_EXECUTION_ENABLED === 'true' });
+  res.json({ ok: true, observer: Boolean(observer?.timer), observer_error: observer?.error || null, ordersEnabled: demoExecutionEnabled });
 });
 app.get('*', (req, res) => {
   if (req.path.startsWith('/api/')) return res.status(404).json({ error: 'Not found' });
