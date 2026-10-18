@@ -80,12 +80,14 @@ async function smcOverlay(view, raw, symbol, interval) {
   const visuals = structure.structure_visuals || structure.events || [];
   const lastBar = bars[bars.length - 1];
   const chartStart = bars[0]?.time, chartEnd = lastBar?.time;
-  const chartTime = time => { const value = Number(time); return Number.isFinite(value) ? (value > 1e12 ? Math.floor(value / 1000) : value) : null; };
-  const eventBar = event => {
-    const exactTime = chartTime(event.event_time);
-    return exactTime == null ? null : bars.find(bar => Math.abs(bar.time - exactTime) <= 60) || null;
+  const chartTime = time => { const value = Number(time); return Number.isFinite(value) ? (value > 1e12 ? Math.floor(value / 1000) : value) : null; }; // ponytail: nearest-bar mapping handles exchange candle boundary drift; replace with keyed timestamps if gaps require exact audit
+  const nearestBar = time => {
+    const target = chartTime(time);
+    if (target == null || !bars.length || target < chartStart || target > chartEnd) return null;
+    return bars.reduce((best, bar) => Math.abs(bar.time - target) < Math.abs(best.time - target) ? bar : best, bars[0]);
   };
-  const barAtTime = time => { const exactTime = chartTime(time); return exactTime == null ? null : bars.find(bar => Math.abs(bar.time - exactTime) <= 60) || null; };
+  const eventBar = event => nearestBar(event.event_time);
+  const barAtTime = time => nearestBar(time);
   const sourceBar = event => barAtTime(event.pivot_time || event.source_times?.[0]);
   const svg = view.structureSvg;
   const esc = text => String(text).replace(/[&<>"']/g, char => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[char]));
