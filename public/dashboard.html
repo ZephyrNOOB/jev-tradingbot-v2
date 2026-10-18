@@ -97,17 +97,21 @@ async function smcOverlay(view, raw, symbol, interval) {
     return Number.isFinite(coordinate) ? coordinate : null;
   };
   const xFor = chartX;
+  const timeWindow = (start, end) => {
+    const a = chartTime(start), b = chartTime(end);
+    return a != null && b != null && b >= chartStart && a <= chartEnd ? [Math.max(a, chartStart), Math.min(b, chartEnd)] : null;
+  };
   const yFor = price => { const coordinate = view.candles.priceToCoordinate(Number(price)); return Number.isFinite(coordinate) ? coordinate : null; };
   const visualSvg = [];
   const labelKeys = new Set();
-  const selectedVisuals = visuals.filter(event => event.lifecycle_state !== 'INVALIDATED' && chartTime(event.event_time) != null && chartTime(event.event_time) >= chartStart && chartTime(event.event_time) <= chartEnd).slice(-32);
+  const selectedVisuals = visuals.filter(event => event.lifecycle_state !== 'INVALIDATED' && timeWindow(event.event_time, event.event_time)).slice(-32);
   const pushLabel = (x, y, color, text) => {
     const key = `${text}:${Math.round(x / 8)}:${Math.round(y / 8)}`;
     if (labelKeys.has(key)) return;
     labelKeys.add(key);
     visualSvg.push(`<text x="${x}" y="${y}" fill="${color}" font-size="9" font-family="Aquatico,monospace" text-anchor="middle">${text}</text>`);
   };
-  (structure.swing_visuals || []).filter(swing => chartTime(swing.time) != null && chartTime(swing.time) >= chartStart && chartTime(swing.time) <= chartEnd).slice(-24).forEach(swing => {
+  (structure.swing_visuals || []).filter(swing => timeWindow(swing.time, swing.time)).slice(-24).forEach(swing => {
     const x = xFor(chartTime(swing.time)), y = yFor(swing.price);
     if (Number.isFinite(x) && Number.isFinite(y)) pushLabel(x, y + (swing.kind === 'high' ? -8 : 14), swing.kind === 'high' ? '#F23645' : '#089981', swing.label);
   });
@@ -132,8 +136,9 @@ async function smcOverlay(view, raw, symbol, interval) {
       const zoneLow = hasObZone && !isFvg ? obLow : Number(event.zone_bounds.low);
       const zoneHigh = hasObZone && !isFvg ? obHigh : Number(event.zone_bounds.high);
       const startTime = event.ob_source_time || event.source_times?.[0] || event.event_time;
-      const x1=xFor(startTime), x2=xFor(lastBar.time), y1=yFor(zoneHigh), y2=yFor(zoneLow);
-      if ([x1,x2,y1,y2].every(Number.isFinite) && x2 > x1 && Math.abs(y2-y1) >= 2) visualSvg.push(`<rect x="${x1}" y="${Math.min(y1,y2)}" width="${x2-x1}" height="${Math.abs(y2-y1)}" fill="${zoneColor}" fill-opacity=".08" stroke="${zoneColor}" stroke-opacity=".45" stroke-width="1"/>`);
+      const window = timeWindow(startTime, lastBar.time);
+      const x1=xFor(window?.[0]), x2=xFor(window?.[1]), y1=yFor(zoneHigh), y2=yFor(zoneLow);
+      if ([x1,x2,y1,y2].every(Number.isFinite) && x2 >= x1 && Math.abs(y2-y1) >= 2) visualSvg.push(`<rect x="${x1}" y="${Math.min(y1,y2)}" width="${Math.max(1,x2-x1)}" height="${Math.abs(y2-y1)}" fill="${zoneColor}" fill-opacity=".08" stroke="${zoneColor}" stroke-opacity=".45" stroke-width="1"/>`);
     }
     if (event.kind === 'LIQUIDITY_SWEEP' && Number.isFinite(Number(event.sweep_level))) {
       const y=yFor(event.sweep_level), x1=xFor(event.event_time), x2=xFor(lastBar.time);
