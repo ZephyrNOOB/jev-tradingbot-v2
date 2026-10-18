@@ -69,7 +69,7 @@ function createChart(container) {
   return { chart, candles, volume, overlays: [], markers: null, structureSeries: [], structurePrimitive };
 }
 class StructurePrimitive {
-  constructor(chart, series) { this.chart=chart; this.series=series; this.visuals=[]; this.swings=[]; this.requestUpdate=()=>{}; }
+  constructor(chart, series) { this.chart=chart; this.series=series; this.visuals=[]; this.swings=[]; this.requestUpdate=()=>{}; this.stats={draws:0,objects:0,rejected:0}; this._onDraw=()=>{}; }
   attached({requestUpdate}) {
     this.requestUpdate=requestUpdate;
     this._onRange=()=>this.requestUpdate();
@@ -84,6 +84,7 @@ class StructurePrimitive {
   update(visuals, swings) { this.visuals=visuals; this.swings=swings; this.requestUpdate(); }
   paneViews() { return [{ renderer: { draw: target => target.useBitmapCoordinateSpace(scope => this.draw(scope)) } }]; }
   draw({context,horizontalPixelRatio:hx,verticalPixelRatio:hy}) {
+    this.stats.draws += 1;
     const x=t=>{const v=Number(t), q=v>1e12?Math.floor(v/1000):v, c=this.chart.timeScale().timeToCoordinate(q);return Number.isFinite(c)?c*hx:null};
     const y=p=>{const c=this.series.priceToCoordinate(Number(p));return Number.isFinite(c)?c*hy:null};
     const label=(s,px,py,color)=>{if(![px,py].every(Number.isFinite))return;context.fillStyle=color;context.font=`${9*hy}px Aquatico,monospace`;context.textAlign='center';context.fillText(s,px,py)};
