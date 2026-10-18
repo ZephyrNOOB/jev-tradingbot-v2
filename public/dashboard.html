@@ -64,14 +64,9 @@ function createChart(container) {
   const candles = chart.addSeries(LightweightCharts.CandlestickSeries, { upColor: '#b6ff00', downColor: '#ff6575', borderVisible: false, wickUpColor: '#b6ff00', wickDownColor: '#ff6575' });
   const volume = chart.addSeries(LightweightCharts.HistogramSeries, { priceFormat: { type: 'volume' }, priceScaleId: '', lastValueVisible: false, priceLineVisible: false });
   volume.priceScale().applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
-  const structureSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  structureSvg.setAttribute('aria-hidden', 'true');
-  structureSvg.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:4;overflow:visible';
-  container.style.position = 'relative';
-  container.appendChild(structureSvg);
   const structurePrimitive = new StructurePrimitive(chart, candles);
   candles.attachPrimitive(structurePrimitive);
-  return { chart, candles, volume, overlays: [], markers: null, structureSvg, structureSeries: [], structurePrimitive };
+  return { chart, candles, volume, overlays: [], markers: null, structureSeries: [], structurePrimitive };
 }
 class StructurePrimitive {
   constructor(chart, series) { this.chart=chart; this.series=series; this.visuals=[]; this.swings=[]; this.requestUpdate=()=>{}; }
@@ -95,10 +90,11 @@ async function smcOverlay(view, raw, symbol, interval) {
   const bars = raw.map(c => ({ ...c, time: Math.floor(c.ts / 1000) }));
   const visuals = structure.structure_visuals || structure.events || [];
   view.structurePrimitive.update(visuals, structure.swing_visuals || []);
-  view.structureSvg.replaceChildren();
   const lastBar = bars[bars.length - 1];
   const chartStart = bars[0]?.time, chartEnd = lastBar?.time;
   const visualStats = { events: 0, swings: 0, nodes: 0, coordinates: 0, rejected: 0 }; // ponytail: diagnostics stay in chartState dataset; remove after browser proof is stable
+  const visualSvg = []; // legacy diagnostics only; primitive is sole renderer
+  const labelKeys = new Set();
   const chartTime = time => { const value = Number(time); return Number.isFinite(value) ? (value > 1e12 ? Math.floor(value / 1000) : value) : null; }; // ponytail: nearest-bar mapping handles exchange candle boundary drift; replace with keyed timestamps if gaps require exact audit
   const nearestBar = time => {
     const target = chartTime(time);
@@ -108,8 +104,6 @@ async function smcOverlay(view, raw, symbol, interval) {
   const eventBar = event => nearestBar(event.event_time);
   const barAtTime = time => nearestBar(time);
   const sourceBar = event => barAtTime(event.pivot_time || event.source_times?.[0]);
-  const svg = view.structureSvg;
-  const esc = text => String(text).replace(/[&<>"']/g, char => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[char]));
   const chartX = time => {
     const bar = nearestBar(time);
     const coordinate = bar ? view.chart.timeScale().timeToCoordinate(bar.time) : null;
@@ -121,8 +115,7 @@ async function smcOverlay(view, raw, symbol, interval) {
     return a != null && b != null && b >= chartStart && a <= chartEnd ? [Math.max(a, chartStart), Math.min(b, chartEnd)] : null;
   };
   const yFor = price => { const coordinate = view.candles.priceToCoordinate(Number(price)); return Number.isFinite(coordinate) ? coordinate : null; };
-  const visualSvg = [];
-  const labelKeys = new Set();
+
   const selectedVisuals = visuals.filter(event => event.lifecycle_state !== 'INVALIDATED' && timeWindow(event.event_time, event.event_time)).slice(-32);
   visualStats.events = selectedVisuals.length;
   const pushLabel = (x, y, color, text) => {
@@ -166,11 +159,8 @@ async function smcOverlay(view, raw, symbol, interval) {
       if ([x1,x2,y].every(Number.isFinite) && x2 >= x1) { visualStats.coordinates += 1; visualSvg.push(`<line x1="${x1}" y1="${y}" x2="${x2}" y2="${y}" stroke="#D4A72C" stroke-width="1" stroke-dasharray="4 3"/>`); } else visualStats.rejected += 1;
     }
   });
-  svg.setAttribute('viewBox', `0 0 ${svg.clientWidth || 1} ${svg.clientHeight || 1}`);
-  svg.replaceChildren();
-  if (visualSvg.length) svg.innerHTML = visualSvg.join('');
-  visualStats.nodes = visualSvg.length;
-  if (!visualSvg.length) console.warn(`[chart:${symbol}] structure empty`, { events: visualStats.events, swings: visualStats.swings, chartStart, chartEnd });
+  visualStats.nodes = visualStats.coordinates;
+  if (!visualStats.nodes) console.warn(`[chart:${symbol}] structure empty`, { events: visualStats.events, swings: visualStats.swings, chartStart, chartEnd });
   const state = document.getElementById(`chartState-${symbol}`);
   if (state) state.dataset.structure = `${visualStats.events}/${visualStats.swings}/${visualStats.nodes}/${visualStats.coordinates}/${visualStats.rejected}`;
   requestAnimationFrame(() => {
