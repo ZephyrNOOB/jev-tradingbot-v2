@@ -79,6 +79,7 @@ async function smcOverlay(view, raw, symbol, interval) {
   const bars = raw.map(c => ({ ...c, time: Math.floor(c.ts / 1000) }));
   const visuals = structure.structure_visuals || structure.events || [];
   const lastBar = bars[bars.length - 1];
+  const chartStart = bars[0]?.ts, chartEnd = lastBar?.ts;
   const chartTime = time => { const value = Number(time); return Number.isFinite(value) ? (value > 1e12 ? Math.floor(value / 1000) : value) : null; };
   const eventBar = event => {
     const exactTime = chartTime(event.event_time);
@@ -92,14 +93,14 @@ async function smcOverlay(view, raw, symbol, interval) {
   const yFor = price => { const coordinate = view.candles.priceToCoordinate(Number(price)); return Number.isFinite(coordinate) ? coordinate : null; };
   const visualSvg = [];
   const labelKeys = new Set();
-  const selectedVisuals = visuals.filter(event => event.lifecycle_state !== 'INVALIDATED' && event.event_time && (event.event_time >= bars[0].ts && event.event_time <= lastBar.ts)).slice(-16);
+  const selectedVisuals = visuals.filter(event => event.lifecycle_state !== 'INVALIDATED' && chartTime(event.event_time) != null && chartTime(event.event_time) >= bars[0].ts && chartTime(event.event_time) <= lastBar.ts).slice(-16);
   const pushLabel = (x, y, color, text) => {
     const key = `${text}:${Math.round(x / 8)}:${Math.round(y / 8)}`;
     if (labelKeys.has(key)) return;
     labelKeys.add(key);
     visualSvg.push(`<text x="${x}" y="${y}" fill="${color}" font-size="9" font-family="Aquatico,monospace" text-anchor="middle">${text}</text>`);
   };
-  (structure.swing_visuals || []).filter(swing => chartTime(swing.time) >= bars[0].ts && chartTime(swing.time) <= lastBar.ts).slice(-24).forEach(swing => {
+  (structure.swing_visuals || []).filter(swing => chartTime(swing.time) != null && chartTime(swing.time) >= chartStart && chartTime(swing.time) <= chartEnd).slice(-24).forEach(swing => {
     const x = xFor(chartTime(swing.time)), y = yFor(swing.price);
     if (Number.isFinite(x) && Number.isFinite(y)) pushLabel(x, y + (swing.kind === 'high' ? -8 : 14), swing.kind === 'high' ? '#F23645' : '#089981', swing.label);
   });
