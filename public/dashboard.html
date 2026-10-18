@@ -75,12 +75,13 @@ async function smcOverlay(view, raw, symbol, interval) {
   const markerTimes = bars.map(c => c.time);
   const markers = [];
   const lines = [];
+  const visuals = structure.structure_visuals || structure.events || [];
   const indexFromId = eventId => { const match = String(eventId || '').match(/^(?:15m:)?(\d+):/); return match ? Number(match[1]) : null; };
   const barForIndex = index => {
     const offset = index - (structure.latest_closed_candle[interval] ? bars.length - 1 : 0);
     return bars[index] || bars[Math.max(0, Math.min(bars.length - 1, offset))];
   };
-  structure.events.forEach(event => {
+  visuals.forEach(event => {
     const index = indexFromId(event.event_id), bar = index === null ? null : barForIndex(index);
     if (!bar) return;
     const bullish = event.side === 'LONG', color = bullish ? '#b6ff00' : '#ff6575';
