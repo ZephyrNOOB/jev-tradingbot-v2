@@ -88,9 +88,9 @@ const EXECUTION_INTERVAL_MS = 5_000;
 const telegramSent = new Set();
 async function sendTelegram(text, dedupKey, userId) {
   const configured = userId ? get('SELECT * FROM telegram_connections WHERE user_id = ?', [userId]) : null;
-  const token = configured?.bot_token_encrypted ? decryptSecret(configured.bot_token_encrypted) : process.env.TELEGRAM_BOT_TOKEN;
-  const chatId = configured?.chat_id || process.env.TELEGRAM_CHAT_ID;
-  if ((configured && Number(configured.enabled) !== 1) || (!configured && process.env.TELEGRAM_NOTIFICATIONS_ENABLED !== 'true') || !token || !chatId || (dedupKey && telegramSent.has(dedupKey))) return false;
+  const token = configured?.bot_token_encrypted ? decryptSecret(configured.bot_token_encrypted) : null;
+  const chatId = configured?.chat_id || null;
+  if (!configured || Number(configured.enabled) !== 1 || !token || !chatId || (dedupKey && telegramSent.has(dedupKey))) return false;
   try {
     const response = await fetch('https://api.telegram.org/bot' + token + '/sendMessage', {
       method: 'POST',
@@ -411,7 +411,7 @@ app.get('/api/binance-demo/live-readiness', auth, async (req, res) => {
   const keyRow = get("SELECT * FROM api_keys WHERE id = (SELECT id FROM api_keys WHERE user_id = ? AND exchange = 'binanceTestnet' AND status = 'connected' ORDER BY id DESC LIMIT 1)", [req.userId]);
   const tradeAmount = get('SELECT amount_usdt FROM trade_amounts WHERE user_id = ?', [req.userId]);
   if (!keyRow) blockers.push('CONNECTED_DEMO_KEY_REQUIRED');
-  if (process.env.DEMO_EXECUTION_ENABLED !== 'true') blockers.push('DEMO_EXECUTION_FLAG_DISABLED');
+  if (!demoExecutionEnabled) blockers.push('DEMO_EXECUTION_FLAG_DISABLED');
   if (blockers.length) return res.json({ ok: true, ready: false, executionMode: 'READ_ONLY', demoOnly: true, blockers, ordersSent: null, withdrawalsSent: null });
   try {
     const apiKey = decryptSecret(keyRow.api_key), secret = decryptSecret(keyRow.secret_key);
