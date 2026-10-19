@@ -739,7 +739,7 @@ startLiveDemoWorkflowRunner('global');
 app.get('/api/chart/candles', auth, async (req, res) => {
   const symbol = String(req.query.symbol || '').toUpperCase();
   const interval = String(req.query.interval || '5m');
-  const limit = Math.min(200, Math.max(30, Number(req.query.limit) || 120));
+  const limit = Math.min(500, Math.max(30, Number(req.query.limit) || 120));
   if (!SUPPORTED_SYMBOLS.includes(symbol) || !['1h', '15m', '5m'].includes(interval)) return res.status(400).json({ error: 'Unsupported chart request' });
   try {
     const candles = await fetchBinanceCandles(symbol, interval, limit);
@@ -800,12 +800,14 @@ app.get('/api/chart/structure', auth, (req, res) => {
       break_price: Number.isFinite(Number(event.break_price)) ? Number(event.break_price) : null,
       source_times: Array.isArray(event.source_times) ? event.source_times : [],
       ob_source_time: Number.isFinite(Number(event.ob_source_time)) ? Number(event.ob_source_time) : null,
+      zone_start_time: Array.isArray(event.source_times) && event.source_times.length ? Math.min(...event.source_times.map(Number).filter(Number.isFinite)) : (Number.isFinite(Number(event.ob_source_time)) ? Number(event.ob_source_time) : Number(event.event_time)),
+      zone_end_time: Number.isFinite(Number(event.zone_end_time)) ? Number(event.zone_end_time) : Number.isFinite(Number(event.event_time)) ? Number(event.event_time) : null,
       ob_source_price: Number.isFinite(Number(event.ob_source_price)) ? Number(event.ob_source_price) : null,
       live_demo_plan: event.live_demo_plan || null,
       plan_status: event.plan_status || null
     }));
     const latestId = artifact.latest_structure_event_ids?.[symbol] || null;
-    const structure_visuals = events.filter(event => ['BOS', 'CHoCH_MSS', 'FVG', 'LIQUIDITY_SWEEP', 'ORDER_BLOCK', 'BREAKER_BLOCK'].includes(event.kind)).map(event => ({ event_id: event.event_id, kind: event.kind, side: event.side, structure_index: event.structure_index, event_time: event.event_time, event_price: event.event_price, pivot_index: event.pivot_index, pivot_time: event.pivot_time, pivot_price: event.pivot_price, break_index: event.break_index, break_time: event.break_time, break_price: event.break_price, source_times: event.source_times, ob_source_time: event.ob_source_time, ob_source_price: event.ob_source_price, broken_level: event.broken_level, protected_level: event.protected_level, ob_source_index: event.ob_source_index, ob_zone_low: event.ob_zone_low, ob_zone_high: event.ob_zone_high, flip_level: event.flip_level, zone_bounds: event.zone_bounds, sweep_level: event.sweep_level, lifecycle_state: event.lifecycle_state, source_event_ids: event.source_event_ids }));
+    const structure_visuals = events.filter(event => ['BOS', 'CHoCH_MSS', 'FVG', 'LIQUIDITY_SWEEP', 'ORDER_BLOCK', 'BREAKER_BLOCK'].includes(event.kind)).map(event => ({ event_id: event.event_id, kind: event.kind, side: event.side, structure_index: event.structure_index, event_time: event.event_time, event_price: event.event_price, pivot_index: event.pivot_index, pivot_time: event.pivot_time, pivot_price: event.pivot_price, break_index: event.break_index, break_time: event.break_time, break_price: event.break_price, source_times: event.source_times, ob_source_time: event.ob_source_time, zone_start_time: event.zone_start_time, zone_end_time: event.zone_end_time, ob_source_price: event.ob_source_price, broken_level: event.broken_level, protected_level: event.protected_level, ob_source_index: event.ob_source_index, ob_zone_low: event.ob_zone_low, ob_zone_high: event.ob_zone_high, flip_level: event.flip_level, zone_bounds: event.zone_bounds, sweep_level: event.sweep_level, lifecycle_state: event.lifecycle_state, source_event_ids: event.source_event_ids }));
     const swing_visuals = (symbolState.swing_visuals || []).map(swing => ({ label: swing.label, kind: swing.kind, index: swing.index, price: swing.price, time: Number.isFinite(Number(swing.time)) ? Math.floor(Number(swing.time) / 1000) : null })).filter(swing => Number.isFinite(swing.time) && Number.isFinite(Number(swing.price)) && inWindow(swing.time));
     const active_candidates = (artifact.execution_candidates || []).filter(candidate =>
       candidate.symbol === symbol &&
