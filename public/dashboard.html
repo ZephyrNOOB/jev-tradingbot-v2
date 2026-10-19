@@ -40,9 +40,13 @@ function csrfToken() { return document.cookie.split('; ').find(x => x.startsWith
 async function api(path, opts = {}) {
   const headers = { 'Content-Type': 'application/json', ...(opts.headers || {}) };
   if (opts.method && opts.method !== 'GET') headers['x-csrf-token'] = csrfToken();
-  const r = await fetch('/api' + path, { ...opts, headers });
-  if (r.status === 401) { window.location.href = '/'; return null; }
-  return r.json();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000);
+  try {
+    const r = await fetch('/api' + path, { ...opts, headers, signal: controller.signal });
+    if (r.status === 401) { window.location.href = '/'; return null; }
+    return r.json();
+  } finally { clearTimeout(timeout); }
 }
 
 const chartPairs = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XAUUSDT'];
