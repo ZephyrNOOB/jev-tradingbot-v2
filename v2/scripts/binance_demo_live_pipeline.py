@@ -184,6 +184,8 @@ def event_visual_geometry(event, candles):
         "event_time": break_candle.get("close_time") if break_candle else None,
         "zone_start_time": zone_start_time,
         "zone_end_time": zone_end_time,
+        "mitigation_time": break_candle.get("close_time") if event.lifecycle_state in ("MITIGATED", "FULL_MITIGATION", "PARTIAL_MITIGATION") and break_candle else None,
+        "invalidation_time": break_candle.get("close_time") if event.lifecycle_state in ("INVALIDATED", "EXPIRED") and break_candle else None,
         "event_price": break_candle.get("close") if break_candle else None,
         "pivot_index": pivot_index,
         "pivot_time": pivot.get("close_time") if pivot else None,
