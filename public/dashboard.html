@@ -62,7 +62,7 @@ function changeChartTimeframe(interval) {
   refreshCharts();
 }
 function chartData(candles) { return candles.map(c => ({ time: Math.floor(c.ts / 1000), open: c.open, high: c.high, low: c.low, close: c.close })); }
-function volumeData(candles) { return candles.map(c => ({ time: Math.floor(c.ts / 1000), value: c.volume, color: c.close >= c.open ? '#b8f36b66' : '#ff657566' })); }
+function volumeData(candles) { return candles.map(c => ({ time: Math.floor(c.ts / 1000), value: c.volume, color: c.close >= c.open ? '#b8f3b5cc' : '#ff6575cc' })); }
 function createChart(container) {
   const chart = LightweightCharts.createChart(container, { autoSize: true, handleScroll: { mouseWheel: true, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: true }, handleScale: { mouseWheel: true, pinch: true, axisPressedMouseMove: true }, layout: { background: { color: '#0b141b' }, textColor: '#78909a', fontFamily: 'JetBrains Mono, monospace', fontSize: 9 }, grid: { vertLines: { color: '#1b2a33' }, horzLines: { color: '#1b2a33' } }, rightPriceScale: { borderColor: '#263742', scaleMargins: { top: 0.08, bottom: 0.25 }, alignLabels: true }, timeScale: { borderColor: '#263742', timeVisible: true, secondsVisible: false, rightOffset: 3 }, crosshair: { mode: LightweightCharts.CrosshairMode.Normal } });
   const candles = chart.addSeries(LightweightCharts.CandlestickSeries, { upColor: '#b6ff00', downColor: '#ff6575', borderVisible: false, wickUpColor: '#b6ff00', wickDownColor: '#ff6575' });
