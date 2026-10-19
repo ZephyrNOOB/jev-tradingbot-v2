@@ -170,6 +170,7 @@ async function refreshCharts() {
         charts.set(key, view);
         await Promise.race([smcOverlay(view, result.candles, symbol, interval), new Promise((_, reject) => setTimeout(() => reject(new Error('structure_overlay_timeout')), 10000))]);
         view.structurePrimitive.requestUpdate();
+        await new Promise(requestAnimationFrame);
         const structureCount = state.dataset.structure || '0/0/0/0/0';
         const [eventCount, swingCount] = structureCount.split('/').map(Number);
         const price = ticker.prices?.[symbol];
