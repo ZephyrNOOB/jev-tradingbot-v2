@@ -69,7 +69,7 @@ function createChart(container) {
   return { chart, candles, volume, overlays: [], markers: null, structureSeries: [], structurePrimitive };
 }
 class StructurePrimitive {
-  constructor(chart, series) { this.chart=chart; this.series=series; this.visuals=[]; this.swings=[]; this.bars=[]; this.requestUpdate=()=>{}; this.stats={draws:0,objects:0,rejected:0}; this._onDraw=()=>{}; } 񟿿
+  constructor(chart, series) { this.chart=chart; this.series=series; this.visuals=[]; this.swings=[]; this.bars=[]; this.requestUpdate=()=>{}; this.stats={draws:0,objects:0,rejected:0}; this._onDraw=()=>{}; } 
   attached({requestUpdate}) {
     this.requestUpdate=requestUpdate;
     this._onRange=()=>this.requestUpdate();
