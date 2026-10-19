@@ -69,7 +69,7 @@ function createChart(container) {
   return { chart, candles, volume, overlays: [], markers: null, structureSeries: [], structurePrimitive };
 }
 class StructurePrimitive {
-  constructor(chart, series) { this.chart=chart; this.series=series; this.visuals=[]; this.swings=[]; this.bars=[]; this.requestUpdate=()=>{}; this.stats={draws:0,objects:0,rejected:0}; this._renderer={ draw: target => target.useBitmapCoordinateSpace(scope => this.draw(scope)) }; this._view={ renderer: () => this._renderer }; }
+  constructor(chart, series) { this.chart=chart; this.series=series; this.visuals=[]; this.swings=[]; this.bars=[]; this.requestUpdate=()=>{}; this.stats={draws:0,objects:0,rejected:0}; this._renderer={ draw: target => target.useBitmapCoordinateSpace(scope => this.draw(scope)) }; this._view={ update: () => {}, renderer: () => this._renderer }; }
   attached({requestUpdate}) {
     this.requestUpdate=requestUpdate;
     this._onRange=()=>this.requestUpdate();
@@ -82,7 +82,7 @@ class StructurePrimitive {
     this.requestUpdate=()=>{};
   }
   update(visuals, swings) { this.visuals=visuals; this.swings=swings; this.requestUpdate(); }
-  updateAllViews() {}
+  updateAllViews() { this._view.update(); }
   paneViews() { return [this._view]; }
   draw({context,horizontalPixelRatio:hx,verticalPixelRatio:hy}) {
     this.stats.draws += 1;
