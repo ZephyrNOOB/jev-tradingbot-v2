@@ -229,6 +229,9 @@ def main():
             elif row["lifecycle_state"] in ("INVALIDATED", "EXPIRED") and terminal_time:
                 row["invalidation_time"] = terminal_time
                 row["zone_end_time"] = terminal_time
+            elif row["lifecycle_state"] in ("INVALIDATED", "EXPIRED"):
+                row["invalidation_time"] = row.get("event_time")
+                row["zone_end_time"] = row.get("event_time")
             if decision["state"] == "SELECTION_RESOLVED":
                 entry_index = c["index"] + 1
                 if entry_index >= len(q):
