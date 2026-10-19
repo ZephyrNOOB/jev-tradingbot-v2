@@ -98,6 +98,7 @@ class StructurePrimitive {
   paneViews() { return [this._view]; }
   draw({context,horizontalPixelRatio:hx,verticalPixelRatio:hy}) {
     this.stats.draws += 1;
+    hx=Number.isFinite(hx)?hx:1; hy=Number.isFinite(hy)?hy:1;
     const x=t=>{const v=Number(t), q=v>1e12?Math.floor(v/1000):v; const range=this.chart.timeScale().getVisibleLogicalRange(); if(!range||!this.bars.length){this.stats.xRejected++;return null;} const index=this.bars.reduce((best,b,i)=>Math.abs(b.time-q)<Math.abs(this.bars[best].time-q)?i:best,0), first=this.bars[0].time, last=this.bars[this.bars.length-1].time, logical=range.from+(index/(this.bars.length-1))*(range.to-range.from), c=logical<range.from||logical>range.to?this.chart.timeScale().logicalToCoordinate(logical):this.chart.timeScale().timeToCoordinate(Math.max(first,Math.min(last,q))); return Number.isFinite(c)?c*hx:null};
     const y=p=>{const c=this.series.priceToCoordinate(Number(p));if(Number.isFinite(c))return c*hy;this.stats.yRejected++;return null};
     const label=(s,px,py,color)=>{this.stats.labelAttempts++;if(![px,py].every(Number.isFinite)){this.stats.labelRejects++;this.stats.rejected++;return false;}context.fillStyle=color;context.font=`${9*hy}px Aquatico,monospace`;context.textAlign='center';context.fillText(s,px,py);this.stats.objects++;return true};
