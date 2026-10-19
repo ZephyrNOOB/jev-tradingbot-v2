@@ -189,7 +189,7 @@ def event_visual_geometry(event, candles):
         "event_price": break_candle.get("close") if break_candle else None,
         "pivot_index": pivot_index,
         "pivot_time": pivot.get("close_time") if pivot else None,
-        "pivot_price": (pivot.get("high") if event.side == "SHORT" else pivot.get("low")) if pivot else None,
+        "pivot_price": (pivot.get("low") if event.side == "SHORT" else pivot.get("high")) if pivot else None,
         "break_index": event.index,
         "break_time": break_candle.get("close_time") if break_candle else None,
         "break_price": event.broken_level or (break_candle.get("close") if break_candle else None),
