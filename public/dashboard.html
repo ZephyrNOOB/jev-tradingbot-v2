@@ -69,7 +69,7 @@ function createChart(container) {
   return { chart, candles, volume, overlays: [], markers: null, structureSeries: [], structurePrimitive };
 }
 class StructurePrimitive {
-  constructor(chart, series) { this.chart=chart; this.series=series; this.visuals=[]; this.swings=[]; this.bars=[]; this.requestUpdate=()=>{}; this.stats={draws:0,objects:0,rejected:0}; this._renderer={ draw: target => target.useBitmapCoordinateSpace(scope => this.draw(scope)) }; }
+  constructor(chart, series) { this.chart=chart; this.series=series; this.visuals=[]; this.swings=[]; this.bars=[]; this.requestUpdate=()=>{}; this.stats={draws:0,objects:0,rejected:0}; this._renderer={ draw: target => target.useBitmapCoordinateSpace(scope => this.draw(scope)) }; this._view={ renderer: () => this._renderer }; }
   attached({requestUpdate}) {
     this.requestUpdate=requestUpdate;
     this._onRange=()=>this.requestUpdate();
@@ -83,7 +83,7 @@ class StructurePrimitive {
   }
   update(visuals, swings) { this.visuals=visuals; this.swings=swings; this.requestUpdate(); }
   updateAllViews() {}
-  paneViews() { return [{ renderer: this._renderer }]; }
+  paneViews() { return [this._view]; }
   draw({context,horizontalPixelRatio:hx,verticalPixelRatio:hy}) {
     this.stats.draws += 1;
     const x=t=>{const v=Number(t), q=v>1e12?Math.floor(v/1000):v, c=this.chart.timeScale().timeToCoordinate(q);return Number.isFinite(c)?c*hx:null};
