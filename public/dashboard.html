@@ -111,6 +111,7 @@ async function smcOverlay(view, raw, symbol, interval) {
   const structure = await api(`/chart/structure?symbol=${symbol}`);
   if (!structure?.ok || structure.artifact_status !== 'PASS') throw new Error('Authoritative structure unavailable');
   const bars = raw.map(c => ({ ...c, time: Math.floor(c.ts / 1000) }));
+  view.structurePrimitive.bars = bars;
   const visuals = structure.structure_visuals || structure.events || [];
   view.structurePrimitive.update(visuals, structure.swing_visuals || [], bars);
   const lastBar = bars[bars.length - 1];
