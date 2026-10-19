@@ -113,9 +113,9 @@ class StructurePrimitive {
 async function smcOverlay(view, raw, symbol, interval) {
   view.overlays.forEach(line => view.candles.removePriceLine(line));
   view.overlays = [];
-  const structure = await api(`/chart/structure?symbol=${symbol}`);
-  if (!structure?.ok || structure.artifact_status !== 'PASS') throw new Error('Authoritative structure unavailable');
   const bars = raw.map(c => ({ ...c, time: Math.floor(c.ts / 1000) }));
+  const structure = await api(`/chart/structure?symbol=${symbol}&from=${bars[0]?.time || ''}&to=${bars.at(-1)?.time || ''}`);
+  if (!structure?.ok || structure.artifact_status !== 'PASS') throw new Error('Authoritative structure unavailable');
   view.structurePrimitive.bars = bars;
   const visuals = structure.structure_visuals || structure.events || [];
   view.structurePrimitive.update(visuals, structure.swing_visuals || [], bars);

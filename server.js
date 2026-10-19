@@ -754,6 +754,9 @@ app.get('/api/chart/structure', auth, (req, res) => {
   try {
     const artifact = JSON.parse(fs.readFileSync(path.join(__dirname, 'v2', 'artifacts', 'BINANCE_DEMO_LIVE_PIPELINE.json'), 'utf8'));
     const symbolState = artifact.symbols?.[symbol] || {};
+    const from = Number(req.query.from);
+    const to = Number(req.query.to);
+    const inWindow = value => !Number.isFinite(from) || !Number.isFinite(to) || !Number.isFinite(Number(value)) || (Number(value) >= from * 1000 && Number(value) <= to * 1000);
     const events = (symbolState.recent_events || []).map(event => ({
       event_id: event.event_id,
       kind: event.kind,
@@ -803,7 +806,7 @@ app.get('/api/chart/structure', auth, (req, res) => {
     }));
     const latestId = artifact.latest_structure_event_ids?.[symbol] || null;
     const structure_visuals = events.filter(event => ['BOS', 'CHoCH_MSS', 'FVG', 'LIQUIDITY_SWEEP', 'ORDER_BLOCK', 'BREAKER_BLOCK'].includes(event.kind)).map(event => ({ event_id: event.event_id, kind: event.kind, side: event.side, structure_index: event.structure_index, event_time: event.event_time, event_price: event.event_price, pivot_index: event.pivot_index, pivot_time: event.pivot_time, pivot_price: event.pivot_price, break_index: event.break_index, break_time: event.break_time, break_price: event.break_price, source_times: event.source_times, ob_source_time: event.ob_source_time, ob_source_price: event.ob_source_price, broken_level: event.broken_level, protected_level: event.protected_level, ob_source_index: event.ob_source_index, ob_zone_low: event.ob_zone_low, ob_zone_high: event.ob_zone_high, flip_level: event.flip_level, zone_bounds: event.zone_bounds, sweep_level: event.sweep_level, lifecycle_state: event.lifecycle_state, source_event_ids: event.source_event_ids }));
-    const swing_visuals = (symbolState.swing_visuals || []).map(swing => ({ label: swing.label, kind: swing.kind, index: swing.index, price: swing.price, time: Number.isFinite(Number(swing.time)) ? Math.floor(Number(swing.time) / 1000) : null }));
+    const swing_visuals = (symbolState.swing_visuals || []).map(swing => ({ label: swing.label, kind: swing.kind, index: swing.index, price: swing.price, time: Number.isFinite(Number(swing.time)) ? Math.floor(Number(swing.time) / 1000) : null })).filter(swing => Number.isFinite(swing.time) && Number.isFinite(Number(swing.price)) && inWindow(swing.time));
     const active_candidates = (artifact.execution_candidates || []).filter(candidate =>
       candidate.symbol === symbol &&
       candidate.status === 'APPROVED_FOR_EXECUTION' &&
