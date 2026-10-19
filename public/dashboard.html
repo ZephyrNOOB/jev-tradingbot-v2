@@ -82,7 +82,8 @@ class StructurePrimitive {
     this.requestUpdate=()=>{};
   }
   update(visuals, swings) { this.visuals=visuals; this.swings=swings; this.requestUpdate(); }
-  paneViews() { return [{ renderer: { draw: target => target.useBitmapCoordinateSpace(scope => this.draw(scope)) } }]; }
+  updateAllViews() {}
+  paneViews() { return [{ renderer: () => ({ draw: target => target.useBitmapCoordinateSpace(scope => this.draw(scope)) }) }]; }
   draw({context,horizontalPixelRatio:hx,verticalPixelRatio:hy}) {
     this.stats.draws += 1;
     const x=t=>{const v=Number(t), q=v>1e12?Math.floor(v/1000):v, c=this.chart.timeScale().timeToCoordinate(q);return Number.isFinite(c)?c*hx:null};
