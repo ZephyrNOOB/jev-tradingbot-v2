@@ -177,8 +177,13 @@ def event_visual_geometry(event, candles):
     pivot = candle_at(pivot_index)
     break_candle = candle_at(event.index)
     ob_candle = candle_at(event.ob_source_index)
+    source_times = [c["close_time"] for index in source if (c := candle_at(index))]
+    zone_start_time = min(source_times) if source_times else (ob_candle.get("close_time") if ob_candle else None)
+    zone_end_time = break_candle.get("close_time") if break_candle else None
     return {
         "event_time": break_candle.get("close_time") if break_candle else None,
+        "zone_start_time": zone_start_time,
+        "zone_end_time": zone_end_time,
         "event_price": break_candle.get("close") if break_candle else None,
         "pivot_index": pivot_index,
         "pivot_time": pivot.get("close_time") if pivot else None,

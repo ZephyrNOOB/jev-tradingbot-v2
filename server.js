@@ -800,8 +800,8 @@ app.get('/api/chart/structure', auth, (req, res) => {
       break_price: Number.isFinite(Number(event.break_price)) ? Number(event.break_price) : null,
       source_times: Array.isArray(event.source_times) ? event.source_times : [],
       ob_source_time: Number.isFinite(Number(event.ob_source_time)) ? Number(event.ob_source_time) : null,
-      zone_start_time: Array.isArray(event.source_times) && event.source_times.length ? Math.min(...event.source_times.map(Number).filter(Number.isFinite)) : (Number.isFinite(Number(event.ob_source_time)) ? Number(event.ob_source_time) : Number(event.event_time)),
-      zone_end_time: Number.isFinite(Number(event.zone_end_time)) ? Number(event.zone_end_time) : Number.isFinite(Number(event.event_time)) ? Number(event.event_time) : null,
+      zone_start_time: Number.isFinite(Number(event.zone_start_time)) ? Number(event.zone_start_time) : (Array.isArray(event.source_times) && event.source_times.length ? Math.min(...event.source_times.map(Number).filter(Number.isFinite)) : (Number.isFinite(Number(event.ob_source_time)) ? Number(event.ob_source_time) : Number(event.event_time))),
+            zone_end_time: Number.isFinite(Number(event.zone_end_time)) ? Number(event.zone_end_time) : Number.isFinite(Number(event.event_time)) ? Number(event.event_time) : null,
       ob_source_price: Number.isFinite(Number(event.ob_source_price)) ? Number(event.ob_source_price) : null,
       live_demo_plan: event.live_demo_plan || null,
       plan_status: event.plan_status || null
