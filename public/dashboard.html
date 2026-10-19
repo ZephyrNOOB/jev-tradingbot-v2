@@ -169,12 +169,14 @@ async function refreshCharts() {
         await new Promise(requestAnimationFrame);
         charts.set(key, view);
         await Promise.race([smcOverlay(view, result.candles, symbol, interval), new Promise((_, reject) => setTimeout(() => reject(new Error('structure_overlay_timeout')), 10000))]);
+        view.structurePrimitive.requestUpdate();
         const structureCount = state.dataset.structure || '0/0/0/0/0';
         const [eventCount, swingCount] = structureCount.split('/').map(Number);
         const price = ticker.prices?.[symbol];
         state.textContent = `${price == null ? 'LIVE —' : `LIVE ${price}`} · ${interval.toUpperCase()} · S:${eventCount || 0}/${swingCount || 0}`;
         const renderStats = view.structurePrimitive.stats;
         state.title = `events=${eventCount || 0} swings=${swingCount || 0} primitiveObjects=${renderStats.objects || 0} draws=${renderStats.draws || 0} rejected=${renderStats.rejected || 0}`;
+        state.dataset.rendered = `${renderStats.objects || 0}/${renderStats.draws || 0}/${renderStats.rejected || 0}`;
       } catch (error) { state.textContent = 'ERROR'; state.title = error?.message || 'chart_render_failed'; console.error(`[chart:${symbol}]`, error); }
     }));
     document.getElementById('chartsUpdated').textContent = new Date().toLocaleTimeString();
