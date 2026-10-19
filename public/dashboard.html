@@ -150,7 +150,7 @@ async function smcOverlay(view, raw, symbol, interval) {
   for (const plan of plans) {
     [['ENTRY', plan.entry, '#ffd166'], ['SL', plan.sl, '#ff6575'], ['TP', plan.tp, '#00fff7']].forEach(([title, value, color]) => {
       if (!Number.isFinite(Number(value))) return;
-      const line = view.candles.createPriceLine({ price: Number(value), color, lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, axisLabelVisible: true, title });
+      const line = view.candles.createPriceLine({ price: Number(value), color, lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, axisLabelVisible: false, title });
       view.overlays.push(line);
     });
   }
