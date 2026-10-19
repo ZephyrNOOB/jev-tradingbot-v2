@@ -756,7 +756,7 @@ app.get('/api/chart/structure', auth, (req, res) => {
     const symbolState = artifact.symbols?.[symbol] || {};
     const from = Number(req.query.from);
     const to = Number(req.query.to);
-    const inWindow = value => !Number.isFinite(from) || !Number.isFinite(to) || !Number.isFinite(Number(value)) || (Number(value) >= from * 1000 && Number(value) <= to * 1000);
+    const inWindow = value => !Number.isFinite(from) || !Number.isFinite(to) || !Number.isFinite(Number(value)) || (Number(value) >= from && Number(value) <= to);
     const events = (symbolState.recent_events || []).map(event => ({
       event_id: event.event_id,
       kind: event.kind,
