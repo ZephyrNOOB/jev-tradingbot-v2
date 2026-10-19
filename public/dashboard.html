@@ -68,8 +68,20 @@ function createChart(container) {
   candles.attachPrimitive(structurePrimitive);
   return { chart, candles, volume, overlays: [], markers: null, structureSeries: [], structurePrimitive };
 }
+class StructurePaneView {
+  constructor(source) { this.source = source; this.rendererInstance = new StructureRenderer(source); }
+  update() { this.rendererInstance.update(); }
+  renderer() { return this.rendererInstance; }
+}
+class StructureRenderer {
+  constructor(source) { this.source = source; }
+  update() {}
+  draw({context,horizontalPixelRatio:hx,verticalPixelRatio:hy}) {
+    this.source.draw({context,horizontalPixelRatio:hx,verticalPixelRatio:hy});
+  }
+}
 class StructurePrimitive {
-  constructor(chart, series) { this.chart=chart; this.series=series; this.visuals=[]; this.swings=[]; this.bars=[]; this.requestUpdate=()=>{}; this.stats={draws:0,objects:0,rejected:0}; this._renderer={ draw: target => target.useBitmapCoordinateSpace(scope => this.draw(scope)) }; this._view={ update: () => {}, renderer: () => this._renderer }; }
+  constructor(chart, series) { this.chart=chart; this.series=series; this.visuals=[]; this.swings=[]; this.bars=[]; this.requestUpdate=()=>{}; this.stats={draws:0,objects:0,rejected:0}; this._view=new StructurePaneView(this); }
   attached({requestUpdate}) {
     this.requestUpdate=requestUpdate;
     this._onRange=()=>this.requestUpdate();
