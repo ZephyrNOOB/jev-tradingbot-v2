@@ -80,8 +80,8 @@ class StructurePaneView {
 class StructureRenderer {
   constructor(source) { this.source = source; }
   update() {}
-  draw({context,horizontalPixelRatio:hx,verticalPixelRatio:hy}) {
-    this.source.draw({context,horizontalPixelRatio:hx,verticalPixelRatio:hy});
+  draw(target) {
+    target.useMediaCoordinateSpace(scope => this.source.draw({ context: scope.context, horizontalPixelRatio: 1, verticalPixelRatio: 1, mediaWidth: scope.mediaSize.width, mediaHeight: scope.mediaSize.height }));
   }
 }
 class StructurePrimitive {
