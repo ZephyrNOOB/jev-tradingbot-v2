@@ -158,6 +158,26 @@ function notifyTelegramExecution(event, userId) {
     '\nQty: ' + (order.z || '-') + '\nStatus: FILLED', key, userId
   );
 }
+
+function recordExchangeOrderUpdate(userId, event) {
+  const order = event?.o;
+  if (event?.e !== 'ORDER_TRADE_UPDATE' || !order?.i) return;
+  const clientOrderId = String(order.c || '');
+  const status = String(order.X || '');
+  const rootClientOrderId = clientOrderId.replace(/_(?:sl|tp)$/i, '');
+  const lifecycle = get('SELECT * FROM execution_lifecycles WHERE user_id = ? AND thesis_key = ?', [userId, rootClientOrderId]);
+  const now = Date.now();
+  if (status === 'FILLED' && /_(?:sl|tp)$/i.test(clientOrderId)) {
+    const closeReason = /_sl$/i.test(clientOrderId) ? 'SL' : 'TP';
+    run('INSERT INTO execution_lifecycles (user_id,thesis_key,symbol,client_order_id,entry_order_id,entry_status,position_status,protection_status,exit_order_id,close_reason,updated_at,completed_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(user_id,thesis_key) DO UPDATE SET exit_order_id=excluded.exit_order_id,position_status=\'CLOSED\',close_reason=excluded.close_reason,updated_at=excluded.updated_at,completed_at=excluded.completed_at', [userId, lifecycle?.thesis_key || rootClientOrderId, order.s, lifecycle?.client_order_id || rootClientOrderId, lifecycle?.entry_order_id || '', lifecycle?.entry_status || 'FILLED', 'CLOSED', 'VERIFIED', String(order.i), closeReason, now, now]);
+    run('UPDATE trade_history SET status=\'CLOSED\',close_reason=?,exit_order_id=?,completed_at=? WHERE user_id=? AND client_order_id=? AND status != \'CLOSED\'', [closeReason, String(order.i), now, userId, rootClientOrderId]);
+    return;
+  }
+  if (status === 'FILLED' && clientOrderId && !/_ec$/i.test(clientOrderId)) {
+    run('INSERT INTO execution_lifecycles (user_id,thesis_key,symbol,client_order_id,entry_order_id,entry_status,position_status,protection_status,updated_at) VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT(user_id,thesis_key) DO UPDATE SET entry_order_id=excluded.entry_order_id,entry_status=excluded.entry_status,position_status=\'OPEN\',updated_at=excluded.updated_at', [userId, clientOrderId, order.s, clientOrderId, String(order.i), 'FILLED', 'OPEN', 'UNKNOWN', now]);
+    run('UPDATE trade_history SET entry_order_id=?, thesis_key=? WHERE user_id=? AND order_id=?', [String(order.i), clientOrderId, userId, String(order.i)]);
+  }
+}
 let marketCandleUnsubscribe = null;
 const LIVE_DEMO_STALE_AFTER_MS = 15 * 60_000;
 const MARKET_POLL_TIMEOUT_MS = 10_000;
@@ -268,6 +288,15 @@ async function initDb() {
   try { run("ALTER TABLE trade_amounts ADD COLUMN margin_mode TEXT NOT NULL DEFAULT 'ISOLATED'"); } catch {}
   run('CREATE TABLE IF NOT EXISTS telegram_connections (user_id INTEGER PRIMARY KEY, bot_token_encrypted TEXT NOT NULL, chat_id TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT \'unknown\', verified_at TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)');
   run('CREATE TABLE IF NOT EXISTS telegram_notifications (user_id INTEGER NOT NULL, dedup_key TEXT NOT NULL, sent_at INTEGER NOT NULL, PRIMARY KEY (user_id, dedup_key))');
+  run('CREATE TABLE IF NOT EXISTS execution_lifecycles (user_id INTEGER NOT NULL, thesis_key TEXT NOT NULL, symbol TEXT NOT NULL, client_order_id TEXT NOT NULL, entry_order_id TEXT, entry_status TEXT NOT NULL, position_status TEXT NOT NULL, protection_status TEXT NOT NULL DEFAULT \'UNKNOWN\', exit_order_id TEXT, close_reason TEXT, updated_at INTEGER NOT NULL, completed_at INTEGER, PRIMARY KEY (user_id, thesis_key))');
+  run('CREATE INDEX IF NOT EXISTS idx_execution_lifecycles_symbol_status ON execution_lifecycles(user_id, symbol, position_status)');
+  try { run('ALTER TABLE execution_lifecycles ADD COLUMN protection_status TEXT NOT NULL DEFAULT \'UNKNOWN\''); } catch {}
+  try { run('ALTER TABLE execution_lifecycles ADD COLUMN completed_at INTEGER'); } catch {}
+  try { run('ALTER TABLE trade_history ADD COLUMN close_reason TEXT'); } catch {}
+  try { run('ALTER TABLE trade_history ADD COLUMN exit_order_id TEXT'); } catch {}
+  try { run('ALTER TABLE trade_history ADD COLUMN completed_at INTEGER'); } catch {}
+  try { run('ALTER TABLE trade_history ADD COLUMN entry_order_id TEXT'); } catch {}
+  try { run('ALTER TABLE trade_history ADD COLUMN thesis_key TEXT'); } catch {}
 }
 
 function migrateApiKeys() {
@@ -446,6 +475,7 @@ app.post('/api/bot/toggle', auth, async (req, res) => {
     const key = get("SELECT * FROM api_keys WHERE user_id = ? AND exchange = 'binanceTestnet' AND status = 'connected' ORDER BY id DESC LIMIT 1", [req.userId]);
     if (key) startBinanceUserStream(String(req.userId), decryptSecret(key.api_key), event => {
       if (event?.e === 'ORDER_TRADE_UPDATE') {
+        recordExchangeOrderUpdate(req.userId, event);
         demoExecutionSummaries.set(String(req.userId), { status: event.o?.X || 'ORDER_UPDATE', symbol: event.o?.s, orderId: event.o?.i, clientOrderId: event.o?.c, updatedAt: new Date().toISOString() });
         notifyTelegramExecution(event, req.userId);
       }
@@ -470,6 +500,7 @@ app.get('/api/binance-demo/live-readiness', auth, async (req, res) => {
     const apiKey = decryptSecret(keyRow.api_key), secret = decryptSecret(keyRow.secret_key);
     startBinanceUserStream(String(req.userId), apiKey, event => {
       if (event?.e === 'ORDER_TRADE_UPDATE') {
+        recordExchangeOrderUpdate(req.userId, event);
         demoExecutionSummaries.set(String(req.userId), { status: event.o?.X || 'ORDER_UPDATE', symbol: event.o?.s, orderId: event.o?.i, clientOrderId: event.o?.c, updatedAt: new Date().toISOString() });
         notifyTelegramExecution(event, req.userId);
       }
@@ -523,6 +554,7 @@ app.get('/api/binance-demo/reconciliation', auth, async (req, res) => {
     const apiKey = decryptSecret(keyRow.api_key), secret = decryptSecret(keyRow.secret_key);
     const signed = (method, apiPath, params = {}) => signedBinanceRequest(apiKey, secret, method, apiPath, params);
     const [positions, ordersBySymbol] = await Promise.all([signed('GET', '/fapi/v2/positionRisk'), Promise.all(SUPPORTED_SYMBOLS.map(symbol => signed('GET', '/fapi/v1/openOrders', { symbol }))) ]);
+    reconcileManualClosedLifecycles(req.userId, positions);
     const artifact = JSON.parse(fs.readFileSync(path.join(__dirname, 'v2', 'artifacts', 'BINANCE_DEMO_LIVE_PIPELINE.json'), 'utf8'));
     const candidates = (artifact.execution_candidates || []).filter(candidate => validateCandidateFreshness(artifact, candidate).ok);
     const reconciliation = reconcileDemoState(candidates, ordersBySymbol.flat(), positions);
@@ -594,6 +626,23 @@ async function syncTradeHistory(userId) {
     run('INSERT INTO trade_history (user_id,inst_id,side,pos_side,size,price,fee,funding_rate,slippage,pnl,ts,raw_json,client_order_id,order_id,trade_id,setup_id,structure_event_id,status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', [userId, symbol, String(trade.side || '').toLowerCase(), trade.positionSide || '', Number(trade.qty || 0), Number(trade.price || 0), Number(trade.commission || 0), 0, 0, Number(trade.realizedPnl || 0), Number(trade.time || Date.now()), JSON.stringify(trade), candidate?.client_order_id || trade.clientOrderId || '', orderId, tradeId, candidate?.setup_id || '', candidate?.structure_event_id || '', Number(trade.realizedPnl || 0) !== 0 ? 'CLOSED' : 'OPEN']);
   }
 }
+function getExecutionLifecycle(userId, thesisKey) {
+  return get('SELECT * FROM execution_lifecycles WHERE user_id = ? AND thesis_key = ?', [userId, thesisKey]);
+}
+function lifecycleBlocksReentry(userId, candidate) {
+  const lifecycle = getExecutionLifecycle(userId, candidate.client_order_id);
+  if (!lifecycle) return false;
+  return lifecycle.position_status === 'CLOSED' || lifecycle.completed_at != null || lifecycle.entry_status === 'FILLED' || lifecycle.position_status === 'OPEN';
+}
+function reconcileManualClosedLifecycles(userId, positions) {
+  const openSymbols = new Set(positions.filter(position => Number(position.positionAmt) !== 0).map(position => position.symbol));
+  for (const lifecycle of all('SELECT * FROM execution_lifecycles WHERE user_id = ? AND position_status = \'OPEN\'', [userId])) {
+    if (openSymbols.has(lifecycle.symbol)) continue;
+    const now = Date.now();
+    run('UPDATE execution_lifecycles SET position_status=\'CLOSED\', close_reason=\'MANUAL\', updated_at=?, completed_at=? WHERE user_id=? AND thesis_key=? AND position_status=\'OPEN\'', [now, now, userId, lifecycle.thesis_key]);
+    run('UPDATE trade_history SET status=\'CLOSED\', close_reason=\'MANUAL\', completed_at=? WHERE user_id=? AND thesis_key=? AND status != \'CLOSED\'', [now, userId, lifecycle.thesis_key]);
+  }
+}
 function assertCurrentActivePlan(candidateId) {
   const artifact = JSON.parse(fs.readFileSync(path.join(__dirname, 'v2', 'artifacts', 'BINANCE_DEMO_LIVE_PIPELINE.json'), 'utf8'));
   const candidate = (artifact.execution_candidates || []).find(item => item.client_order_id === candidateId);
@@ -623,6 +672,7 @@ async function executeDemoCandidate(req, res) {
     const context = await loadServerExecutionCandidate(req.userId, candidateId);
     if (context.error) return res.status(context.error === 'Execution candidate not found' ? 404 : 409).json({ ok: false, demoOnly: true, error: context.error, ordersSent: false, withdrawalsSent: false });
     const { candidate, sizing, precision, signed, settings } = context;
+    if (lifecycleBlocksReentry(req.userId, candidate)) return res.status(409).json({ ok: false, demoOnly: true, status: 'THESIS_LIFECYCLE_TERMINAL', reason: 'Existing lifecycle already filled/open/closed; new entry blocked', clientOrderId: candidate.client_order_id, ordersSent: false, withdrawalsSent: false });
     demoExecutionSummaries.set(String(req.userId), { status: 'PRECHECK', clientOrderId: candidate.client_order_id, leverage: settings.leverage, marginMode: settings.marginMode, attemptAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
     const order = buildDemoEntryOrder(candidate, sizing, precision);
     if (sizing.status !== 'SIZED') return res.status(409).json({ ok: false, demoOnly: true, reason: sizing.status, order, ordersSent: false, withdrawalsSent: false });
@@ -630,7 +680,15 @@ async function executeDemoCandidate(req, res) {
     const protectionPlan = buildProtectionOrders(candidate, sizing, precision);
     const submitProtection = protective => signed('POST', '/fapi/v1/algoOrder', { symbol: protective.symbol, side: protective.side, algoType: 'CONDITIONAL', type: protective.type, triggerPrice: protective.stopPrice, closePosition: protective.closePosition === true || protective.closePosition === 'true' ? 'true' : 'false', workingType: protective.workingType, clientAlgoId: protective.clientOrderId.slice(0, 36) });
     const listProtection = () => signed('GET', '/fapi/v1/openAlgoOrders', { symbol: candidate.symbol });
-    const cancelProtection = order => signed('DELETE', '/fapi/v1/algoOrder', { symbol: candidate.symbol, algoId: String(order.algoId || order.orderId) }).catch(() => null);
+    const ensureProtection = async () => {
+      const expected = buildProtectionOrders(candidate, sizing, precision).orders;
+      const existingProtection = await listProtection();
+      const existingIds = new Set(existingProtection.map(item => item.clientAlgoId || item.clientOrderId));
+      const protection = [];
+      for (const protective of expected) if (!existingIds.has(protective.clientOrderId.slice(0, 36))) protection.push(await submitProtection(protective));
+      const verifiedIds = new Set((await listProtection()).map(item => item.clientAlgoId || item.clientOrderId));
+      return { expected, protection, protectionVerified: expected.every(item => verifiedIds.has(item.clientOrderId.slice(0, 36))) };
+    };
     const permission = demoExecutionGate({ botEnabled: botStates.get(req.cookies.sid) === true, ordersEnabled: enabled, protectiveOrdersReady: protectionPlan.status === 'READY_AFTER_ENTRY_FILL', riskStatus: 'ALLOWED', demoExecutionEnabled: enabled });
     if (!permission.allowed) return res.status(409).json({ ok: false, demoOnly: true, ...permission, order, ordersSent: false, withdrawalsSent: false });
     if (req.body?.explicitApproval !== true) return res.status(409).json({ ok: false, demoOnly: true, status: 'EXPLICIT_APPROVAL_REQUIRED', reason: 'Every Demo order requires immediate user approval', order, ordersSent: false, withdrawalsSent: false });
@@ -659,23 +717,22 @@ async function executeDemoCandidate(req, res) {
       demoExecutionSummaries.set(String(req.userId), { status: 'FILLED_PROTECTED', orderId: existing.orderId, clientOrderId: candidate.client_order_id, protectionVerified: true, updatedAt: new Date().toISOString() });
       return res.json({ ok: true, demoOnly: true, idempotent: true, status: 'FILLED_PROTECTED', entry: existing, protection, protectionVerified: true, ordersSent: true, withdrawalsSent: false });
     }
-    if (existing && ['NEW', 'PARTIALLY_FILLED'].includes(existing.status)) return res.status(409).json({ ok: false, demoOnly: true, status: 'ENTRY_ALREADY_OPEN', entry: existing, ordersSent: true, withdrawalsSent: false });
+    if (existing && ['NEW', 'PARTIALLY_FILLED'].includes(existing.status)) {
+      try {
+        const ensured = await ensureProtection();
+        demoExecutionSummaries.set(String(req.userId), { status: ensured.protectionVerified ? 'ENTRY_ALREADY_OPEN_PROTECTED' : 'ENTRY_OPEN_PROTECTION_PENDING', orderId: existing.orderId, clientOrderId: candidate.client_order_id, protectionVerified: ensured.protectionVerified, updatedAt: new Date().toISOString() });
+        return res.status(409).json({ ok: false, demoOnly: true, status: ensured.protectionVerified ? 'ENTRY_ALREADY_OPEN_PROTECTED' : 'ENTRY_OPEN_PROTECTION_PENDING', entry: existing, protection: ensured.protection, protectionVerified: ensured.protectionVerified, ordersSent: true, withdrawalsSent: false });
+      } catch (error) {
+        return res.status(409).json({ ok: false, demoOnly: true, status: 'ENTRY_OPEN_PROTECTION_PENDING', entry: existing, protectionVerified: false, error: error.message, ordersSent: true, withdrawalsSent: false });
+      }
+    }
     demoExecutionSummaries.set(String(req.userId), { status: 'ORDER_SUBMIT', clientOrderId: candidate.client_order_id, leverage: settings.leverage, marginMode: settings.marginMode, attemptAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
     try { await signed('POST', '/fapi/v1/marginType', { symbol: candidate.symbol, marginType: settings.marginMode === 'CROSS' ? 'CROSSED' : 'ISOLATED' }); } catch (error) { if (!/No need to change margin type/i.test(error.message)) throw error; }
     await signed('POST', '/fapi/v1/leverage', { symbol: candidate.symbol, leverage: String(settings.leverage) });
-    const protectionOrdersBeforeFill = buildProtectionOrders(candidate, sizing, precision).orders;
-    const protectionBeforeFill = [];
-    try {
-      for (const protective of protectionOrdersBeforeFill) protectionBeforeFill.push(await submitProtection(protective));
-      const openProtection = await listProtection();
-      const protectionIds = new Set(openProtection.map(order => order.clientAlgoId || order.clientOrderId));
-      if (!protectionOrdersBeforeFill.every(order => protectionIds.has(order.clientOrderId.slice(0, 36)))) throw new Error('PROTECTION_VERIFICATION_FAILED_BEFORE_FILL');
-    } catch (error) {
-      await Promise.all(protectionBeforeFill.map(order => signed('DELETE', '/fapi/v1/algoOrder', { symbol: candidate.symbol, algoId: String(order.algoId || order.orderId) }).catch(() => null)));
-      return res.status(502).json({ ok: false, demoOnly: true, status: 'PROTECTION_FAILED_ENTRY_NOT_SUBMITTED', protection: protectionBeforeFill, error: error.message, ordersSent: false, withdrawalsSent: false });
-    }
     const entry = await signed('POST', '/fapi/v1/order', { symbol: candidate.symbol, side: candidate.side, type: 'LIMIT', timeInForce: 'GTC', quantity: sizing.quantity, price: sizing.price, newClientOrderId: candidate.client_order_id });
-    demoExecutionSummaries.set(String(req.userId), { status: entry.status || 'ORDER_SENT_PROTECTED', orderId: entry.orderId, clientOrderId: candidate.client_order_id, protectionVerified: true, attemptAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
+    let protectionState = { protection: [], protectionVerified: false };
+    try { protectionState = await ensureProtection(); } catch (error) { protectionState.error = error.message; }
+    demoExecutionSummaries.set(String(req.userId), { status: entry.status || 'ORDER_SENT', orderId: entry.orderId, clientOrderId: candidate.client_order_id, protectionVerified: protectionState.protectionVerified, protectionError: protectionState.error || null, attemptAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
     let current = entry;
     while (!['FILLED', 'CANCELED', 'EXPIRED', 'REJECTED'].includes(current.status)) {
       await new Promise(resolve => setTimeout(resolve, 1000));
@@ -710,30 +767,22 @@ async function executeDemoCandidate(req, res) {
     const execDedup = 'EXEC:' + candidate.symbol + ':' + current.orderId + ':FILLED';
     sendTelegram('<b>JEV EXECUTION</b>\nPair: ' + candidate.symbol + '\nSide: ' + (candidate.side || '-') + '\nOrderID: ' + current.orderId + '\nPrice: ' + (current.avgPrice || current.price || '-') + '\nQty: ' + (current.executedQty || '-') + '\nStatus: FILLED', execDedup, req.userId);
     const protectionOrdersAfterFill = buildProtectionOrders(candidate, sizing, precision).orders;
-    const protectionAfterFill = [];
+    let protectionAfterFill = [];
+    let protectionVerified = false;
     try {
-      for (const protective of protectionOrdersAfterFill) protectionAfterFill.push(await submitProtection(protective));
+      const ensured = await ensureProtection();
+      protectionAfterFill = ensured.protection;
+      protectionVerified = ensured.protectionVerified;
     } catch (error) {
-      await Promise.all(protectionAfterFill.map(order => signed('DELETE', '/fapi/v1/algoOrder', { symbol: candidate.symbol, algoId: String(order.algoId || order.orderId) }).catch(() => null)));
-      const emergency = buildEmergencyCloseOrder(candidate, current.executedQty);
-      let emergencyClose = null;
-      try { emergencyClose = await signed('POST', '/fapi/v1/order', { symbol: emergency.symbol, side: emergency.side, type: emergency.type, quantity: emergency.quantity, reduceOnly: emergency.reduceOnly, newClientOrderId: emergency.clientOrderId }); }
-      catch (closeError) { return res.status(502).json({ ok: false, demoOnly: true, status: 'PROTECTION_FAILED_EMERGENCY_CLOSE_FAILED', entry: current, error: error.message, emergencyCloseError: closeError.message, ordersSent: true, withdrawalsSent: false }); }
-      return res.status(502).json({ ok: false, demoOnly: true, status: 'PROTECTION_FAILED_POSITION_CLOSED', entry: current, protection, emergencyClose, error: error.message, ordersSent: true, withdrawalsSent: false });
+      demoExecutionSummaries.set(String(req.userId), { status: 'FILLED_PROTECTION_PENDING', orderId: current.orderId, clientOrderId: candidate.client_order_id, protectionVerified: false, error: error.message, updatedAt: new Date().toISOString() });
+      return res.status(202).json({ ok: false, demoOnly: true, status: 'FILLED_PROTECTION_PENDING', entry: current, protection: protectionAfterFill, protectionVerified: false, error: error.message, ordersSent: true, withdrawalsSent: false });
     }
-    const openOrders = await listProtection();
-    const protectedIds = new Set(openOrders.map(order => order.clientAlgoId || order.clientOrderId));
-    const protectionVerified = protectionOrders.every(order => protectedIds.has(order.clientOrderId));
     if (!protectionVerified) {
-      await Promise.all(protectionAfterFill.map(order => signed('DELETE', '/fapi/v1/algoOrder', { symbol: candidate.symbol, algoId: String(order.algoId || order.orderId) }).catch(() => null)));
-      const emergency = buildEmergencyCloseOrder(candidate, current.executedQty);
-      let emergencyClose = null;
-      try { emergencyClose = await signed('POST', '/fapi/v1/order', { symbol: emergency.symbol, side: emergency.side, type: emergency.type, quantity: emergency.quantity, reduceOnly: emergency.reduceOnly, newClientOrderId: emergency.clientOrderId }); }
-      catch (error) { return res.status(502).json({ ok: false, demoOnly: true, status: 'PROTECTION_VERIFICATION_FAILED_EMERGENCY_CLOSE_FAILED', entry: current, protection, emergencyCloseError: error.message, ordersSent: true, withdrawalsSent: false }); }
-      return res.status(502).json({ ok: false, demoOnly: true, status: 'PROTECTION_VERIFICATION_FAILED_POSITION_CLOSED', entry: current, protection, emergencyClose, ordersSent: true, withdrawalsSent: false });
+      demoExecutionSummaries.set(String(req.userId), { status: 'FILLED_PROTECTION_PENDING', orderId: current.orderId, clientOrderId: candidate.client_order_id, protectionVerified: false, updatedAt: new Date().toISOString() });
+      return res.status(202).json({ ok: false, demoOnly: true, status: 'FILLED_PROTECTION_PENDING', entry: current, protection: protectionAfterFill, protectionVerified: false, ordersSent: true, withdrawalsSent: false });
     }
     demoExecutionSummaries.set(String(req.userId), { status: 'FILLED_PROTECTED', orderId: current.orderId, clientOrderId: candidate.client_order_id, attemptAt: new Date().toISOString(), updatedAt: new Date().toISOString(), protectionVerified: true });
-        return res.json({ ok: true, demoOnly: true, status: 'FILLED_PROTECTED', entry: current, protection, protectionVerified: true, ordersSent: true, withdrawalsSent: false });
+        return res.json({ ok: true, demoOnly: true, status: 'FILLED_PROTECTED', entry: current, protection: protectionAfterFill, protectionVerified: true, ordersSent: true, withdrawalsSent: false });
   } catch (error) { res.status(502).json({ ok: false, demoOnly: true, error: error.message || 'Binance Demo execution failed', ordersSent: false, withdrawalsSent: false }); }
 }
 app.post('/api/binance-demo/execute-candidate', auth, executeDemoCandidate);
@@ -753,7 +802,7 @@ async function runExecutionCycle(sid) {
   for (const candidate of (artifact.execution_candidates || [])) {
     const freshness = validateCandidateFreshness(artifact, candidate);
     if (!freshness.ok || candidate.status !== 'APPROVED_FOR_EXECUTION') continue;
-    const planDedup = 'PLAN:' + candidate.symbol + ':' + candidate.structure_event_id + ':' + candidate.client_order_id;
+    const planDedup = 'PLAN:' + candidate.symbol + ':' + candidate.client_order_id;
     sendTelegram('JEV PLAN READY\nPair: ' + candidate.symbol + '\nSetup: ' + (candidate.setup_id || '-') + '\nSide: ' + (candidate.side || '-') + '\nEntry: ' + (candidate.entry || '-') + '\nSL: ' + (candidate.sl || '-') + '\nTP: ' + (candidate.tp || '-') + '\nStatus: APPROVED\nExecution: runner submitting to Binance', planDedup, userId);
     if (botStates.get(sid) !== true) return;
     const key = sid + ":" + candidate.client_order_id;
@@ -1173,7 +1222,7 @@ app.post('/api/history', auth, (req, res) => {
 app.get('/api/history', auth, async (req, res) => {
   try { await syncTradeHistory(req.userId); } catch {}
   const date = req.query.date;
-  let sql = 'SELECT * FROM trade_history WHERE user_id = ?';
+  let sql = "SELECT * FROM trade_history WHERE user_id = ? AND status = 'CLOSED'";
   const params = [req.userId];
   if (date) {
     const start = new Date(date + 'T00:00:00').getTime();

@@ -94,26 +94,49 @@ def select_execution_candidates(candidates):
     return [c for c in candidates if c.get("status") == "APPROVED_FOR_EXECUTION"]
 
 
+def _material_setup_identity(plan):
+    evidence = plan.get("evidence") or {}
+    def norm(value):
+        return round(float(value), 8) if isinstance(value, (int, float)) else value
+    return (
+        plan.get("symbol"), plan.get("side"), plan.get("setup_id"),
+        norm(plan.get("entry")), norm(plan.get("sl")), norm(plan.get("tp")),
+        tuple(round(float(x), 8) for x in (plan.get("entry_zone") or [])),
+        evidence.get("entry_source"), evidence.get("sl_source"), evidence.get("tp_source"),
+    )
+
+
+def _stable_thesis_key(plan):
+    evidence = plan.get("evidence") or {}
+    required = ("symbol", "side", "setup_id", "entry", "sl", "tp")
+    if any(plan.get(key) in (None, "") for key in required):
+        return ("EVENT_FALLBACK", plan.get("symbol"), plan.get("structure_event_id"))
+    return (
+        plan.get("symbol"), plan.get("side"), plan.get("setup_id"),
+        round(float(plan.get("entry")), 8), round(float(plan.get("sl")), 8), round(float(plan.get("tp")), 8),
+        tuple(round(float(x), 8) for x in (plan.get("entry_zone") or [])),
+        evidence.get("entry_source"), evidence.get("sl_source"), evidence.get("tp_source"),
+    )
+
+
 def preserve_active_plan(previous, refreshed):
-    """Keep execution identity/prices while active structure thesis remains unchanged."""
+    """Keep one order while selected SetupBot thesis remains materially equal."""
     if not previous or not refreshed:
         return refreshed
     if previous.get("status") in {"FILLED", "CLOSED", "CANCELLED", "INVALIDATED", "EXPIRED"}:
         return refreshed
-    same_thesis = (
-        previous.get("symbol") == refreshed.get("symbol")
-        and previous.get("structure_event_id") == refreshed.get("structure_event_id")
-        and previous.get("side") == refreshed.get("side")
-        and previous.get("setup_id") == refreshed.get("setup_id")
-    )
-    if not same_thesis:
+    if _stable_thesis_key(previous) != _stable_thesis_key(refreshed):
+        return refreshed
+    same_regime = previous.get("side") == refreshed.get("side") and previous.get("setup_id") == refreshed.get("setup_id")
+    if not same_regime:
         return refreshed
     merged = dict(previous)
     for key in ("current_close", "poi_state", "protected_level", "structure_index", "confirmation_index", "evidence"):
         if key in refreshed:
             merged[key] = refreshed[key]
+    merged["client_order_id"] = previous.get("client_order_id")
     merged["status"] = "APPROVED_FOR_EXECUTION"
-    merged["plan_refresh"] = "STRUCTURE_UNCHANGED_ENTRY_PRESERVED"
+    merged["plan_refresh"] = "EXECUTABLE_THESIS_UNCHANGED"
     return merged
 
 
@@ -303,7 +326,8 @@ def main():
                                 row["gate_rejection"] = economics_reason
                             else:
                                 row.update({"live_demo_order": False, "live_demo_plan": {"setup_id": plan.setup_id, "side": plan.side, "entry": plan.entry, "sl": plan.sl, "tp": plan.tp, "rr": plan.rr, "entry_reason": plan.entry_reason, "sl_reason": plan.sl_reason, "tp_reason": plan.tp_reason, "invalidation": plan.invalidation, "entry_zone": plan.entry_zone, "tp_zone": plan.tp_zone, "evidence": plan.evidence}})
-                                client_order_id = "jev_" + hashlib.sha256(f"{symbol}:{plan.evidence['event_id']}".encode()).hexdigest()[:24]
+                                thesis_payload = {"symbol": symbol, "side": "BUY" if plan.side == "BULLISH" else "SELL", "setup_id": plan.setup_id, "entry": round(plan.entry, 8), "sl": round(plan.sl, 8), "tp": round(plan.tp, 8), "entry_zone": [round(float(x), 8) for x in (plan.entry_zone or [])], "entry_source": plan.evidence.get("entry_source"), "sl_source": plan.evidence.get("sl_source"), "tp_source": plan.evidence.get("tp_source")}
+                                client_order_id = "jev_" + hashlib.sha256(json.dumps(thesis_payload, sort_keys=True).encode()).hexdigest()[:24]
                                 row["client_order_id"] = client_order_id
                                 plan_candidates.append({"client_order_id": client_order_id, "symbol": symbol, "structure_event_id": event.event_id, "structure_index": event.index, "confirmation_index": c["index"], "created_at_ms": server_time, "side": "BUY" if plan.side == "BULLISH" else "SELL", "protected_level": event.protected_level or None, "current_close": q[-1]["close"], "poi_type": plan.setup_id.split("_")[0].upper(), "poi_state": c.get("lifecycle_state"), "setup_id": plan.setup_id, "confirmation_event_id": c.get("micro_break_event_id") or c.get("touch_event_id") or c.get("rejection_event_id"), "entry": plan.entry, "sl": plan.sl, "tp": plan.tp, "rr": plan.rr, "invalidation": plan.invalidation, "entry_zone": plan.entry_zone, "tp_zone": plan.tp_zone, "status": "APPROVED_FOR_EXECUTION", "evidence": plan.evidence})
                                 totals["live_demo_candidates"] += 1

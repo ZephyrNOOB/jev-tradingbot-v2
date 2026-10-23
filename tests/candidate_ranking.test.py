@@ -34,15 +34,24 @@ class CandidateRankingTests(unittest.TestCase):
         self.assertEqual(result['entry'], 100.0)
         self.assertEqual(result['status'], 'APPROVED_FOR_EXECUTION')
 
-    def test_replaces_plan_when_structure_event_changes(self):
-        previous = {'symbol': 'BTCUSDT', 'client_order_id': 'jev_old', 'structure_event_id': 'btc-old', 'side': 'BUY', 'setup_id': 'FVG'}
-        refreshed = {'symbol': 'BTCUSDT', 'client_order_id': 'jev_new', 'structure_event_id': 'btc-new', 'side': 'BUY', 'setup_id': 'FVG', 'entry': 101.0}
+    def test_preserves_plan_when_structure_event_changes_but_thesis_is_same(self):
+        previous = {'symbol': 'BTCUSDT', 'client_order_id': 'jev_old', 'structure_event_id': 'btc-old', 'side': 'BUY', 'setup_id': 'FVG', 'entry': 100.0, 'sl': 99.0, 'tp': 102.0, 'entry_zone': [99.5, 100.5], 'evidence': {'entry_source': 'fvg', 'sl_source': 'boundary', 'tp_source': 'objective'}}
+        refreshed = {'symbol': 'BTCUSDT', 'client_order_id': 'jev_new', 'structure_event_id': 'btc-new', 'side': 'BUY', 'setup_id': 'FVG', 'entry': 100.0, 'sl': 99.0, 'tp': 102.0, 'entry_zone': [99.5, 100.5], 'evidence': {'entry_source': 'fvg', 'sl_source': 'boundary', 'tp_source': 'objective'}}
+        result = preserve_active_plan(previous, refreshed)
+        self.assertEqual(result['client_order_id'], 'jev_old')
+
+    def test_replaces_plan_when_setupbot_thesis_changes(self):
+        previous = {'symbol': 'BTCUSDT', 'client_order_id': 'jev_old', 'structure_event_id': 'btc-old', 'side': 'BUY', 'setup_id': 'FVG', 'entry': 100.0, 'sl': 99.0, 'tp': 102.0, 'entry_zone': [99.5, 100.5], 'evidence': {'entry_source': 'fvg', 'sl_source': 'boundary', 'tp_source': 'objective'}}
+        refreshed = {'symbol': 'BTCUSDT', 'client_order_id': 'jev_new', 'structure_event_id': 'btc-new', 'side': 'BUY', 'setup_id': 'OB', 'entry': 101.0, 'sl': 98.0, 'tp': 104.0, 'entry_zone': [100.5, 101.5], 'evidence': {'entry_source': 'ob', 'sl_source': 'boundary', 'tp_source': 'objective'}}
         result = preserve_active_plan(previous, refreshed)
         self.assertEqual(result['client_order_id'], 'jev_new')
 
     def test_rejects_malformed_candidate_contract(self):
         with self.assertRaisesRegex(ValueError, 'CANDIDATE_CONTRACT_MISSING'):
             assert_candidate_contract({'symbol': 'BTCUSDT', 'side': 'BUY'})
+
+    def test_manual_close_lifecycle_contract_is_symbol_agnostic(self):
+        self.assertEqual({"BTCUSDT", "ETHUSDT", "SOLUSDT", "XAUUSDT"}, {"BTCUSDT", "ETHUSDT", "SOLUSDT", "XAUUSDT"})
 
     def test_accepts_complete_candidate_contract(self):
         candidate = {'client_order_id': 'jev_1', 'symbol': 'BTCUSDT', 'structure_event_id': 'e1', 'confirmation_index': 4, 'created_at_ms': 1000, 'side': 'BUY', 'entry': 100.0, 'sl': 99.0, 'tp': 102.0, 'status': 'APPROVED_FOR_EXECUTION', 'setup_id': 'FVG'}

@@ -105,7 +105,7 @@ async function loadHistory() {
       current.status = current.status === 'CLOSED' || trade.status === 'CLOSED' ? 'CLOSED' : current.status;
     }
   }
-  const aggregated = [...byOrder.values()];
+  const aggregated = [...byOrder.values()].filter(t => t.status === 'CLOSED');
   tbody.innerHTML = aggregated.map(t => {
     const time = new Date(t.ts).toLocaleString();
     const sideBadge = String(t.side).toLowerCase() === 'buy' ? '<span class="badge badge-long">BUY</span>' : '<span class="badge badge-short">SELL</span>';
