@@ -113,8 +113,7 @@ def _stable_thesis_key(plan):
         return ("EVENT_FALLBACK", plan.get("symbol"), plan.get("structure_event_id"))
     return (
         plan.get("symbol"), plan.get("side"), plan.get("setup_id"),
-        round(float(plan.get("entry")), 8), round(float(plan.get("sl")), 8), round(float(plan.get("tp")), 8),
-        tuple(round(float(x), 8) for x in (plan.get("entry_zone") or [])),
+        round(float(plan.get("entry")), 8), round(float(plan.get("sl")), 8),
         evidence.get("entry_source"), evidence.get("sl_source"), evidence.get("tp_source"),
     )
 
@@ -326,7 +325,7 @@ def main():
                                 row["gate_rejection"] = economics_reason
                             else:
                                 row.update({"live_demo_order": False, "live_demo_plan": {"setup_id": plan.setup_id, "side": plan.side, "entry": plan.entry, "sl": plan.sl, "tp": plan.tp, "rr": plan.rr, "entry_reason": plan.entry_reason, "sl_reason": plan.sl_reason, "tp_reason": plan.tp_reason, "invalidation": plan.invalidation, "entry_zone": plan.entry_zone, "tp_zone": plan.tp_zone, "evidence": plan.evidence}})
-                                thesis_payload = {"symbol": symbol, "side": "BUY" if plan.side == "BULLISH" else "SELL", "setup_id": plan.setup_id, "entry": round(plan.entry, 8), "sl": round(plan.sl, 8), "tp": round(plan.tp, 8), "entry_zone": [round(float(x), 8) for x in (plan.entry_zone or [])], "entry_source": plan.evidence.get("entry_source"), "sl_source": plan.evidence.get("sl_source"), "tp_source": plan.evidence.get("tp_source")}
+                                thesis_payload = {"symbol": symbol, "side": "BUY" if plan.side == "BULLISH" else "SELL", "setup_id": plan.setup_id, "entry": round(plan.entry, 8), "sl": round(plan.sl, 8), "entry_source": plan.evidence.get("entry_source"), "sl_source": plan.evidence.get("sl_source")}
                                 client_order_id = "jev_" + hashlib.sha256(json.dumps(thesis_payload, sort_keys=True).encode()).hexdigest()[:24]
                                 row["client_order_id"] = client_order_id
                                 plan_candidates.append({"client_order_id": client_order_id, "symbol": symbol, "structure_event_id": event.event_id, "structure_index": event.index, "confirmation_index": c["index"], "created_at_ms": server_time, "side": "BUY" if plan.side == "BULLISH" else "SELL", "protected_level": event.protected_level or None, "current_close": q[-1]["close"], "poi_type": plan.setup_id.split("_")[0].upper(), "poi_state": c.get("lifecycle_state"), "setup_id": plan.setup_id, "confirmation_event_id": c.get("micro_break_event_id") or c.get("touch_event_id") or c.get("rejection_event_id"), "entry": plan.entry, "sl": plan.sl, "tp": plan.tp, "rr": plan.rr, "invalidation": plan.invalidation, "entry_zone": plan.entry_zone, "tp_zone": plan.tp_zone, "status": "APPROVED_FOR_EXECUTION", "evidence": plan.evidence})

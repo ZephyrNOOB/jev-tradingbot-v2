@@ -518,15 +518,25 @@ app.get('/api/binance-demo/live-readiness', auth, async (req, res) => {
     const executionPolicy = { tradeAmountUsdt: Number(tradeAmount?.amount_usdt), leverage: Number(tradeAmount?.leverage || 1), marginMode: tradeAmount?.margin_mode || 'ISOLATED' };
     const artifact = JSON.parse(fs.readFileSync(path.join(__dirname, 'v2', 'artifacts', 'BINANCE_DEMO_LIVE_PIPELINE.json'), 'utf8'));
     const dailyPnl = Array.isArray(income) ? income.reduce((total, row) => total + Number(row.income || 0), 0) : 0;
+    reconcileManualClosedLifecycles(req.userId, positions);
     const artifactFreshness = validateCandidateFreshness(artifact, artifact.execution_candidates?.[0]);
     if (!artifactFreshness.ok) blockers.push(artifactFreshness.reason);
-    const candidates = (artifact.execution_candidates || []).map(candidate => { const freshness = validateCandidateFreshness(artifact, candidate); const normalized = normalizeCandidatePrices(candidate, filters[candidate.symbol]); const sizing = sizeCandidate(normalized, executionPolicy, balances[0] || {}, filters[candidate.symbol]); return { candidate: normalized, freshness, sizing, precision: validateCandidatePrecision(normalized, sizing, filters[candidate.symbol]) }; });
+    const candidates = (artifact.execution_candidates || []).filter(candidate => !lifecycleBlocksReentry(req.userId, candidate)).map(candidate => { const freshness = validateCandidateFreshness(artifact, candidate); const normalized = normalizeCandidatePrices(candidate, filters[candidate.symbol]); const sizing = sizeCandidate(normalized, executionPolicy, balances[0] || {}, filters[candidate.symbol]); return { candidate: normalized, freshness, sizing, precision: validateCandidatePrecision(normalized, sizing, filters[candidate.symbol]) }; });
     if (!candidates.some(x => x.freshness.ok && x.sizing.status === 'SIZED' && x.precision === 'VALID')) blockers.push('NO_VALID_SERVER_SIZED_CANDIDATE');
     const openPositions = positions.filter(position => Number(position.positionAmt) !== 0);
     const openOrders = await Promise.all(SUPPORTED_SYMBOLS.map(symbol => signed('GET', '/fapi/v1/openOrders', { symbol }))).then(groups => groups.flat());
+    const openAlgoOrders = await signed('GET', '/fapi/v1/openAlgoOrders');
+    reconcileManualClosedLifecycles(req.userId, positions);
     const monitoring = monitorProtectionState(artifact.execution_candidates || [], openOrders, openPositions);
     blockers.push(...readinessBlockers(monitoring));
-    res.json({ ok: true, ready: blockers.length === 0, executionMode: 'LIVE_DEMO', demoOnly: true, blockers, userStream: getBinanceUserStreamState(String(req.userId)), candidateCount: candidates.length, validCandidateCount: candidates.filter(x => x.sizing.status === 'SIZED' && x.precision === 'VALID').length, ordersSent: null, withdrawalsSent: null });
+    const reconciliation = reconcileDemoState((artifact.execution_candidates || []).filter(candidate => validateCandidateFreshness(artifact, candidate).ok), openOrders, positions);
+    if (reconciliation.status !== 'RECONCILED') blockers.push('RECONCILIATION_REVIEW_REQUIRED');
+    const lastExecution = demoExecutionSummaries.get(String(req.userId));
+    if (String(lastExecution?.status || '').includes('PROTECTION_FAILED') || String(lastExecution?.status || '').includes('PROTECTION_PENDING')) blockers.push('EXECUTION_PROTECTION_FAILURE');
+    if (lastExecution?.status === 'PROTECTION_FAILED_EMERGENCY_CLOSE_FAILED') blockers.push('UNCONTAINED_EXECUTION_FAILURE');
+    if (reconciliation.status !== 'RECONCILED') blockers.push('RECONCILIATION_REVIEW_REQUIRED');
+    if (reconciliation.unmanagedOrders?.length || reconciliation.unmanagedPositions?.length) blockers.push('UNMANAGED_EXCHANGE_STATE');
+    res.json({ ok: true, ready: blockers.length === 0, executionMode: 'LIVE_DEMO', demoOnly: true, blockers, reconciliationStatus: reconciliation.status, userStream: getBinanceUserStreamState(String(req.userId)), candidateCount: candidates.length, validCandidateCount: candidates.filter(x => x.sizing.status === 'SIZED' && x.precision === 'VALID').length, ordersSent: null, withdrawalsSent: null });
   } catch (error) { res.status(502).json({ ok: false, ready: false, executionMode: 'LIVE_DEMO', demoOnly: true, blockers: ['BINANCE_DEMO_READINESS_FAILED'], error: error.message, ordersSent: null, withdrawalsSent: null }); }
 });app.get('/api/binance-demo/execution-preflight', auth, async (req, res) => {
   const keyRow = get("SELECT * FROM api_keys WHERE id = (SELECT id FROM api_keys WHERE user_id = ? AND exchange = 'binanceTestnet' AND status = 'connected' ORDER BY id DESC LIMIT 1)", [req.userId]);
@@ -542,7 +552,7 @@ app.get('/api/binance-demo/live-readiness', auth, async (req, res) => {
     const executionPolicy = { tradeAmountUsdt: Number(tradeAmount?.amount_usdt), leverage: Number(tradeAmount?.leverage || 1), marginMode: tradeAmount?.margin_mode || 'ISOLATED' };
     const artifact = JSON.parse(fs.readFileSync(path.join(__dirname, 'v2', 'artifacts', 'BINANCE_DEMO_LIVE_PIPELINE.json'), 'utf8'));
     const dailyPnl = Array.isArray(income) ? income.reduce((total, row) => total + Number(row.income || 0), 0) : 0;
-    const candidates = (artifact.execution_candidates || []).map(candidate => { const freshness = validateCandidateFreshness(artifact, candidate); const normalized = normalizeCandidatePrices(candidate, filters[candidate.symbol]); const sizing = sizeCandidate(normalized, executionPolicy, balances.find(x => x.asset === 'USDT') || {}, filters[candidate.symbol]); return { ...candidate, freshness, normalized, sizing, precisionValidation: validateCandidatePrecision(normalized, sizing, filters[candidate.symbol]) }; });
+    const candidates = (artifact.execution_candidates || []).filter(candidate => !lifecycleBlocksReentry(req.userId, candidate)).map(candidate => { const freshness = validateCandidateFreshness(artifact, candidate); const normalized = normalizeCandidatePrices(candidate, filters[candidate.symbol]); const sizing = sizeCandidate(normalized, executionPolicy, balances.find(x => x.asset === 'USDT') || {}, filters[candidate.symbol]); return { ...candidate, freshness, normalized, sizing, precisionValidation: validateCandidatePrecision(normalized, sizing, filters[candidate.symbol]) }; });
     const validCandidates = candidates.filter(x => x.freshness.ok && x.sizing.status === 'SIZED' && x.precisionValidation === 'VALID');
     res.json({ ok: true, executionMode: 'LIVE_DEMO', demoOnly: true, status: validCandidates.length ? 'PREFLIGHT_READY' : 'PREFLIGHT_BLOCKED', tradeAmountUsdt: executionPolicy.tradeAmountUsdt, leverage: executionPolicy.leverage, marginMode: executionPolicy.marginMode, balances, openPositions, dailyPnl: Number(dailyPnl), filters, candidates, validCandidateCount: validCandidates.length, ordersSent: null, withdrawalsSent: null });
   } catch (error) { res.status(502).json({ ok: false, executionMode: 'LIVE_DEMO', demoOnly: true, error: error.message || 'Demo execution preflight failed', ordersSent: null, withdrawalsSent: null }); }
@@ -556,7 +566,7 @@ app.get('/api/binance-demo/reconciliation', auth, async (req, res) => {
     const [positions, ordersBySymbol] = await Promise.all([signed('GET', '/fapi/v2/positionRisk'), Promise.all(SUPPORTED_SYMBOLS.map(symbol => signed('GET', '/fapi/v1/openOrders', { symbol }))) ]);
     reconcileManualClosedLifecycles(req.userId, positions);
     const artifact = JSON.parse(fs.readFileSync(path.join(__dirname, 'v2', 'artifacts', 'BINANCE_DEMO_LIVE_PIPELINE.json'), 'utf8'));
-    const candidates = (artifact.execution_candidates || []).filter(candidate => validateCandidateFreshness(artifact, candidate).ok);
+    const candidates = (artifact.execution_candidates || []).filter(candidate => validateCandidateFreshness(artifact, candidate).ok && !lifecycleBlocksReentry(req.userId, candidate));
     const reconciliation = reconcileDemoState(candidates, ordersBySymbol.flat(), positions);
     const monitoring = monitorProtectionState(candidates, ordersBySymbol.flat(), positions);
     const status = reconciliation.status === 'RECONCILED' && !readinessBlockers(monitoring).length ? 'RECONCILIATION_PASS' : 'RECONCILIATION_BLOCKED';
@@ -632,7 +642,7 @@ function getExecutionLifecycle(userId, thesisKey) {
 function lifecycleBlocksReentry(userId, candidate) {
   const lifecycle = getExecutionLifecycle(userId, candidate.client_order_id);
   if (!lifecycle) return false;
-  return lifecycle.position_status === 'CLOSED' || lifecycle.completed_at != null || lifecycle.entry_status === 'FILLED' || lifecycle.position_status === 'OPEN';
+  return lifecycle.position_status === 'CLOSED' || lifecycle.completed_at != null || ['NEW', 'PARTIALLY_FILLED', 'FILLED'].includes(lifecycle.entry_status) || ['OPEN', 'CLOSED'].includes(lifecycle.position_status);
 }
 function reconcileManualClosedLifecycles(userId, positions) {
   const openSymbols = new Set(positions.filter(position => Number(position.positionAmt) !== 0).map(position => position.symbol));
@@ -680,14 +690,32 @@ async function executeDemoCandidate(req, res) {
     const protectionPlan = buildProtectionOrders(candidate, sizing, precision);
     const submitProtection = protective => signed('POST', '/fapi/v1/algoOrder', { symbol: protective.symbol, side: protective.side, algoType: 'CONDITIONAL', type: protective.type, triggerPrice: protective.stopPrice, closePosition: protective.closePosition === true || protective.closePosition === 'true' ? 'true' : 'false', workingType: protective.workingType, clientAlgoId: protective.clientOrderId.slice(0, 36) });
     const listProtection = () => signed('GET', '/fapi/v1/openAlgoOrders', { symbol: candidate.symbol });
+    const waitForPosition = async () => {
+      for (let attempt = 0; attempt < 6; attempt += 1) {
+        const positions = await signed('GET', '/fapi/v2/positionRisk', { symbol: candidate.symbol });
+        if (positions.some(position => Number(position.positionAmt) !== 0)) return true;
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+      return false;
+    };
     const ensureProtection = async () => {
       const expected = buildProtectionOrders(candidate, sizing, precision).orders;
-      const existingProtection = await listProtection();
-      const existingIds = new Set(existingProtection.map(item => item.clientAlgoId || item.clientOrderId));
-      const protection = [];
-      for (const protective of expected) if (!existingIds.has(protective.clientOrderId.slice(0, 36))) protection.push(await submitProtection(protective));
-      const verifiedIds = new Set((await listProtection()).map(item => item.clientAlgoId || item.clientOrderId));
-      return { expected, protection, protectionVerified: expected.every(item => verifiedIds.has(item.clientOrderId.slice(0, 36))) };
+      if (!(await waitForPosition())) return { expected, protection: [], protectionVerified: false, error: 'POSITION_NOT_VISIBLE_YET' };
+      let lastError = null;
+      for (let attempt = 0; attempt < 5; attempt += 1) {
+        const existingProtection = await listProtection();
+        const existingIds = new Set(existingProtection.map(item => item.clientAlgoId || item.clientOrderId));
+        const protection = [];
+        try {
+          for (const protective of expected) if (!existingIds.has(protective.clientOrderId.slice(0, 36))) protection.push(await submitProtection(protective));
+          const verifiedIds = new Set((await listProtection()).map(item => item.clientAlgoId || item.clientOrderId));
+          return { expected, protection, protectionVerified: expected.every(item => verifiedIds.has(item.clientOrderId.slice(0, 36))) };
+        } catch (error) {
+          lastError = error;
+          await new Promise(resolve => setTimeout(resolve, 500 * (attempt + 1)));
+        }
+      }
+      throw lastError || new Error('PROTECTION_RETRY_EXHAUSTED');
     };
     const permission = demoExecutionGate({ botEnabled: botStates.get(req.cookies.sid) === true, ordersEnabled: enabled, protectiveOrdersReady: protectionPlan.status === 'READY_AFTER_ENTRY_FILL', riskStatus: 'ALLOWED', demoExecutionEnabled: enabled });
     if (!permission.allowed) return res.status(409).json({ ok: false, demoOnly: true, ...permission, order, ordersSent: false, withdrawalsSent: false });
@@ -807,7 +835,7 @@ async function runExecutionCycle(sid) {
     if (botStates.get(sid) !== true) return;
     const key = sid + ":" + candidate.client_order_id;
     const prior = demoExecutionSummaries.get(sid);
-    if (!candidate.client_order_id || (executionAttempts.has(key) && ['FILLED_PROTECTED', 'PROTECTION_FAILED_POSITION_CLOSED', 'PROTECTION_FAILED_EMERGENCY_CLOSE_FAILED'].includes(prior?.status))) continue;
+    if (!candidate.client_order_id || lifecycleBlocksReentry(userId, candidate) || (executionAttempts.has(key) && ['FILLED_PROTECTED', 'PROTECTION_FAILED_POSITION_CLOSED', 'PROTECTION_FAILED_EMERGENCY_CLOSE_FAILED'].includes(prior?.status))) continue;
     executionAttempts.set(key, true);
     let payload;
     const response = { statusCode: 200, status(code) { this.statusCode = code; return this; }, json(body) { payload = body; return this; } };
