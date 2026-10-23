@@ -14,7 +14,7 @@ export function validateCandidateFreshness(artifact, candidate, now = Date.now()
 }
 
 if (import.meta.url === `file://${process.argv[1]?.replaceAll('\\', '/')}`) {
-  const artifact = { status: 'PASS', server_time: 1000, latest_structure_event_ids: { BTCUSDT: 'e2' } };
+  const artifact = { status: 'PASS', server_time: 1000, latest_structure_event_ids: { BTCUSDT: 'e2' }, latest_confirmed_structure_event_ids: { BTCUSDT: 'e2' } };
   const candidate = { symbol: 'BTCUSDT', status: 'APPROVED_FOR_EXECUTION', structure_event_id: 'e2' };
   if (!validateCandidateFreshness(artifact, candidate, 2000).ok) throw new Error('freshness self-check failed');
 }

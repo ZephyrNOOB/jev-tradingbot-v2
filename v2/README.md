@@ -21,8 +21,8 @@ Continuation Bullish/Bearish is archived and inactive. CHoCH/MSS and liquidity-s
 ## Safety boundary
 
 - Closed candles only.
-- Demo REST observation only.
-- `orders_sent: false`.
+- Binance Demo REST/user-stream execution only.
+- `ordersSent: null` until exchange evidence exists; no fabricated fill state.
 - No withdrawal.
 - No live account.
 - Virtual plans require setup-zone provenance, structure evidence, valid SL/TP geometry, and fee/slippage economics.

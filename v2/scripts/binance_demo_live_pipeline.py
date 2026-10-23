@@ -93,6 +93,48 @@ def select_execution_candidates(candidates):
     """Compatibility wrapper; caller must use rank_and_approve_candidates first."""
     return [c for c in candidates if c.get("status") == "APPROVED_FOR_EXECUTION"]
 
+
+def preserve_active_plan(previous, refreshed):
+    """Keep execution identity/prices while active structure thesis remains unchanged."""
+    if not previous or not refreshed:
+        return refreshed
+    if previous.get("status") in {"FILLED", "CLOSED", "CANCELLED", "INVALIDATED", "EXPIRED"}:
+        return refreshed
+    same_thesis = (
+        previous.get("symbol") == refreshed.get("symbol")
+        and previous.get("structure_event_id") == refreshed.get("structure_event_id")
+        and previous.get("side") == refreshed.get("side")
+        and previous.get("setup_id") == refreshed.get("setup_id")
+    )
+    if not same_thesis:
+        return refreshed
+    merged = dict(previous)
+    for key in ("current_close", "poi_state", "protected_level", "structure_index", "confirmation_index", "evidence"):
+        if key in refreshed:
+            merged[key] = refreshed[key]
+    merged["status"] = "APPROVED_FOR_EXECUTION"
+    merged["plan_refresh"] = "STRUCTURE_UNCHANGED_ENTRY_PRESERVED"
+    return merged
+
+
+def preserve_active_plans(previous_by_symbol, candidates):
+    """Deduplicate refresh snapshots by stable structure thesis identity."""
+    return [preserve_active_plan(previous_by_symbol.get(c["symbol"]), c) for c in candidates]
+
+
+def assert_candidate_contract(candidate):
+    """Reject malformed plans before ranking or exchange-side execution."""
+    required = ("client_order_id", "symbol", "structure_event_id", "confirmation_index", "created_at_ms", "side", "entry", "sl", "tp", "status", "setup_id")
+    missing = [key for key in required if candidate.get(key) in (None, "")]
+    if missing:
+        raise ValueError(f"CANDIDATE_CONTRACT_MISSING:{','.join(missing)}")
+    if candidate["side"] not in {"BUY", "SELL"}:
+        raise ValueError("CANDIDATE_CONTRACT_INVALID_SIDE")
+    for key in ("entry", "sl", "tp", "created_at_ms"):
+        if not isinstance(candidate[key], (int, float)):
+            raise ValueError(f"CANDIDATE_CONTRACT_INVALID_{key.upper()}")
+    return candidate
+
 CANDIDATE_FRESHNESS_MS = 15 * 60 * 1000
 
 def invalidate_stale_candidates(candidates, latest_structure_event_ids, structure_events=None, now_ms=None):
@@ -201,6 +243,12 @@ def event_visual_geometry(event, candles):
 
 def main():
     server_time = int(get("/fapi/v1/time")["serverTime"])
+    previous_active_plans = {}
+    try:
+        previous_artifact = json.loads((ART / "BINANCE_DEMO_LIVE_PIPELINE.json").read_text(encoding="utf-8"))
+        previous_active_plans = previous_artifact.get("active_plan_by_symbol", {})
+    except (OSError, json.JSONDecodeError):
+        pass
     observations = {}; plan_candidates = []; latest_structure_event_ids = {}; latest_confirmed_structure_event_ids = {}; totals = {"bias_ready": 0, "structure_events": 0, "confirmed_5m": 0, "selected_events": 0, "live_demo_candidates": 0, "gate_rejections": 0}
     for symbol in SYMBOLS:
         h, m, q = rows(symbol, "1h"), rows(symbol, "15m"), rows(symbol, "5m")
@@ -219,7 +267,7 @@ def main():
             if b.get("valid"): totals["bias_ready"] += 1
             if decision["state"] == "SELECTION_RESOLVED": totals["selected_events"] += 1
             else: totals["gate_rejections"] += 1
-            row = {"event_id": event.event_id, "kind": event.kind, "side": event.side, "structure_index": event.index, **event_visual_geometry(event, m), "source_times": [m[i]["close_time"] for i in event.source_indices if 0 <= i < len(m)], "broken_level": event.broken_level, "protected_level": event.protected_level, "ob_source_index": event.ob_source_index, "ob_source_time": m[event.ob_source_index]["close_time"] if 0 <= event.ob_source_index < len(m) else None, "ob_zone_low": event.ob_zone_low, "ob_zone_high": event.ob_zone_high, "flip_level": event.flip_level, "structure_layer": getattr(event, "structure_layer", "SWING"), "level_classification": getattr(event, "level_classification", ""), "pool_id": getattr(event, "pool_id", ""), "sweep_level": getattr(event, "sweep_level", 0.0), "sweep_extreme": getattr(event, "sweep_extreme", 0.0), "source_event_ids": list(event.source_indices), "parent_event_id": event.parent_event_id, "bias": b.get("state"), "confirmation": c["state"], "continuation_state": c.get("continuation_state"), "lifecycle_state": c.get("lifecycle_state"), "zone_bounds": c.get("zone_bounds"), "touch_event_id": c.get("touch_event_id"), "selection": decision["state"], "selection_reason": decision.get("reason"), "selection_method": decision.get("selection_method"), "primary_owner": decision.get("primary_owner"), "eligible_setup_candidates": decision.get("candidates", []), "contributing_contexts": decision.get("contributing_contexts", []), "setup_strength_profiles": decision.get("setup_strength_profiles", []), "setup_eligibility_ledger": decision.get("ledger", []), "selected_setup": decision.get("selected"), "live_demo_order": False}
+            row = {"event_id": event.event_id, "kind": event.kind, "side": event.side, "structure_index": event.index, **event_visual_geometry(event, m), "source_times": [m[i]["close_time"] for i in event.source_indices if 0 <= i < len(m)], "broken_level": event.broken_level, "protected_level": event.protected_level, "ob_source_index": event.ob_source_index, "ob_source_time": m[event.ob_source_index]["close_time"] if 0 <= event.ob_source_index < len(m) else None, "ob_zone_low": event.ob_zone_low, "ob_zone_high": event.ob_zone_high, "flip_level": event.flip_level, "structure_layer": getattr(event, "structure_layer", "SWING"), "line_style": "DASHED" if getattr(event, "structure_layer", "SWING") == "INTERNAL" else "SOLID", "label_size": "TINY" if getattr(event, "structure_layer", "SWING") == "INTERNAL" else "SMALL", "ob_layer": "INTERNAL" if getattr(event, "structure_layer", "SWING") == "INTERNAL" else "SWING", "level_classification": getattr(event, "level_classification", ""), "pool_id": getattr(event, "pool_id", ""), "sweep_level": getattr(event, "sweep_level", 0.0), "sweep_extreme": getattr(event, "sweep_extreme", 0.0), "source_event_ids": list(event.source_indices), "parent_event_id": event.parent_event_id, "bias": b.get("state"), "confirmation": c["state"], "continuation_state": c.get("continuation_state"), "lifecycle_state": c.get("lifecycle_state"), "zone_bounds": c.get("zone_bounds"), "touch_event_id": c.get("touch_event_id"), "selection": decision["state"], "selection_reason": decision.get("reason"), "selection_method": decision.get("selection_method"), "primary_owner": decision.get("primary_owner"), "eligible_setup_candidates": decision.get("candidates", []), "contributing_contexts": decision.get("contributing_contexts", []), "setup_strength_profiles": decision.get("setup_strength_profiles", []), "setup_eligibility_ledger": decision.get("ledger", []), "selected_setup": decision.get("selected"), "live_demo_order": False}
             confirmation_indices = c.get("source_indices", []) or c.get("source_5m_indices", []) or ([c.get("index")] if c.get("index") is not None else [])
             confirmation_indices = [index for index in confirmation_indices if isinstance(index, int) and 0 <= index < len(q)]
             terminal_time = q[confirmation_indices[-1]]["close_time"] if confirmation_indices and 0 <= confirmation_indices[-1] < len(q) else None
@@ -257,13 +305,16 @@ def main():
                                 row.update({"live_demo_order": False, "live_demo_plan": {"setup_id": plan.setup_id, "side": plan.side, "entry": plan.entry, "sl": plan.sl, "tp": plan.tp, "rr": plan.rr, "entry_reason": plan.entry_reason, "sl_reason": plan.sl_reason, "tp_reason": plan.tp_reason, "invalidation": plan.invalidation, "entry_zone": plan.entry_zone, "tp_zone": plan.tp_zone, "evidence": plan.evidence}})
                                 client_order_id = "jev_" + hashlib.sha256(f"{symbol}:{plan.evidence['event_id']}".encode()).hexdigest()[:24]
                                 row["client_order_id"] = client_order_id
-                                plan_candidates.append({"client_order_id": client_order_id, "symbol": symbol, "structure_event_id": event.event_id, "structure_index": event.index, "confirmation_index": c["index"], "created_at_ms": max(int(m[event.index]["close_time"]), int(q[c["index"]]["close_time"])), "side": "BUY" if plan.side == "BULLISH" else "SELL", "protected_level": event.protected_level or None, "current_close": q[-1]["close"], "poi_type": plan.setup_id.split("_")[0].upper(), "poi_state": c.get("lifecycle_state"), "setup_id": plan.setup_id, "entry": plan.entry, "sl": plan.sl, "tp": plan.tp, "rr": plan.rr, "invalidation": plan.invalidation, "entry_zone": plan.entry_zone, "tp_zone": plan.tp_zone, "status": "APPROVED_FOR_EXECUTION", "evidence": plan.evidence})
+                                plan_candidates.append({"client_order_id": client_order_id, "symbol": symbol, "structure_event_id": event.event_id, "structure_index": event.index, "confirmation_index": c["index"], "created_at_ms": server_time, "side": "BUY" if plan.side == "BULLISH" else "SELL", "protected_level": event.protected_level or None, "current_close": q[-1]["close"], "poi_type": plan.setup_id.split("_")[0].upper(), "poi_state": c.get("lifecycle_state"), "setup_id": plan.setup_id, "confirmation_event_id": c.get("micro_break_event_id") or c.get("touch_event_id") or c.get("rejection_event_id"), "entry": plan.entry, "sl": plan.sl, "tp": plan.tp, "rr": plan.rr, "invalidation": plan.invalidation, "entry_zone": plan.entry_zone, "tp_zone": plan.tp_zone, "status": "APPROVED_FOR_EXECUTION", "evidence": plan.evidence})
                                 totals["live_demo_candidates"] += 1
             symbol_rows.append(row)
         latest_confirmed_structure_event_ids[symbol] = next((row["event_id"] for row in reversed(symbol_rows) if row.get("confirmation") == "CONFIRMED" and (row.get("selected_setup") or row.get("kind") in ("BOS", "CHoCH_MSS", "LIQUIDITY_SWEEP", "BREAKER_BLOCK"))), None)
         observations[symbol] = {"closed_counts": {"1h": len(h), "15m": len(m), "5m": len(q)}, "latest_closed_candle": {"1h": h[-1]["close_time"], "15m": m[-1]["close_time"], "5m": q[-1]["close_time"]}, "recent_events": symbol_rows, "swing_visuals": swing_visuals(m)}
 
     structure_events = {symbol: rows_data["recent_events"] for symbol, rows_data in observations.items()}
+    plan_candidates = preserve_active_plans(previous_active_plans, plan_candidates)
+    for candidate in plan_candidates:
+        assert_candidate_contract(candidate)
     plan_candidates = invalidate_stale_candidates(plan_candidates, latest_structure_event_ids, structure_events, server_time)
     rank_and_approve_candidates(plan_candidates, latest_structure_event_ids)
     execution_candidates = collapse_active_plans(observations, plan_candidates)

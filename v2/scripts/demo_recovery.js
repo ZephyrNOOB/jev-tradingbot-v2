@@ -8,5 +8,5 @@ export function buildRecoveryPlan(candidate, sizing, precisionValidation, monito
   const orders = [];
   if (!monitoring.hasSl) orders.push({ clientOrderId: `${candidate.client_order_id}_sl`, symbol: candidate.symbol, side: exitSide, type: 'STOP_MARKET', stopPrice: String(candidate.sl), closePosition: 'true', workingType: 'MARK_PRICE' });
   if (!monitoring.hasTp) orders.push({ clientOrderId: `${candidate.client_order_id}_tp`, symbol: candidate.symbol, side: exitSide, type: 'TAKE_PROFIT_MARKET', stopPrice: String(candidate.tp), closePosition: 'true', workingType: 'MARK_PRICE' });
-  return { status: 'PLAN_ONLY', executionMode: 'READ_ONLY', orders, ordersSent: null };
+  return { status: 'PLAN_ONLY', executionMode: 'LIVE_DEMO', orders, ordersSent: null };
 }

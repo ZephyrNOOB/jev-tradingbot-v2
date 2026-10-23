@@ -284,8 +284,8 @@ def build_contexts(candles, rows_1h=None, upto=None, symbol=SYMBOL):
     return contexts, structure_events
 
 
-def build_events(candles, upto=None, symbol=SYMBOL):
-    contexts, _ = build_contexts(candles, upto=upto, symbol=symbol)
+def build_events(candles, upto=None, symbol=SYMBOL, rows_1h=None):
+    contexts, _ = build_contexts(candles, rows_1h=rows_1h, upto=upto, symbol=symbol)
     events = []
     active_obs = {}
     emitted_breakers = set()

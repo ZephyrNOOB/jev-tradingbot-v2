@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>JEV SMC Visual Preview</title>
+<style>
+:root{color-scheme:dark;--bg:#050507;--panel:#101010;--line:#3d3a39;--text:#e8eee9;--muted:#82908a;--bull:#089981;--bear:#f23645;--gold:#d4a72c;--cyan:#00c9d8}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:12px Arial,sans-serif;padding:20px}.head{display:flex;align-items:end;justify-content:space-between;gap:16px;margin-bottom:16px}.head h1{font:600 18px ui-monospace,monospace;margin:0}.head p{color:var(--muted);margin:5px 0 0}.switcher{display:flex;gap:6px}.switcher button{border:1px solid var(--line);background:var(--panel);color:var(--muted);padding:8px 10px;cursor:pointer}.switcher button[aria-pressed=true],.switcher button:focus-visible{border-color:var(--bull);color:var(--text);outline:2px solid color-mix(in srgb,var(--bull) 45%,transparent);outline-offset:2px}.grid{display:grid;grid-template-columns:repeat(2,minmax(300px,1fr));gap:12px}.card{background:var(--panel);border:1px solid var(--line);padding:10px}.title{display:flex;justify-content:space-between;font:600 12px ui-monospace,monospace;margin-bottom:8px}.title span{color:var(--muted);font-weight:400}.chart{width:100%;height:260px;background:linear-gradient(#101616,#0b1011);border:1px solid #202b29;display:block}.legend{display:flex;flex-wrap:wrap;gap:8px;color:var(--muted);font:10px ui-monospace,monospace;margin-top:8px}.legend i{display:inline-block;width:9px;height:2px;vertical-align:middle;margin-right:3px}.note{color:var(--muted);font:10px ui-monospace,monospace;margin-top:14px}.cluttered .organized-only{display:none}.cluttered .extra{display:block}.organized .extra{display:none}.organized .organized-only{display:block}@media(max-width:720px){body{padding:12px}.head{display:block}.switcher{margin-top:12px}.grid{grid-template-columns:1fr}.chart{height:230px}}
+</style>
+</head>
+<body>
+<header class="head"><div><h1>JEV / SMC VISUAL PREVIEW</h1><p>Synthetic/demo data only — production API untouched.</p></div><div class="switcher" role="group" aria-label="Preview mode"><button type="button" data-mode="organized" aria-pressed="true">ORGANIZED</button><button type="button" data-mode="cluttered" aria-pressed="false">CURRENT CLUTTER</button></div></header>
+<main id="preview" class="grid organized">
+<script>
+const pairs=['BTCUSDT','ETHUSDT','SOLUSDT','XAUUSDT'];
+const colors={bull:'#089981',bear:'#f23645',gold:'#d4a72c',cyan:'#00c9d8',muted:'#82908a'};
+function candle(x,y,h,up){return `<line x1="${x}" y1="${y-h}" x2="${x}" y2="${y+h}" stroke="${up?colors.bull:colors.bear}"/><rect x="${x-4}" y="${y-(up?9:2)}" width="8" height="${up?12:10}" fill="${up?colors.bull:colors.bear}" opacity=".9"/>`}
+function chart(pair){let candles='';for(let i=0;i<25;i++)candles+=candle(20+i*15,165-(i%6)*5-(i>13?(i-13)*2:0),12+(i%4)*4,i%5!==0);return `<article class="card"><div class="title"><b>${pair}</b><span>15M · STRUCTURE</span></div><svg class="chart" viewBox="0 0 400 260" role="img" aria-label="${pair} organized SMC preview"><path d="M0 70H400M0 130H400M0 190H400" stroke="#1d2927"/><path d="M18 105H158" stroke="${colors.bull}" stroke-width="2"/><text x="88" y="96" fill="${colors.bull}" text-anchor="middle">CHoCH</text><path d="M158 105H290" stroke="${colors.bull}" stroke-width="1.4" opacity=".75"/><text x="224" y="122" fill="${colors.bull}" text-anchor="middle">BOS</text><path d="M175 112H265V140H175Z" fill="${colors.bull}" opacity=".10" stroke="${colors.bull}"/><path d="M0 182H400" stroke="${colors.gold}" stroke-dasharray="5 4"/><text x="360" y="176" fill="${colors.gold}" text-anchor="end">SSL SWEEP</text><g>${candles}</g><g class="organized-only"><text x="50" y="62" fill="${colors.bear}">LH</text><text x="140" y="218" fill="${colors.bull}">HL</text><text x="245" y="54" fill="${colors.bear}">HH</text><text x="325" y="218" fill="${colors.bull}">HL</text></g><g class="extra" opacity=".35"><path d="M10 80H390M10 95H390M10 110H390M10 125H390M10 140H390M10 155H390M10 170H390M10 185H390M10 200H390" stroke="${colors.muted}" stroke-dasharray="2 4"/><text x="200" y="35" fill="${colors.muted}" text-anchor="middle">OVERLAPPED HISTORICAL OBJECTS</text></g></svg><div class="legend"><span><i style="background:${colors.bull}"></i>bullish structure</span><span><i style="background:${colors.bear}"></i>bearish swing</span><span><i style="background:${colors.gold}"></i>liquidity</span><span><i style="background:${colors.cyan}"></i>active zone</span></div></article>`}
+// Safe: chart() consumes fixed local pair names and fixed SVG templates; no external/user data.
+document.getElementById('preview').insertAdjacentHTML('afterbegin',pairs.map(chart).join(''));
+for(const button of document.querySelectorAll('[data-mode]'))button.addEventListener('click',()=>{const mode=button.dataset.mode;const root=document.getElementById('preview');root.className='grid '+mode;for(const b of document.querySelectorAll('[data-mode]'))b.setAttribute('aria-pressed',String(b===button));});
+</script>
+</main>
+<p class="note">Direction: structure priority → limited zones → bounded labels → no historical clutter. This preview is not live market evidence.</p>
+</body>
+</html>

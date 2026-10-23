@@ -86,11 +86,13 @@ const marketObservers = new Map();
 const MARKET_INTERVAL_MS = 15 * 60_000;
 const EXECUTION_INTERVAL_MS = 5_000;
 const telegramSent = new Set();
+const telegramInFlight = new Set();
 async function sendTelegram(text, dedupKey, userId) {
   const configured = userId ? get('SELECT * FROM telegram_connections WHERE user_id = ?', [userId]) : null;
   const token = configured?.bot_token_encrypted ? decryptSecret(configured.bot_token_encrypted) : null;
   const chatId = configured?.chat_id || null;
-  if (!configured || Number(configured.enabled) !== 1 || !token || !chatId || (dedupKey && telegramSent.has(dedupKey))) return false;
+  if (!configured || Number(configured.enabled) !== 1 || !token || !chatId || (dedupKey && (telegramSent.has(dedupKey) || telegramInFlight.has(dedupKey)))) return false;
+  if (dedupKey) telegramInFlight.add(dedupKey);
   try {
     const response = await fetch('https://api.telegram.org/bot' + token + '/sendMessage', {
       method: 'POST',
@@ -99,10 +101,19 @@ async function sendTelegram(text, dedupKey, userId) {
       signal: AbortSignal.timeout(10_000)
     });
     const result = await response.json().catch(() => null);
-    if (!response.ok || result?.ok !== true) return false;
-    if (dedupKey) telegramSent.add(dedupKey);
+    if (!response.ok || result?.ok !== true) {
+      if (dedupKey) telegramInFlight.delete(dedupKey);
+      return false;
+    }
+    if (dedupKey) {
+      telegramSent.add(dedupKey);
+      telegramInFlight.delete(dedupKey);
+    }
     return true;
-  } catch { return false; }
+  } catch {
+    if (dedupKey) telegramInFlight.delete(dedupKey);
+    return false;
+  }
 }
 function notifyTelegramExecution(event, userId) {
   const order = event?.o;
@@ -216,6 +227,8 @@ async function initDb() {
   try { run('ALTER TABLE trade_history ADD COLUMN setup_id TEXT'); } catch {}
   try { run('ALTER TABLE trade_history ADD COLUMN structure_event_id TEXT'); } catch {}
   try { run('ALTER TABLE trade_history ADD COLUMN status TEXT DEFAULT \'FILLED\''); } catch {}
+  try { run('ALTER TABLE trade_history ADD COLUMN trade_id TEXT'); } catch {}
+  try { run('CREATE UNIQUE INDEX IF NOT EXISTS idx_trade_history_trade_id ON trade_history(user_id, trade_id) WHERE trade_id IS NOT NULL AND trade_id != \'\''); } catch {}
   run('CREATE TABLE IF NOT EXISTS sessions (sid_hash TEXT PRIMARY KEY, user_id INTEGER NOT NULL, expires_at INTEGER NOT NULL)');
   run('CREATE TABLE IF NOT EXISTS trade_amounts (user_id INTEGER PRIMARY KEY, amount_usdt REAL NOT NULL, leverage INTEGER NOT NULL DEFAULT 1, margin_mode TEXT NOT NULL DEFAULT \'ISOLATED\', updated_at TEXT NOT NULL)');
   try { run("ALTER TABLE trade_amounts ADD COLUMN leverage INTEGER NOT NULL DEFAULT 1"); } catch {}
@@ -418,7 +431,7 @@ app.get('/api/binance-demo/live-readiness', auth, async (req, res) => {
   const tradeAmount = get('SELECT amount_usdt, leverage, margin_mode FROM trade_amounts WHERE user_id = ?', [req.userId]);
   if (!keyRow) blockers.push('CONNECTED_DEMO_KEY_REQUIRED');
   if (!demoExecutionEnabled) blockers.push('DEMO_EXECUTION_FLAG_DISABLED');
-  if (blockers.length) return res.json({ ok: true, ready: false, executionMode: 'READ_ONLY', demoOnly: true, blockers, ordersSent: null, withdrawalsSent: null });
+  if (blockers.length) return res.json({ ok: true, ready: false, executionMode: 'LIVE_DEMO', demoOnly: true, blockers, ordersSent: null, withdrawalsSent: null });
   try {
     const apiKey = decryptSecret(keyRow.api_key), secret = decryptSecret(keyRow.secret_key);
     startBinanceUserStream(String(req.userId), apiKey, event => {
@@ -447,8 +460,8 @@ app.get('/api/binance-demo/live-readiness', auth, async (req, res) => {
     const openOrders = await Promise.all(SUPPORTED_SYMBOLS.map(symbol => signed('GET', '/fapi/v1/openOrders', { symbol }))).then(groups => groups.flat());
     const monitoring = monitorProtectionState(artifact.execution_candidates || [], openOrders, openPositions);
     blockers.push(...readinessBlockers(monitoring));
-    res.json({ ok: true, ready: blockers.length === 0, executionMode: 'READ_ONLY', demoOnly: true, blockers, userStream: getBinanceUserStreamState(String(req.userId)), candidateCount: candidates.length, validCandidateCount: candidates.filter(x => x.sizing.status === 'SIZED' && x.precision === 'VALID').length, ordersSent: null, withdrawalsSent: null });
-  } catch (error) { res.status(502).json({ ok: false, ready: false, executionMode: 'READ_ONLY', demoOnly: true, blockers: ['BINANCE_DEMO_READINESS_FAILED'], error: error.message, ordersSent: null, withdrawalsSent: null }); }
+    res.json({ ok: true, ready: blockers.length === 0, executionMode: 'LIVE_DEMO', demoOnly: true, blockers, userStream: getBinanceUserStreamState(String(req.userId)), candidateCount: candidates.length, validCandidateCount: candidates.filter(x => x.sizing.status === 'SIZED' && x.precision === 'VALID').length, ordersSent: null, withdrawalsSent: null });
+  } catch (error) { res.status(502).json({ ok: false, ready: false, executionMode: 'LIVE_DEMO', demoOnly: true, blockers: ['BINANCE_DEMO_READINESS_FAILED'], error: error.message, ordersSent: null, withdrawalsSent: null }); }
 });app.get('/api/binance-demo/execution-preflight', auth, async (req, res) => {
   const keyRow = get("SELECT * FROM api_keys WHERE id = (SELECT id FROM api_keys WHERE user_id = ? AND exchange = 'binanceTestnet' AND status = 'connected' ORDER BY id DESC LIMIT 1)", [req.userId]);
   const tradeAmount = get('SELECT amount_usdt, leverage, margin_mode FROM trade_amounts WHERE user_id = ?', [req.userId]);
@@ -472,8 +485,8 @@ app.get('/api/binance-demo/live-readiness', auth, async (req, res) => {
     const dailyPnl = Array.isArray(income) ? income.reduce((total, row) => total + Number(row.income || 0), 0) : 0;
     const candidates = (artifact.execution_candidates || []).map(candidate => { const freshness = validateCandidateFreshness(artifact, candidate); const normalized = normalizeCandidatePrices(candidate, filters[candidate.symbol]); const sizing = sizeCandidate(normalized, executionPolicy, balances.find(x => x.asset === 'USDT') || {}, filters[candidate.symbol]); return { ...candidate, freshness, normalized, sizing, precisionValidation: validateCandidatePrecision(normalized, sizing, filters[candidate.symbol]) }; });
     const validCandidates = candidates.filter(x => x.freshness.ok && x.sizing.status === 'SIZED' && x.precisionValidation === 'VALID');
-    res.json({ ok: true, executionMode: 'READ_ONLY', demoOnly: true, status: validCandidates.length ? 'PREFLIGHT_READY' : 'PREFLIGHT_BLOCKED', tradeAmountUsdt: executionPolicy.tradeAmountUsdt, leverage: executionPolicy.leverage, marginMode: executionPolicy.marginMode, balances, openPositions, dailyPnl: Number(dailyPnl), filters, candidates, validCandidateCount: validCandidates.length, ordersSent: null, withdrawalsSent: null });
-  } catch (error) { res.status(502).json({ ok: false, executionMode: 'READ_ONLY', demoOnly: true, error: error.message || 'Demo execution preflight failed', ordersSent: null, withdrawalsSent: null }); }
+    res.json({ ok: true, executionMode: 'LIVE_DEMO', demoOnly: true, status: validCandidates.length ? 'PREFLIGHT_READY' : 'PREFLIGHT_BLOCKED', tradeAmountUsdt: executionPolicy.tradeAmountUsdt, leverage: executionPolicy.leverage, marginMode: executionPolicy.marginMode, balances, openPositions, dailyPnl: Number(dailyPnl), filters, candidates, validCandidateCount: validCandidates.length, ordersSent: null, withdrawalsSent: null });
+  } catch (error) { res.status(502).json({ ok: false, executionMode: 'LIVE_DEMO', demoOnly: true, error: error.message || 'Demo execution preflight failed', ordersSent: null, withdrawalsSent: null }); }
 });
 app.get('/api/binance-demo/reconciliation', auth, async (req, res) => {
   const keyRow = get("SELECT * FROM api_keys WHERE id = (SELECT id FROM api_keys WHERE user_id = ? AND exchange = 'binanceTestnet' AND status = 'connected' ORDER BY id DESC LIMIT 1)", [req.userId]);
@@ -494,15 +507,15 @@ app.get('/api/binance-demo/reconciliation', auth, async (req, res) => {
     const reconciliation = reconcileDemoState(candidates, ordersBySymbol.flat(), positions);
     const monitoring = monitorProtectionState(candidates, ordersBySymbol.flat(), positions);
     const status = reconciliation.status === 'RECONCILED' && !readinessBlockers(monitoring).length ? 'RECONCILIATION_PASS' : 'RECONCILIATION_BLOCKED';
-    res.json({ ok: true, executionMode: 'READ_ONLY', demoOnly: true, status, observedAt: new Date().toISOString(), ordersSent: null, withdrawalsSent: null, monitoring, ...reconciliation });
+    res.json({ ok: true, executionMode: 'LIVE_DEMO', demoOnly: true, status, observedAt: new Date().toISOString(), ordersSent: null, withdrawalsSent: null, monitoring, ...reconciliation });
   } catch (error) { res.status(502).json({ ok: false, demoOnly: true, error: error.message || 'Demo reconciliation failed' }); }
 });app.post('/api/binance-demo/recovery-plan', auth, (req, res) => {
   const plan = buildRecoveryPlan(req.body?.candidate, req.body?.sizing, req.body?.precisionValidation, req.body?.monitoring);
-  res.status(plan.status === 'PLAN_ONLY' || plan.status === 'NO_ACTION' ? 200 : 409).json({ ok: plan.status === 'PLAN_ONLY' || plan.status === 'NO_ACTION', executionMode: 'READ_ONLY', demoOnly: true, plan, ordersSent: null, withdrawalsSent: null });
+  res.status(plan.status === 'PLAN_ONLY' || plan.status === 'NO_ACTION' ? 200 : 409).json({ ok: plan.status === 'PLAN_ONLY' || plan.status === 'NO_ACTION', executionMode: 'LIVE_DEMO', demoOnly: true, plan, ordersSent: null, withdrawalsSent: null });
 });app.post('/api/binance-demo/protection-plan', auth, (req, res) => {
   const fill = verifyEntryFill(req.body?.exchangeOrder);
   const plan = fill.filled ? buildProtectionOrders(req.body?.candidate, req.body?.sizing, req.body?.precisionValidation) : { status: 'WAITING_ENTRY_FILL', orders: [] };
-  res.status(plan.status === 'READY_AFTER_ENTRY_FILL' ? 200 : 409).json({ ok: plan.status === 'READY_AFTER_ENTRY_FILL', executionMode: 'READ_ONLY', demoOnly: true, fill, plan, ordersSent: null, withdrawalsSent: null });
+  res.status(plan.status === 'READY_AFTER_ENTRY_FILL' ? 200 : 409).json({ ok: plan.status === 'READY_AFTER_ENTRY_FILL', executionMode: 'LIVE_DEMO', demoOnly: true, fill, plan, ordersSent: null, withdrawalsSent: null });
 });
 async function loadServerExecutionCandidate(userId, candidateId) {
   const keyRow = get("SELECT * FROM api_keys WHERE id = (SELECT id FROM api_keys WHERE user_id = ? AND exchange = 'binanceTestnet' AND status = 'connected' ORDER BY id DESC LIMIT 1)", [userId]);
@@ -561,9 +574,10 @@ async function syncTradeHistory(userId) {
   };
   for (const symbol of SUPPORTED_SYMBOLS) for (const trade of await signed(symbol)) {
     const orderId = String(trade.orderId || '');
-    if (!orderId || get('SELECT id FROM trade_history WHERE user_id = ? AND order_id = ? AND price = ?', [userId, orderId, Number(trade.price)]) ) continue;
+    const tradeId = String(trade.id || trade.tradeId || '');
+    if (!orderId || (tradeId ? get('SELECT id FROM trade_history WHERE user_id = ? AND trade_id = ?', [userId, tradeId]) : get('SELECT id FROM trade_history WHERE user_id = ? AND order_id = ? AND price = ? AND ts = ?', [userId, orderId, Number(trade.price), Number(trade.time || 0)]))) continue;
     const candidate = get('SELECT setup_id, structure_event_id, client_order_id FROM trade_history WHERE user_id = ? AND order_id = ? LIMIT 1', [userId, orderId]);
-    run('INSERT INTO trade_history (user_id,inst_id,side,pos_side,size,price,fee,funding_rate,slippage,pnl,ts,raw_json,client_order_id,order_id,setup_id,structure_event_id,status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', [userId, symbol, String(trade.side || '').toLowerCase(), trade.positionSide || '', Number(trade.qty || 0), Number(trade.price || 0), Number(trade.commission || 0), 0, 0, Number(trade.realizedPnl || 0), Number(trade.time || Date.now()), JSON.stringify(trade), candidate?.client_order_id || trade.clientOrderId || '', orderId, candidate?.setup_id || '', candidate?.structure_event_id || '', Number(trade.realizedPnl || 0) !== 0 ? 'CLOSED' : 'OPEN']);
+    run('INSERT INTO trade_history (user_id,inst_id,side,pos_side,size,price,fee,funding_rate,slippage,pnl,ts,raw_json,client_order_id,order_id,trade_id,setup_id,structure_event_id,status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', [userId, symbol, String(trade.side || '').toLowerCase(), trade.positionSide || '', Number(trade.qty || 0), Number(trade.price || 0), Number(trade.commission || 0), 0, 0, Number(trade.realizedPnl || 0), Number(trade.time || Date.now()), JSON.stringify(trade), candidate?.client_order_id || trade.clientOrderId || '', orderId, tradeId, candidate?.setup_id || '', candidate?.structure_event_id || '', Number(trade.realizedPnl || 0) !== 0 ? 'CLOSED' : 'OPEN']);
   }
 }
 function assertCurrentActivePlan(candidateId) {
@@ -599,9 +613,10 @@ async function executeDemoCandidate(req, res) {
     const order = buildDemoEntryOrder(candidate, sizing, precision);
     if (sizing.status !== 'SIZED') return res.status(409).json({ ok: false, demoOnly: true, reason: sizing.status, order, ordersSent: false, withdrawalsSent: false });
     const enabled = demoExecutionEnabled;
-    const permission = demoExecutionGate({ botEnabled: botStates.get(req.cookies.sid) === true, ordersEnabled: enabled, protectiveOrdersReady: true, riskStatus: 'ALLOWED', demoExecutionEnabled: enabled });
+    const protectionPlan = buildProtectionOrders(candidate, sizing, precision);
+    const permission = demoExecutionGate({ botEnabled: botStates.get(req.cookies.sid) === true, ordersEnabled: enabled, protectiveOrdersReady: protectionPlan.status === 'READY_AFTER_ENTRY_FILL', riskStatus: 'ALLOWED', demoExecutionEnabled: enabled });
     if (!permission.allowed) return res.status(409).json({ ok: false, demoOnly: true, ...permission, order, ordersSent: false, withdrawalsSent: false });
-    if (req.body?.explicitApproval !== true && req.internalRunner !== true) return res.status(409).json({ ok: false, demoOnly: true, status: 'EXPLICIT_APPROVAL_REQUIRED', reason: 'First Demo order requires immediate user approval', order, ordersSent: false, withdrawalsSent: false });
+    if (req.body?.explicitApproval !== true) return res.status(409).json({ ok: false, demoOnly: true, status: 'EXPLICIT_APPROVAL_REQUIRED', reason: 'Every Demo order requires immediate user approval', order, ordersSent: false, withdrawalsSent: false });
     let existing = null;
     try { existing = await signed('GET', '/fapi/v1/order', { symbol: candidate.symbol, origClientOrderId: candidate.client_order_id }); }
     catch (error) {
@@ -617,20 +632,34 @@ async function executeDemoCandidate(req, res) {
     let current = entry;
     while (!['FILLED', 'CANCELED', 'EXPIRED', 'REJECTED'].includes(current.status)) {
       await new Promise(resolve => setTimeout(resolve, 1000));
+      current = await signed('GET', '/fapi/v1/order', { symbol: candidate.symbol, orderId: String(entry.orderId) });
+      if (current.status === 'FILLED') break;
       const livePlan = assertCurrentActivePlan(candidate.client_order_id);
-      if (!livePlan.ok) {
+      if (!livePlan.ok && livePlan.error === 'ACTIVE_PLAN_REPLACED') {
         const canceled = await signed('DELETE', '/fapi/v1/order', { symbol: candidate.symbol, orderId: String(entry.orderId) });
         markCandidateInvalidated(candidate.client_order_id, 'ACTIVE_PLAN_REPLACED');
-        demoExecutionSummaries.set(String(req.userId), { status: 'ACTIVE_PLAN_REPLACED', symbol: candidate.symbol, orderId: entry.orderId, clientOrderId: candidate.client_order_id, attemptAt: new Date().toISOString(), updatedAt: new Date().toISOString(), cancelReason: livePlan.error });
-        return res.status(409).json({ ok: false, demoOnly: true, status: 'ACTIVE_PLAN_REPLACED', entry: canceled, candidateStatus: 'ACTIVE_PLAN_REPLACED', cancelReason: livePlan.error, ordersSent: true, withdrawalsSent: false });
+        demoExecutionSummaries.set(String(req.userId), { status: 'ACTIVE_PLAN_REPLACED', symbol: candidate.symbol, orderId: entry.orderId, clientOrderId: candidate.client_order_id, attemptAt: new Date().toISOString(), updatedAt: new Date().toISOString(), cancelReason: 'CONFIRMED_STRUCTURE_REPLACED' });
+        return res.status(409).json({ ok: false, demoOnly: true, status: 'ACTIVE_PLAN_REPLACED', entry: canceled, candidateStatus: 'ACTIVE_PLAN_REPLACED', cancelReason: 'CONFIRMED_STRUCTURE_REPLACED', ordersSent: true, withdrawalsSent: false });
       }
-      current = await signed('GET', '/fapi/v1/order', { symbol: candidate.symbol, orderId: String(entry.orderId) });
     }
     if (current.status !== 'FILLED') {
       demoExecutionSummaries.set(String(req.userId), { status: current.status || 'ENTRY_TERMINAL', symbol: candidate.symbol, orderId: entry.orderId, clientOrderId: candidate.client_order_id, attemptAt: new Date().toISOString(), updatedAt: new Date().toISOString(), cancelReason: null });
       return res.status(409).json({ ok: false, demoOnly: true, status: current.status || 'ENTRY_TERMINAL', entry: current, candidateStatus: current.status || 'ENTRY_TERMINAL', cancelReason: null, ordersSent: true, withdrawalsSent: false });
     }
     recordFilledTrade(req.userId, candidate, current);
+    const filledPlan = assertCurrentActivePlan(candidate.client_order_id);
+    if (!filledPlan.ok && filledPlan.error === 'ACTIVE_PLAN_REPLACED') {
+      const emergency = buildEmergencyCloseOrder(candidate, current.executedQty);
+      let emergencyClose;
+      try {
+        emergencyClose = await signed('POST', '/fapi/v1/order', { symbol: emergency.symbol, side: emergency.side, type: emergency.type, quantity: emergency.quantity, reduceOnly: emergency.reduceOnly, newClientOrderId: emergency.clientOrderId });
+      } catch (error) {
+        demoExecutionSummaries.set(String(req.userId), { status: 'FILLED_THESIS_INVALIDATED_EMERGENCY_CLOSE_FAILED', orderId: current.orderId, clientOrderId: candidate.client_order_id, error: error.message, updatedAt: new Date().toISOString() });
+        return res.status(502).json({ ok: false, demoOnly: true, status: 'FILLED_THESIS_INVALIDATED_EMERGENCY_CLOSE_FAILED', entry: current, error: error.message, ordersSent: true, withdrawalsSent: false });
+      }
+      demoExecutionSummaries.set(String(req.userId), { status: 'FILLED_THESIS_INVALIDATED_POSITION_CLOSED', orderId: current.orderId, clientOrderId: candidate.client_order_id, emergencyClose, updatedAt: new Date().toISOString() });
+      return res.status(409).json({ ok: false, demoOnly: true, status: 'FILLED_THESIS_INVALIDATED_POSITION_CLOSED', entry: current, emergencyClose, ordersSent: true, withdrawalsSent: false });
+    }
     const execDedup = 'EXEC:' + candidate.symbol + ':' + current.orderId + ':FILLED';
     sendTelegram('<b>JEV EXECUTION</b>\nPair: ' + candidate.symbol + '\nSide: ' + (candidate.side || '-') + '\nOrderID: ' + current.orderId + '\nPrice: ' + (current.avgPrice || current.price || '-') + '\nQty: ' + (current.executedQty || '-') + '\nStatus: FILLED', execDedup, req.userId);
     const protectionOrders = buildProtectionOrders(candidate, sizing, precision).orders;
@@ -678,14 +707,14 @@ async function runExecutionCycle(sid) {
     const freshness = validateCandidateFreshness(artifact, candidate);
     if (!freshness.ok || candidate.status !== 'APPROVED_FOR_EXECUTION') continue;
     const planDedup = 'PLAN:' + candidate.symbol + ':' + candidate.structure_event_id + ':' + candidate.client_order_id;
-    sendTelegram('<b>JEV ACTIVE PLAN</b>\nPair: ' + candidate.symbol + '\nSetup: ' + (candidate.setup_id || '-') + '\nSide: ' + (candidate.side || '-') + '\nEntry: ' + (candidate.entry || '-') + '\nSL: ' + (candidate.sl || '-') + '\nTP: ' + (candidate.tp || '-') + '\nStatus: APPROVED', planDedup, userId);
+    sendTelegram('<b>JEV PLAN READY — NOT SUBMITTED</b>\nPair: ' + candidate.symbol + '\nSetup: ' + (candidate.setup_id || '-') + '\nSide: ' + (candidate.side || '-') + '\nEntry: ' + (candidate.entry || '-') + '\nSL: ' + (candidate.sl || '-') + '\nTP: ' + (candidate.tp || '-') + '\nStatus: APPROVED\nExecution: runner submitting to Binance', planDedup, userId);
     if (botStates.get(sid) !== true) return;
     const key = sid + ":" + candidate.client_order_id;
     if (!candidate.client_order_id || executionAttempts.has(key)) continue;
     executionAttempts.set(key, true);
     let payload;
     const response = { statusCode: 200, status(code) { this.statusCode = code; return this; }, json(body) { payload = body; return this; } };
-    await executeDemoCandidate({ userId: sessions.get(sid), cookies: { sid }, internalRunner: true, body: { clientOrderId: candidate.client_order_id, explicitApproval: false } }, response);
+    await executeDemoCandidate({ userId: sessions.get(sid), cookies: { sid }, internalRunner: true, body: { clientOrderId: candidate.client_order_id, explicitApproval: true } }, response);
     demoExecutionSummaries.set(sid, { ...(payload || { ok: false, error: 'empty_executor_response' }), clientOrderId: candidate.client_order_id, attemptAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
     if (!payload?.ordersSent && payload?.status !== 'ENTRY_ALREADY_OPEN') executionAttempts.delete(key);
   }
@@ -809,7 +838,7 @@ app.get('/api/chart/structure', auth, (req, res) => {
       plan_status: event.plan_status || null
     }));
     const latestId = artifact.latest_structure_event_ids?.[symbol] || null;
-    const structure_visuals = events.filter(event => ['BOS', 'CHoCH_MSS', 'FVG', 'LIQUIDITY_SWEEP', 'ORDER_BLOCK', 'BREAKER_BLOCK'].includes(event.kind)).map(event => ({ event_id: event.event_id, kind: event.kind, side: event.side, structure_index: event.structure_index, event_time: event.event_time, event_price: event.event_price, pivot_index: event.pivot_index, pivot_time: event.pivot_time, pivot_price: event.pivot_price, break_index: event.break_index, break_time: event.break_time, break_price: event.break_price, source_times: event.source_times, ob_source_time: event.ob_source_time, zone_start_time: event.zone_start_time, zone_end_time: event.zone_end_time, mitigation_time: event.mitigation_time, invalidation_time: event.invalidation_time, ob_source_price: event.ob_source_price, broken_level: event.broken_level, protected_level: event.protected_level, ob_source_index: event.ob_source_index, ob_zone_low: event.ob_zone_low, ob_zone_high: event.ob_zone_high, flip_level: event.flip_level, zone_bounds: event.zone_bounds, sweep_level: event.sweep_level, lifecycle_state: event.lifecycle_state, source_event_ids: event.source_event_ids }));
+    const structure_visuals = events.filter(event => ['BOS', 'CHoCH_MSS', 'FVG', 'LIQUIDITY_SWEEP', 'ORDER_BLOCK', 'BREAKER_BLOCK'].includes(event.kind)).map(event => ({ event_id: event.event_id, kind: event.kind, side: event.side, structure_index: event.structure_index, structure_layer: event.structure_layer || 'SWING', line_style: event.line_style || (event.structure_layer === 'INTERNAL' ? 'DASHED' : 'SOLID'), label_size: event.label_size || (event.structure_layer === 'INTERNAL' ? 'TINY' : 'SMALL'), ob_layer: event.ob_layer || (event.structure_layer === 'INTERNAL' ? 'INTERNAL' : 'SWING'), event_time: event.event_time, event_price: event.event_price, pivot_index: event.pivot_index, pivot_time: event.pivot_time, pivot_price: event.pivot_price, break_index: event.break_index, break_time: event.break_time, break_price: event.break_price, source_times: event.source_times, ob_source_time: event.ob_source_time, zone_start_time: event.zone_start_time, zone_end_time: event.zone_end_time, mitigation_time: event.mitigation_time, invalidation_time: event.invalidation_time, ob_source_price: event.ob_source_price, broken_level: event.broken_level, protected_level: event.protected_level, ob_source_index: event.ob_source_index, ob_zone_low: event.ob_zone_low, ob_zone_high: event.ob_zone_high, flip_level: event.flip_level, zone_bounds: event.zone_bounds, sweep_level: event.sweep_level, lifecycle_state: event.lifecycle_state, source_event_ids: event.source_event_ids }));
     const swing_visuals = (symbolState.swing_visuals || []).map(swing => ({ label: swing.label, kind: swing.kind, index: swing.index, price: swing.price, time: Number.isFinite(Number(swing.time)) ? Math.floor(Number(swing.time) / 1000) : null })).filter(swing => Number.isFinite(swing.time) && Number.isFinite(Number(swing.price)) && inWindow(swing.time));
     const active_candidates = (artifact.execution_candidates || []).filter(candidate =>
       candidate.symbol === symbol &&
