@@ -92,7 +92,21 @@ async function loadHistory() {
     return;
   }
 
-  tbody.innerHTML = trades.map(t => {
+  const byOrder = new Map();
+  for (const trade of trades) {
+    const key = trade.order_id || ('row:' + trade.id);
+    const current = byOrder.get(key);
+    if (!current) byOrder.set(key, { ...trade });
+    else {
+      current.size = Number(current.size || 0) + Number(trade.size || 0);
+      current.fee = Number(current.fee || 0) + Number(trade.fee || 0);
+      current.pnl = Number(current.pnl || 0) + Number(trade.pnl || 0);
+      current.ts = Math.max(Number(current.ts || 0), Number(trade.ts || 0));
+      current.status = current.status === 'CLOSED' || trade.status === 'CLOSED' ? 'CLOSED' : current.status;
+    }
+  }
+  const aggregated = [...byOrder.values()];
+  tbody.innerHTML = aggregated.map(t => {
     const time = new Date(t.ts).toLocaleString();
     const sideBadge = String(t.side).toLowerCase() === 'buy' ? '<span class="badge badge-long">BUY</span>' : '<span class="badge badge-short">SELL</span>';
     const pnlNet = t.pnl - Math.abs(t.fee) - Math.abs(t.slippage);
@@ -113,7 +127,7 @@ async function loadHistory() {
     </tr>`;
   }).join('');
 
-  updateSummary(trades);
+  updateSummary(aggregated);
 }
 
 function updateSummary(trades) {

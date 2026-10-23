@@ -62,7 +62,7 @@ test('entry executor stays disabled before protection exists', () => {
 
 test('builds emergency close order for filled entry without protection', () => {
   const order = buildEmergencyCloseOrder({ client_order_id: 'jev_test_1', symbol: 'BTCUSDT', side: 'BUY' }, '0.002');
-  assert.deepEqual(order, { clientOrderId: 'jev_test_1_emergency_close', symbol: 'BTCUSDT', side: 'SELL', type: 'MARKET', quantity: '0.002', reduceOnly: 'true' });
+  assert.deepEqual(order, { clientOrderId: 'jev_test_1_ec', symbol: 'BTCUSDT', side: 'SELL', type: 'MARKET', quantity: '0.002', reduceOnly: 'true' });
 });
 
 test('builds opposite-side SL/TP only after confirmed entry fill', () => {

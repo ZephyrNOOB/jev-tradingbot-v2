@@ -22,6 +22,37 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 let binanceCircuitOpenUntil = 0;
 let binanceRateLimitReason = null;
+let binanceServerTimeOffsetMs = 0;
+let binanceServerTimeSyncedAt = 0;
+async function syncBinanceServerTime(force = false) {
+  if (!force && Date.now() - binanceServerTimeSyncedAt < 30_000) return binanceServerTimeOffsetMs;
+  const started = Date.now();
+  const response = await fetchBinance(EXCHANGES.binanceTestnet.base + '/fapi/v1/time', { signal: AbortSignal.timeout(5_000) });
+  const data = await response.json();
+  if (!response.ok || !Number.isFinite(Number(data.serverTime))) throw new Error('BINANCE_SERVER_TIME_UNAVAILABLE');
+  const midpoint = started + Math.floor((Date.now() - started) / 2);
+  binanceServerTimeOffsetMs = Number(data.serverTime) - midpoint;
+  binanceServerTimeSyncedAt = Date.now();
+  return binanceServerTimeOffsetMs;
+}
+function binanceTimestamp() { return Date.now() + binanceServerTimeOffsetMs; }
+async function signedBinanceRequest(apiKey, secret, method, apiPath, params = {}) {
+  await syncBinanceServerTime();
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const query = new URLSearchParams({ ...params, recvWindow: '10000', timestamp: String(binanceTimestamp()) });
+    const queryString = query.toString();
+    const response = await fetchBinance(EXCHANGES.binanceTestnet.base + apiPath + '?' + queryString + '&signature=' + binanceSignature(secret, queryString), { method, headers: { 'X-MBX-APIKEY': apiKey }, signal: AbortSignal.timeout(10_000) });
+    const text = await response.text();
+    let data; try { data = text ? JSON.parse(text) : null; } catch { data = null; }
+    if (response.ok) return data;
+    if (response.status === 400 && /timestamp.*recvWindow|outside of the recvWindow/i.test(data?.msg || text)) {
+      await syncBinanceServerTime(true);
+      continue;
+    }
+    throw new Error(`BINANCE_${method}_${apiPath}_${response.status}: ${data?.msg || text.slice(0, 300) || 'empty response'}`);
+  }
+  throw new Error(`BINANCE_${method}_${apiPath}_TIMESTAMP_SYNC_FAILED`);
+}
 async function fetchBinance(url, options = {}) {
   if (Date.now() < binanceCircuitOpenUntil) throw new Error(binanceRateLimitReason || 'Binance request circuit open');
   const response = await fetch(url, options);
@@ -91,7 +122,8 @@ async function sendTelegram(text, dedupKey, userId) {
   const configured = userId ? get('SELECT * FROM telegram_connections WHERE user_id = ?', [userId]) : null;
   const token = configured?.bot_token_encrypted ? decryptSecret(configured.bot_token_encrypted) : null;
   const chatId = configured?.chat_id || null;
-  if (!configured || Number(configured.enabled) !== 1 || !token || !chatId || (dedupKey && (telegramSent.has(dedupKey) || telegramInFlight.has(dedupKey)))) return false;
+  const durableSent = dedupKey && get('SELECT sent_at FROM telegram_notifications WHERE user_id = ? AND dedup_key = ?', [userId, dedupKey]);
+  if (!configured || Number(configured.enabled) !== 1 || !token || !chatId || (dedupKey && (durableSent || telegramSent.has(dedupKey) || telegramInFlight.has(dedupKey)))) return false;
   if (dedupKey) telegramInFlight.add(dedupKey);
   try {
     const response = await fetch('https://api.telegram.org/bot' + token + '/sendMessage', {
@@ -106,6 +138,7 @@ async function sendTelegram(text, dedupKey, userId) {
       return false;
     }
     if (dedupKey) {
+      run('INSERT OR IGNORE INTO telegram_notifications (user_id, dedup_key, sent_at) VALUES (?, ?, ?)', [userId, dedupKey, Date.now()]);
       telegramSent.add(dedupKey);
       telegramInFlight.delete(dedupKey);
     }
@@ -234,6 +267,7 @@ async function initDb() {
   try { run("ALTER TABLE trade_amounts ADD COLUMN leverage INTEGER NOT NULL DEFAULT 1"); } catch {}
   try { run("ALTER TABLE trade_amounts ADD COLUMN margin_mode TEXT NOT NULL DEFAULT 'ISOLATED'"); } catch {}
   run('CREATE TABLE IF NOT EXISTS telegram_connections (user_id INTEGER PRIMARY KEY, bot_token_encrypted TEXT NOT NULL, chat_id TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT \'unknown\', verified_at TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)');
+  run('CREATE TABLE IF NOT EXISTS telegram_notifications (user_id INTEGER NOT NULL, dedup_key TEXT NOT NULL, sent_at INTEGER NOT NULL, PRIMARY KEY (user_id, dedup_key))');
 }
 
 function migrateApiKeys() {
@@ -441,7 +475,8 @@ app.get('/api/binance-demo/live-readiness', auth, async (req, res) => {
       }
     }).catch(() => null);
     const signed = async (method, apiPath, params = {}) => {
-      const query = new URLSearchParams({ ...params, recvWindow: '5000', timestamp: String(Date.now()) });
+      await syncBinanceServerTime();
+      const query = new URLSearchParams({ ...params, recvWindow: '10000', timestamp: String(binanceTimestamp()) });
       const queryString = query.toString();
       const response = await fetchBinance(EXCHANGES.binanceTestnet.base + apiPath + '?' + queryString + '&signature=' + binanceSignature(secret, queryString), { method, headers: { 'X-MBX-APIKEY': apiKey }, signal: AbortSignal.timeout(10000) });
             const data = await response.json(); if (!response.ok) throw new Error(`BINANCE_${method}_${apiPath}_${response.status}: ${data?.msg || 'readiness failed'}`); return data;
@@ -468,14 +503,7 @@ app.get('/api/binance-demo/live-readiness', auth, async (req, res) => {
   if (!keyRow) return res.status(400).json({ ok: false, error: 'Connected Binance Demo key required' });
   try {
     const apiKey = decryptSecret(keyRow.api_key), secret = decryptSecret(keyRow.secret_key);
-    const signed = async (method, apiPath, params = {}) => {
-      const query = new URLSearchParams({ ...params, recvWindow: '5000', timestamp: String(Date.now()) });
-      const queryString = query.toString();
-      const controller = new AbortController(); const timeout = setTimeout(() => controller.abort(), 10000);
-      let r; try { r = await fetchBinance(EXCHANGES.binanceTestnet.base + apiPath + '?' + queryString + '&signature=' + binanceSignature(secret, queryString), { method, headers: { 'X-MBX-APIKEY': apiKey }, signal: controller.signal }); } finally { clearTimeout(timeout); }
-            const text = await r.text(); let data; try { data = text ? JSON.parse(text) : null; } catch { data = null; }
-            if (!r.ok) throw new Error(`BINANCE_${method}_${apiPath}_${r.status}: ${data?.msg || text.slice(0, 300) || 'empty response'}`); return data;
-    };
+    const signed = (method, apiPath, params = {}) => signedBinanceRequest(apiKey, secret, method, apiPath, params);
     const [exchangeInfo, account, positions, income] = await Promise.all([fetchExchangeInfo(), signed('GET', '/fapi/v2/account'), signed('GET', '/fapi/v2/positionRisk'), signed('GET', '/fapi/v1/income', { incomeType: 'REALIZED_PNL', startTime: String(Date.now() - 24 * 60 * 60 * 1000), limit: '1000' })]);
     const filters = Object.fromEntries(exchangeInfo.symbols.filter(x => SUPPORTED_SYMBOLS.includes(x.symbol)).map(x => [x.symbol, { status: x.status, quantityPrecision: x.quantityPrecision, pricePrecision: x.pricePrecision, filters: x.filters.filter(f => ['LOT_SIZE', 'PRICE_FILTER', 'MIN_NOTIONAL', 'NOTIONAL'].includes(f.filterType)) }]));
     const balances = (account.assets || []).filter(x => ['USDT', 'USDC'].includes(x.asset)).map(x => ({ asset: x.asset, walletBalance: Number(x.walletBalance), availableBalance: Number(x.availableBalance), unrealizedProfit: Number(x.unrealizedProfit) }));
@@ -493,14 +521,7 @@ app.get('/api/binance-demo/reconciliation', auth, async (req, res) => {
   if (!keyRow) return res.status(400).json({ ok: false, error: 'Connected Binance Demo key required' });
   try {
     const apiKey = decryptSecret(keyRow.api_key), secret = decryptSecret(keyRow.secret_key);
-    const signed = async (method, apiPath, params = {}) => {
-      const query = new URLSearchParams({ ...params, recvWindow: '5000', timestamp: String(Date.now()) });
-      const queryString = query.toString();
-      const response = await fetchBinance(EXCHANGES.binanceTestnet.base + apiPath + '?' + queryString + '&signature=' + binanceSignature(secret, queryString), { method, headers: { 'X-MBX-APIKEY': apiKey }, signal: AbortSignal.timeout(10000) });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data?.msg || 'Binance Demo reconciliation failed');
-      return data;
-    };
+    const signed = (method, apiPath, params = {}) => signedBinanceRequest(apiKey, secret, method, apiPath, params);
     const [positions, ordersBySymbol] = await Promise.all([signed('GET', '/fapi/v2/positionRisk'), Promise.all(SUPPORTED_SYMBOLS.map(symbol => signed('GET', '/fapi/v1/openOrders', { symbol }))) ]);
     const artifact = JSON.parse(fs.readFileSync(path.join(__dirname, 'v2', 'artifacts', 'BINANCE_DEMO_LIVE_PIPELINE.json'), 'utf8'));
     const candidates = (artifact.execution_candidates || []).filter(candidate => validateCandidateFreshness(artifact, candidate).ok);
@@ -517,26 +538,12 @@ app.get('/api/binance-demo/reconciliation', auth, async (req, res) => {
   const plan = fill.filled ? buildProtectionOrders(req.body?.candidate, req.body?.sizing, req.body?.precisionValidation) : { status: 'WAITING_ENTRY_FILL', orders: [] };
   res.status(plan.status === 'READY_AFTER_ENTRY_FILL' ? 200 : 409).json({ ok: plan.status === 'READY_AFTER_ENTRY_FILL', executionMode: 'LIVE_DEMO', demoOnly: true, fill, plan, ordersSent: null, withdrawalsSent: null });
 });
-async function loadServerExecutionCandidate(userId, candidateId) {
+async function loadServerExecutionCandidate(userId, candidateId, recovery = false) {
   const keyRow = get("SELECT * FROM api_keys WHERE id = (SELECT id FROM api_keys WHERE user_id = ? AND exchange = 'binanceTestnet' AND status = 'connected' ORDER BY id DESC LIMIT 1)", [userId]);
   const tradeAmountRow = get('SELECT amount_usdt, leverage, margin_mode FROM trade_amounts WHERE user_id = ?', [userId]);
   if (!keyRow) return { error: 'Connected Binance Demo key required' };
   const apiKey = decryptSecret(keyRow.api_key), secret = decryptSecret(keyRow.secret_key);
-  const signed = async (method, apiPath, params = {}) => {
-    const query = new URLSearchParams({ ...params, recvWindow: '5000', timestamp: String(Date.now()) });
-    const queryString = query.toString();
-    const url = EXCHANGES.binanceTestnet.base + apiPath + '?' + queryString + '&signature=' + binanceSignature(secret, queryString);
-    try {
-      const response = await fetchBinance(url, { method, headers: { 'X-MBX-APIKEY': apiKey }, signal: AbortSignal.timeout(10000) });
-      const text = await response.text();
-      let data; try { data = text ? JSON.parse(text) : null; } catch { data = null; }
-      if (!response.ok) throw new Error(`BINANCE_${method}_${apiPath}_${response.status}: ${data?.msg || text.slice(0, 300) || 'empty response'}`);
-      return data;
-    } catch (error) {
-      const reason = error?.name === 'TimeoutError' || error?.name === 'AbortError' ? 'timeout' : error?.message || String(error);
-      throw new Error(`BINANCE_${method}_${apiPath}: ${reason}`);
-    }
-  };
+  const signed = (method, apiPath, params = {}) => signedBinanceRequest(apiKey, secret, method, apiPath, params);
   const [exchangeInfo, account, positions, income] = await Promise.all([
     fetchExchangeInfo(),
     signed('GET', '/fapi/v2/account'), signed('GET', '/fapi/v2/positionRisk'),
@@ -547,10 +554,14 @@ async function loadServerExecutionCandidate(userId, candidateId) {
   const settings = { tradeAmountUsdt: Number(tradeAmountRow?.amount_usdt), leverage: Number(tradeAmountRow?.leverage || 1), marginMode: tradeAmountRow?.margin_mode || 'ISOLATED' };
   const dailyPnl = Array.isArray(income) ? income.reduce((total, row) => total + Number(row.income || 0), 0) : 0;
     const artifact = JSON.parse(fs.readFileSync(path.join(__dirname, 'v2', 'artifacts', 'BINANCE_DEMO_LIVE_PIPELINE.json'), 'utf8'));
-  const candidate = (artifact.execution_candidates || []).find(x => x.client_order_id === candidateId);
-  if (!candidate) return { error: 'Execution candidate not found' };
-  const currentPlan = assertCurrentActivePlan(candidateId);
-  if (!currentPlan.ok) return { error: currentPlan.error };
+    let candidate = (artifact.execution_candidates || []).find(x => x.client_order_id === candidateId);
+    const recoveryRow = !candidate ? get('SELECT raw_json FROM trade_history WHERE user_id = ? AND client_order_id = ? AND status = \'OPEN\' ORDER BY id DESC LIMIT 1', [userId, candidateId]) : null;
+    if (!candidate && recoveryRow?.raw_json) {
+      try { candidate = JSON.parse(recoveryRow.raw_json).candidate || null; } catch {}
+    }
+    if (!candidate) return { error: 'Execution candidate not found' };
+    const currentPlan = assertCurrentActivePlan(candidateId);
+    if (!currentPlan.ok && !recovery) return { error: currentPlan.error };
 
   const normalized = normalizeCandidatePrices(candidate, filters[candidate.symbol]);
   const sizing = sizeCandidate(normalized, settings, balance || {}, filters[candidate.symbol]);
@@ -558,14 +569,17 @@ async function loadServerExecutionCandidate(userId, candidateId) {
   return { apiKey, secret, signed, candidate: normalized, sizing, precision, positions, settings };
 }
 function recordFilledTrade(userId, candidate, entry) {
-  run('INSERT INTO trade_history (user_id,inst_id,side,pos_side,size,price,fee,funding_rate,slippage,pnl,ts,raw_json,client_order_id,order_id,setup_id,structure_event_id,status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', [userId, candidate.symbol, String(candidate.side || '').toLowerCase(), '', Number(entry.executedQty || 0), Number(entry.avgPrice || entry.price || candidate.entry), 0, 0, 0, 0, Number(entry.updateTime || Date.now()), JSON.stringify({ entry, candidate }), candidate.client_order_id, String(entry.orderId || ''), candidate.setup_id || '', candidate.structure_event_id || '', 'OPEN']);
+  const orderId = String(entry.orderId || '');
+  if (!orderId || get('SELECT id FROM trade_history WHERE user_id = ? AND order_id = ?', [userId, orderId])) return;
+  run('INSERT INTO trade_history (user_id,inst_id,side,pos_side,size,price,fee,funding_rate,slippage,pnl,ts,raw_json,client_order_id,order_id,trade_id,setup_id,structure_event_id,status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', [userId, candidate.symbol, String(candidate.side || '').toLowerCase(), '', Number(entry.executedQty || 0), Number(entry.avgPrice || entry.price || candidate.entry), 0, 0, 0, 0, Number(entry.updateTime || Date.now()), JSON.stringify({ entry, candidate }), candidate.client_order_id, orderId, '', candidate.setup_id || '', candidate.structure_event_id || '', 'OPEN']);
 }
 async function syncTradeHistory(userId) {
   const key = get("SELECT * FROM api_keys WHERE user_id = ? AND exchange = 'binanceTestnet' AND status = 'connected' ORDER BY id DESC LIMIT 1", [userId]);
   if (!key) return;
   const apiKey = decryptSecret(key.api_key), secret = decryptSecret(key.secret_key);
   const signed = async (symbol) => {
-    const query = new URLSearchParams({ symbol, limit: '100', recvWindow: '5000', timestamp: String(Date.now()) });
+      await syncBinanceServerTime();
+      const query = new URLSearchParams({ symbol, limit: '100', recvWindow: '10000', timestamp: String(binanceTimestamp()) });
     const queryString = query.toString();
     const response = await fetchBinance(EXCHANGES.binanceTestnet.base + '/fapi/v1/userTrades?' + queryString + '&signature=' + binanceSignature(secret, queryString), { headers: { 'X-MBX-APIKEY': apiKey }, signal: AbortSignal.timeout(10_000) });
     const data = await response.json();
@@ -577,7 +591,7 @@ async function syncTradeHistory(userId) {
     const tradeId = String(trade.id || trade.tradeId || '');
     if (!orderId || (tradeId ? get('SELECT id FROM trade_history WHERE user_id = ? AND trade_id = ?', [userId, tradeId]) : get('SELECT id FROM trade_history WHERE user_id = ? AND order_id = ? AND price = ? AND ts = ?', [userId, orderId, Number(trade.price), Number(trade.time || 0)]))) continue;
     const candidate = get('SELECT setup_id, structure_event_id, client_order_id FROM trade_history WHERE user_id = ? AND order_id = ? LIMIT 1', [userId, orderId]);
-    run('INSERT INTO trade_history (user_id,inst_id,side,pos_side,size,price,fee,funding_rate,slippage,pnl,ts,raw_json,client_order_id,order_id,trade_id,setup_id,structure_event_id,status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', [userId, symbol, String(trade.side || '').toLowerCase(), trade.positionSide || '', Number(trade.qty || 0), Number(trade.price || 0), Number(trade.commission || 0), 0, 0, Number(trade.realizedPnl || 0), Number(trade.time || Date.now()), JSON.stringify(trade), candidate?.client_order_id || trade.clientOrderId || '', orderId, tradeId, candidate?.setup_id || '', candidate?.structure_event_id || '', Number(trade.realizedPnl || 0) !== 0 ? 'CLOSED' : 'OPEN']);
+    run('INSERT INTO trade_history (user_id,inst_id,side,pos_side,size,price,fee,funding_rate,slippage,pnl,ts,raw_json,client_order_id,order_id,trade_id,setup_id,structure_event_id,status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', [userId, symbol, String(trade.side || '').toLowerCase(), trade.positionSide || '', Number(trade.qty || 0), Number(trade.price || 0), Number(trade.commission || 0), 0, 0, Number(trade.realizedPnl || 0), Number(trade.time || Date.now()), JSON.stringify(trade), candidate?.client_order_id || trade.clientOrderId || '', orderId, tradeId, candidate?.setup_id || '', candidate?.structure_event_id || '', Number(trade.realizedPnl || 0) !== 0 ? 'CLOSED' : 'OPEN']);
   }
 }
 function assertCurrentActivePlan(candidateId) {
@@ -614,6 +628,9 @@ async function executeDemoCandidate(req, res) {
     if (sizing.status !== 'SIZED') return res.status(409).json({ ok: false, demoOnly: true, reason: sizing.status, order, ordersSent: false, withdrawalsSent: false });
     const enabled = demoExecutionEnabled;
     const protectionPlan = buildProtectionOrders(candidate, sizing, precision);
+    const submitProtection = protective => signed('POST', '/fapi/v1/algoOrder', { symbol: protective.symbol, side: protective.side, algoType: 'CONDITIONAL', type: protective.type, triggerPrice: protective.stopPrice, closePosition: protective.closePosition === true || protective.closePosition === 'true' ? 'true' : 'false', workingType: protective.workingType, clientAlgoId: protective.clientOrderId.slice(0, 36) });
+    const listProtection = () => signed('GET', '/fapi/v1/openAlgoOrders', { symbol: candidate.symbol });
+    const cancelProtection = order => signed('DELETE', '/fapi/v1/algoOrder', { symbol: candidate.symbol, algoId: String(order.algoId || order.orderId) }).catch(() => null);
     const permission = demoExecutionGate({ botEnabled: botStates.get(req.cookies.sid) === true, ordersEnabled: enabled, protectiveOrdersReady: protectionPlan.status === 'READY_AFTER_ENTRY_FILL', riskStatus: 'ALLOWED', demoExecutionEnabled: enabled });
     if (!permission.allowed) return res.status(409).json({ ok: false, demoOnly: true, ...permission, order, ordersSent: false, withdrawalsSent: false });
     if (req.body?.explicitApproval !== true) return res.status(409).json({ ok: false, demoOnly: true, status: 'EXPLICIT_APPROVAL_REQUIRED', reason: 'Every Demo order requires immediate user approval', order, ordersSent: false, withdrawalsSent: false });
@@ -622,13 +639,43 @@ async function executeDemoCandidate(req, res) {
     catch (error) {
       if (!/_(404|400):/.test(error.message) || !/Unknown order|Order does not exist/i.test(error.message)) throw error;
     }
-    if (existing?.status === 'FILLED') return res.json({ ok: true, demoOnly: true, idempotent: true, status: 'ENTRY_ALREADY_FILLED', entry: existing, ordersSent: true, withdrawalsSent: false });
+    if (existing?.status === 'FILLED') {
+      recordFilledTrade(req.userId, candidate, existing);
+      const filledPlan = assertCurrentActivePlan(candidate.client_order_id);
+      if (!filledPlan.ok && filledPlan.error === 'ACTIVE_PLAN_REPLACED') {
+        const emergency = buildEmergencyCloseOrder(candidate, existing.executedQty);
+        let emergencyClose;
+        try { emergencyClose = await signed('POST', '/fapi/v1/order', { symbol: emergency.symbol, side: emergency.side, type: emergency.type, quantity: emergency.quantity, reduceOnly: emergency.reduceOnly, newClientOrderId: emergency.clientOrderId }); }
+        catch (error) { return res.status(502).json({ ok: false, demoOnly: true, status: 'FILLED_THESIS_INVALIDATED_EMERGENCY_CLOSE_FAILED', entry: existing, error: error.message, ordersSent: true, withdrawalsSent: false }); }
+        return res.status(409).json({ ok: false, demoOnly: true, status: 'FILLED_THESIS_INVALIDATED_POSITION_CLOSED', entry: existing, emergencyClose, ordersSent: true, withdrawalsSent: false });
+      }
+      const protectionOrders = buildProtectionOrders(candidate, sizing, precision).orders;
+      const protection = [];
+      try { for (const protective of protectionOrders) protection.push(await submitProtection(protective)); }
+      catch (error) { const emergency = buildEmergencyCloseOrder(candidate, existing.executedQty); try { const emergencyClose = await signed('POST', '/fapi/v1/order', { symbol: emergency.symbol, side: emergency.side, type: emergency.type, quantity: emergency.quantity, reduceOnly: emergency.reduceOnly, newClientOrderId: emergency.clientOrderId }); return res.status(502).json({ ok: false, demoOnly: true, status: 'PROTECTION_FAILED_POSITION_CLOSED', entry: existing, protection, emergencyClose, error: error.message, ordersSent: true, withdrawalsSent: false }); } catch (closeError) { return res.status(502).json({ ok: false, demoOnly: true, status: 'PROTECTION_FAILED_EMERGENCY_CLOSE_FAILED', entry: existing, error: error.message, emergencyCloseError: closeError.message, ordersSent: true, withdrawalsSent: false }); } }
+      const openOrders = await listProtection();
+      const protectionVerified = protectionOrders.every(order => openOrders.some(open => (open.clientAlgoId || open.clientOrderId) === order.clientOrderId));
+      if (!protectionVerified) return res.status(409).json({ ok: false, demoOnly: true, status: 'PROTECTION_VERIFICATION_FAILED', entry: existing, protection, ordersSent: true, withdrawalsSent: false });
+      demoExecutionSummaries.set(String(req.userId), { status: 'FILLED_PROTECTED', orderId: existing.orderId, clientOrderId: candidate.client_order_id, protectionVerified: true, updatedAt: new Date().toISOString() });
+      return res.json({ ok: true, demoOnly: true, idempotent: true, status: 'FILLED_PROTECTED', entry: existing, protection, protectionVerified: true, ordersSent: true, withdrawalsSent: false });
+    }
     if (existing && ['NEW', 'PARTIALLY_FILLED'].includes(existing.status)) return res.status(409).json({ ok: false, demoOnly: true, status: 'ENTRY_ALREADY_OPEN', entry: existing, ordersSent: true, withdrawalsSent: false });
     demoExecutionSummaries.set(String(req.userId), { status: 'ORDER_SUBMIT', clientOrderId: candidate.client_order_id, leverage: settings.leverage, marginMode: settings.marginMode, attemptAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
     try { await signed('POST', '/fapi/v1/marginType', { symbol: candidate.symbol, marginType: settings.marginMode === 'CROSS' ? 'CROSSED' : 'ISOLATED' }); } catch (error) { if (!/No need to change margin type/i.test(error.message)) throw error; }
     await signed('POST', '/fapi/v1/leverage', { symbol: candidate.symbol, leverage: String(settings.leverage) });
+    const protectionOrdersBeforeFill = buildProtectionOrders(candidate, sizing, precision).orders;
+    const protectionBeforeFill = [];
+    try {
+      for (const protective of protectionOrdersBeforeFill) protectionBeforeFill.push(await submitProtection(protective));
+      const openProtection = await listProtection();
+      const protectionIds = new Set(openProtection.map(order => order.clientAlgoId || order.clientOrderId));
+      if (!protectionOrdersBeforeFill.every(order => protectionIds.has(order.clientOrderId.slice(0, 36)))) throw new Error('PROTECTION_VERIFICATION_FAILED_BEFORE_FILL');
+    } catch (error) {
+      await Promise.all(protectionBeforeFill.map(order => signed('DELETE', '/fapi/v1/algoOrder', { symbol: candidate.symbol, algoId: String(order.algoId || order.orderId) }).catch(() => null)));
+      return res.status(502).json({ ok: false, demoOnly: true, status: 'PROTECTION_FAILED_ENTRY_NOT_SUBMITTED', protection: protectionBeforeFill, error: error.message, ordersSent: false, withdrawalsSent: false });
+    }
     const entry = await signed('POST', '/fapi/v1/order', { symbol: candidate.symbol, side: candidate.side, type: 'LIMIT', timeInForce: 'GTC', quantity: sizing.quantity, price: sizing.price, newClientOrderId: candidate.client_order_id });
-    demoExecutionSummaries.set(String(req.userId), { status: entry.status || 'ORDER_SENT', orderId: entry.orderId, clientOrderId: candidate.client_order_id, attemptAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
+    demoExecutionSummaries.set(String(req.userId), { status: entry.status || 'ORDER_SENT_PROTECTED', orderId: entry.orderId, clientOrderId: candidate.client_order_id, protectionVerified: true, attemptAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
     let current = entry;
     while (!['FILLED', 'CANCELED', 'EXPIRED', 'REJECTED'].includes(current.status)) {
       await new Promise(resolve => setTimeout(resolve, 1000));
@@ -662,23 +709,23 @@ async function executeDemoCandidate(req, res) {
     }
     const execDedup = 'EXEC:' + candidate.symbol + ':' + current.orderId + ':FILLED';
     sendTelegram('<b>JEV EXECUTION</b>\nPair: ' + candidate.symbol + '\nSide: ' + (candidate.side || '-') + '\nOrderID: ' + current.orderId + '\nPrice: ' + (current.avgPrice || current.price || '-') + '\nQty: ' + (current.executedQty || '-') + '\nStatus: FILLED', execDedup, req.userId);
-    const protectionOrders = buildProtectionOrders(candidate, sizing, precision).orders;
-    const protection = [];
+    const protectionOrdersAfterFill = buildProtectionOrders(candidate, sizing, precision).orders;
+    const protectionAfterFill = [];
     try {
-      for (const protective of protectionOrders) protection.push(await signed('POST', '/fapi/v1/order', { symbol: protective.symbol, side: protective.side, type: protective.type, stopPrice: protective.stopPrice, closePosition: protective.closePosition, workingType: protective.workingType, newClientOrderId: protective.clientOrderId }));
+      for (const protective of protectionOrdersAfterFill) protectionAfterFill.push(await submitProtection(protective));
     } catch (error) {
-      await Promise.all(protection.map(order => signed('DELETE', '/fapi/v1/order', { symbol: candidate.symbol, orderId: String(order.orderId) }).catch(() => null)));
+      await Promise.all(protectionAfterFill.map(order => signed('DELETE', '/fapi/v1/algoOrder', { symbol: candidate.symbol, algoId: String(order.algoId || order.orderId) }).catch(() => null)));
       const emergency = buildEmergencyCloseOrder(candidate, current.executedQty);
       let emergencyClose = null;
       try { emergencyClose = await signed('POST', '/fapi/v1/order', { symbol: emergency.symbol, side: emergency.side, type: emergency.type, quantity: emergency.quantity, reduceOnly: emergency.reduceOnly, newClientOrderId: emergency.clientOrderId }); }
       catch (closeError) { return res.status(502).json({ ok: false, demoOnly: true, status: 'PROTECTION_FAILED_EMERGENCY_CLOSE_FAILED', entry: current, error: error.message, emergencyCloseError: closeError.message, ordersSent: true, withdrawalsSent: false }); }
       return res.status(502).json({ ok: false, demoOnly: true, status: 'PROTECTION_FAILED_POSITION_CLOSED', entry: current, protection, emergencyClose, error: error.message, ordersSent: true, withdrawalsSent: false });
     }
-    const openOrders = await signed('GET', '/fapi/v1/openOrders', { symbol: candidate.symbol });
-    const protectedIds = new Set(openOrders.map(order => order.clientOrderId));
+    const openOrders = await listProtection();
+    const protectedIds = new Set(openOrders.map(order => order.clientAlgoId || order.clientOrderId));
     const protectionVerified = protectionOrders.every(order => protectedIds.has(order.clientOrderId));
     if (!protectionVerified) {
-      await Promise.all(protection.map(order => signed('DELETE', '/fapi/v1/order', { symbol: candidate.symbol, orderId: String(order.orderId) }).catch(() => null)));
+      await Promise.all(protectionAfterFill.map(order => signed('DELETE', '/fapi/v1/algoOrder', { symbol: candidate.symbol, algoId: String(order.algoId || order.orderId) }).catch(() => null)));
       const emergency = buildEmergencyCloseOrder(candidate, current.executedQty);
       let emergencyClose = null;
       try { emergencyClose = await signed('POST', '/fapi/v1/order', { symbol: emergency.symbol, side: emergency.side, type: emergency.type, quantity: emergency.quantity, reduceOnly: emergency.reduceOnly, newClientOrderId: emergency.clientOrderId }); }
@@ -707,10 +754,11 @@ async function runExecutionCycle(sid) {
     const freshness = validateCandidateFreshness(artifact, candidate);
     if (!freshness.ok || candidate.status !== 'APPROVED_FOR_EXECUTION') continue;
     const planDedup = 'PLAN:' + candidate.symbol + ':' + candidate.structure_event_id + ':' + candidate.client_order_id;
-    sendTelegram('<b>JEV PLAN READY — NOT SUBMITTED</b>\nPair: ' + candidate.symbol + '\nSetup: ' + (candidate.setup_id || '-') + '\nSide: ' + (candidate.side || '-') + '\nEntry: ' + (candidate.entry || '-') + '\nSL: ' + (candidate.sl || '-') + '\nTP: ' + (candidate.tp || '-') + '\nStatus: APPROVED\nExecution: runner submitting to Binance', planDedup, userId);
+    sendTelegram('JEV PLAN READY\nPair: ' + candidate.symbol + '\nSetup: ' + (candidate.setup_id || '-') + '\nSide: ' + (candidate.side || '-') + '\nEntry: ' + (candidate.entry || '-') + '\nSL: ' + (candidate.sl || '-') + '\nTP: ' + (candidate.tp || '-') + '\nStatus: APPROVED\nExecution: runner submitting to Binance', planDedup, userId);
     if (botStates.get(sid) !== true) return;
     const key = sid + ":" + candidate.client_order_id;
-    if (!candidate.client_order_id || executionAttempts.has(key)) continue;
+    const prior = demoExecutionSummaries.get(sid);
+    if (!candidate.client_order_id || (executionAttempts.has(key) && ['FILLED_PROTECTED', 'PROTECTION_FAILED_POSITION_CLOSED', 'PROTECTION_FAILED_EMERGENCY_CLOSE_FAILED'].includes(prior?.status))) continue;
     executionAttempts.set(key, true);
     let payload;
     const response = { statusCode: 200, status(code) { this.statusCode = code; return this; }, json(body) { payload = body; return this; } };
