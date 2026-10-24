@@ -3,13 +3,19 @@ from pathlib import Path
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'v2' / 'scripts'))
-from binance_demo_live_pipeline import invalidate_stale_candidates
+from binance_demo_live_pipeline import invalidate_stale_candidates, build_artifact_status
 
 
 class CandidateInvalidationTests(unittest.TestCase):
     def fresh(self, candidate):
         candidate.setdefault('created_at_ms', 1000)
         return candidate
+
+    def test_zero_execution_candidates_set_no_trade_without_losing_rejections(self):
+        artifact = build_artifact_status({'execution_candidates': [], 'symbols': {'BTCUSDT': {'recent_events': [{'gate_rejection': 'context_rejected'}]}}})
+        self.assertEqual(artifact['status'], 'NO_TRADE')
+        self.assertEqual(artifact['execution_status'], 'NO_TRADE')
+        self.assertEqual(artifact['rejection_diagnostics'], [{'symbol': 'BTCUSDT', 'gate_rejection': 'context_rejected'}])
 
     def test_unrelated_waiting_structure_does_not_invalidate_plan(self):
         candidates = [

@@ -32,7 +32,7 @@
 
       <div class="header-actions"><span id="userInfo" style="font-family:var(--mono);font-size:12px;color:var(--muted)"></span><span id="headerConnection" class="header-connection is-offline">CONNECTION OFFLINE</span><button id="botToggle" class="bot-toggle" onclick="toggleBot()">BOT OFF</button><span id="botRuntime" class="bot-runtime">LIVE DEMO OFF</span></div>
     </div><section class="market-charts" aria-labelledby="marketChartsTitle"><div class="charts-header"><div><h3 id="marketChartsTitle">MARKET CHARTS</h3><label class="chart-timeframe-picker">TIMEFRAME <select id="chartTimeframe" aria-label="Chart timeframe" onchange="changeChartTimeframe(this.value)"><option value="1h">1H</option><option value="15m" selected>15M</option><option value="5m">5M</option></select></label></div><span id="chartsUpdated" class="muted mono">LIVE --:--:--</span></div><div id="pairCharts" class="pair-charts"></div></section>
-        <div class="card workflow-office"><div class="office-header"><div><h3 style="font-size:14px;margin-bottom:6px">V2 WORKFLOW OFFICE</h3></div><span class="office-live"><i></i> LIVE</span></div><div class="workflow-track" id="workflowTrack"></div><p id="v2Status" class="muted mono" style="margin-top:14px">Loading LIVE DEMO workflow status...</p><div id="v2Pairs" class="table-wrap"></div></div><section class="card account-assets" aria-labelledby="accountAssetsTitle"><div class="office-header"><div><h3 id="accountAssetsTitle" style="font-size:14px;margin-bottom:6px">BINANCE DEMO ASSETS</h3></div></div><div id="assetsTable" class="table-wrap"><p class="muted mono">Loading account assets...</p></div></section>
+        <div class="card workflow-office"><div class="office-header"><div><h3 style="font-size:14px;margin-bottom:6px">V2 WORKFLOW OFFICE</h3></div><span class="office-live"><i></i> LIVE</span></div><div class="workflow-track" id="workflowTrack"></div><p id="v2Status" class="muted mono" style="margin-top:14px">Loading LIVE DEMO workflow status...</p><div id="v2Pairs" class="table-wrap"></div></div><section class="card readiness-office" aria-labelledby="readinessTitle"><div class="office-header"><div><h3 id="readinessTitle" style="font-size:14px;margin-bottom:6px">EXECUTION READINESS</h3><p class="muted mono">Pipeline state stays separate from exchange and reconciliation gates.</p></div></div><div id="readinessState" class="readiness-grid" aria-live="polite"><div><span>PIPELINE</span><strong>LOADING</strong></div><div><span>EXCHANGE READINESS</span><strong>LOADING</strong></div><div><span>RECONCILIATION</span><strong>LOADING</strong></div></div><div id="readinessPairs" class="table-wrap"><p class="muted mono">Loading pair blockers...</p></div></section><section class="card account-assets" aria-labelledby="accountAssetsTitle"><div class="office-header"><div><h3 id="accountAssetsTitle" style="font-size:14px;margin-bottom:6px">BINANCE DEMO ASSETS</h3></div></div><div id="assetsTable" class="table-wrap"><p class="muted mono">Loading account assets...</p></div></section>
 </div>
 <script src="/vendor/lightweight-charts.standalone.production.js"></script>
 <script>
@@ -244,6 +244,25 @@ async function refreshV2() {
   const candleTime = ts => ts ? new Date(Number(ts)).toLocaleTimeString() : '--';
   document.getElementById('v2Pairs').innerHTML = '<table><thead><tr><th>Pair</th><th>1H latest</th><th>15M latest</th><th>5M latest</th><th>Events</th><th>Setup owners</th><th>Active plan</th></tr></thead><tbody>' + Object.entries(v2.artifact.symbols).map(([symbol,x]) => { const setups=[...new Set((x.recent_events||[]).map(e=>e.selected_setup).filter(Boolean))]; const eligible=[...new Set((x.recent_events||[]).flatMap(e=>e.eligible_setup_candidates||[]))]; return `<tr><td>${symbol}</td><td>${candleTime(x.latest_closed_candle?.['1h'])}</td><td>${candleTime(x.latest_closed_candle?.['15m'])}</td><td>${candleTime(x.latest_closed_candle?.['5m'])}</td><td>${x.recent_events.length}</td><td class="mono">${setups.length ? setups.join(', ') : '—'}</td><td>${v2.artifact.active_plan_by_symbol?.[symbol]?.client_order_id ? 'ACTIVE' : '—'} <span class="muted mono">(${v2.artifact.latest_confirmed_structure_event_ids?.[symbol] || '—'})</span></td></tr>`; }).join('') + '</tbody></table>';
 }
+function readinessStatus(ok, value) { return ok ? value : 'BLOCKED'; }
+function renderReadiness(pipeline, readiness, reconciliation) {
+  const state = document.getElementById('readinessState');
+  const pairs = document.getElementById('readinessPairs');
+  const totals = pipeline?.artifact?.totals || {};
+  const pipelineReady = Number(totals.live_demo_candidates || 0) > 0;
+  const exchangeReady = readiness?.ready === true;
+  const reconReady = readiness?.reconciliationStatus === 'RECONCILED' && (!reconciliation || reconciliation.status === 'RECONCILIATION_PASS');
+  state.innerHTML = [['PIPELINE', pipelineReady ? 'CANDIDATES READY' : 'WAITING', pipelineReady], ['EXCHANGE READINESS', readinessStatus(exchangeReady, 'READY'), exchangeReady], ['RECONCILIATION', readinessStatus(reconReady, reconciliation?.status || readiness?.reconciliationStatus || 'REVIEW REQUIRED'), reconReady]].map(([label, value, ok]) => `<div><span>${label}</span><strong class="${ok ? '' : 'is-blocked'}">${value}</strong></div>`).join('');
+  const rows = reconciliation?.pairExposure || [];
+  const blockerRows = rows.filter(row => row.status !== 'MANAGED_PENDING_ORDER');
+  const globalBlockers = readiness?.blockers || [];
+  pairs.innerHTML = blockerRows.length || globalBlockers.length ? '<table><thead><tr><th>PAIR</th><th>RECONCILIATION</th><th>BLOCKERS</th></tr></thead><tbody>' + (blockerRows.length ? blockerRows.map(row => `<tr><td>${escapeHtml(row.symbol || '—')}</td><td>${escapeHtml(row.status || '—')}</td><td class="neg mono">${escapeHtml(row.action || 'REVIEW REQUIRED')}</td></tr>`).join('') : `<tr><td>ALL PAIRS</td><td>EXCHANGE READINESS</td><td class="neg mono">${globalBlockers.map(escapeHtml).join(', ')}</td></tr>`) + '</tbody></table>' : '<p class="muted mono">No exchange or reconciliation blockers.</p>';
+}
+async function refreshReadiness() {
+  const pipeline = await api('/v2/status');
+  const [readiness, reconciliation] = await Promise.all([api('/binance-demo/live-readiness'), api('/binance-demo/reconciliation')]);
+  renderReadiness(pipeline, readiness, reconciliation);
+}
 async function init() {
   const me = await api('/me');
   if (!me) return;
@@ -294,7 +313,9 @@ refreshOkxTicker();
 setInterval(refreshOkxTicker, 10_000);
 refreshCharts();
 refreshAssets();
+refreshReadiness();
 setInterval(refreshAssets, 30_000);
+setInterval(refreshReadiness, 30_000);
 setInterval(refreshCharts, 30_000);
 setInterval(refreshBot, 60_000);
 setInterval(refreshV2, 5_000);
