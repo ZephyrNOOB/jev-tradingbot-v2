@@ -1,6 +1,7 @@
 export function closeReasonFromClientOrderId(clientOrderId) {
   if (/_sl$/i.test(String(clientOrderId || ''))) return 'SL';
   if (/_tp$/i.test(String(clientOrderId || ''))) return 'TP';
+  if (/_ec$/i.test(String(clientOrderId || ''))) return 'EMERGENCY';
   return null;
 }
 

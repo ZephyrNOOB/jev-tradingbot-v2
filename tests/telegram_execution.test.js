@@ -11,6 +11,7 @@ test('only entry FILLED update emits EXECUTION', () => {
 test('close reason comes only from exchange close order suffix', () => {
   assert.equal(closeReasonFromClientOrderId('jev_entry_sl'), 'SL');
   assert.equal(closeReasonFromClientOrderId('jev_entry_tp'), 'TP');
+  assert.equal(closeReasonFromClientOrderId('jev_entry_ec'), 'EMERGENCY');
   assert.equal(closeReasonFromClientOrderId('jev_entry'), null);
 });
 

@@ -1,3 +1,4 @@
 {
-  "demoExecutionEnabled": true
+  "demoExecutionEnabled": true,
+  "unattendedDemoExecutionEnabled": false
 }

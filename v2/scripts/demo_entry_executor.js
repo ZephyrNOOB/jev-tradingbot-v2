@@ -19,5 +19,9 @@ export function demoExecutionGate(input) {
   const permission = canSendDemoEntry(input);
   if (!permission.allowed) return permission;
   if (input.demoExecutionEnabled !== true) return { allowed: false, reason: 'DEMO_EXECUTION_FLAG_DISABLED' };
-  return { allowed: true };
+  if (input.internalRunner === true) {
+    if (input.unattendedDemoExecutionEnabled !== true) return { allowed: false, reason: 'APPROVAL_REQUIRED' };
+    return { allowed: true, authorization: 'UNATTENDED_DEMO_AUTHORIZED' };
+  }
+  return { allowed: true, authorization: input.explicitApproval === true ? 'DIRECT_USER_APPROVAL' : 'DIRECT_APPROVAL_PENDING' };
 }
