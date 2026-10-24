@@ -590,8 +590,8 @@ app.get('/api/binance-demo/reconciliation', auth, async (req, res) => {
     reconcileManualClosedLifecycles(req.userId, positions);
     const artifact = JSON.parse(fs.readFileSync(path.join(__dirname, 'v2', 'artifacts', 'BINANCE_DEMO_LIVE_PIPELINE.json'), 'utf8'));
     const candidates = (artifact.execution_candidates || []).filter(candidate => validateCandidateFreshness(artifact, candidate).ok && !lifecycleBlocksReentry(req.userId, candidate));
-    const reconciliation = reconcileDemoState(candidates, ordersBySymbol.flat(), positions);
     const monitoring = monitorProtectionState(candidates, ordersBySymbol.flat(), positions);
+    const reconciliation = reconcileDemoState(candidates, ordersBySymbol.flat(), positions, monitoring);
     const status = reconciliation.status === 'RECONCILED' && !readinessBlockers(monitoring).length ? 'RECONCILIATION_PASS' : 'RECONCILIATION_BLOCKED';
     res.json({ ok: true, executionMode: 'LIVE_DEMO', demoOnly: true, status, observedAt: new Date().toISOString(), ordersSent: null, withdrawalsSent: null, monitoring, ...reconciliation });
   } catch (error) { res.status(502).json({ ok: false, demoOnly: true, error: error.message || 'Demo reconciliation failed' }); }
