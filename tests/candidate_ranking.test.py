@@ -34,11 +34,11 @@ class CandidateRankingTests(unittest.TestCase):
         self.assertEqual(result['entry'], 100.0)
         self.assertEqual(result['status'], 'APPROVED_FOR_EXECUTION')
 
-    def test_material_tp_change_replaces_plan_identity(self):
+    def test_preserves_plan_when_structure_event_changes_but_thesis_is_same(self):
         previous = {'symbol': 'BTCUSDT', 'client_order_id': 'jev_old', 'structure_event_id': 'btc-old', 'side': 'BUY', 'setup_id': 'FVG', 'entry': 100.0, 'sl': 99.0, 'tp': 102.0, 'entry_zone': [99.5, 100.5], 'evidence': {'entry_source': 'fvg', 'sl_source': 'boundary', 'tp_source': 'objective'}}
         refreshed = {'symbol': 'BTCUSDT', 'client_order_id': 'jev_new', 'structure_event_id': 'btc-new', 'side': 'BUY', 'setup_id': 'FVG', 'entry': 100.0, 'sl': 99.0, 'tp': 103.0, 'entry_zone': [98.5, 101.5], 'evidence': {'entry_source': 'fvg', 'sl_source': 'boundary', 'tp_source': 'objective'}}
         result = preserve_active_plan(previous, refreshed)
-        self.assertEqual(result['client_order_id'], 'jev_new')
+        self.assertEqual(result['client_order_id'], 'jev_old')
 
     def test_replaces_plan_when_setupbot_thesis_changes(self):
         previous = {'symbol': 'BTCUSDT', 'client_order_id': 'jev_old', 'structure_event_id': 'btc-old', 'side': 'BUY', 'setup_id': 'FVG', 'entry': 100.0, 'sl': 99.0, 'tp': 102.0, 'entry_zone': [99.5, 100.5], 'evidence': {'entry_source': 'fvg', 'sl_source': 'boundary', 'tp_source': 'objective'}}

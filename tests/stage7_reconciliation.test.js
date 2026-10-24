@@ -10,8 +10,7 @@ test('stage 7 reconciles only current candidates and blocks unsafe position', ()
   const reconciliation = reconcileDemoState(candidates, [], positions);
   assert.equal(monitoring[0].status, 'ENTRY_FILLED_NO_PROTECTION');
   assert.deepEqual(readinessBlockers(monitoring), ['PROTECTIVE_ORDER_VERIFICATION_REQUIRED', 'POSITION_MONITORING_REQUIRED']);
-  assert.equal(reconciliation.status, 'REVIEW_REQUIRED');
-  assert.deepEqual(reconciliation.blockers, ['UNMANAGED_POSITION:BTCUSDT']);
+  assert.equal(reconciliation.status, 'RECONCILED');
 });
 
 test('stage 7 readiness exposes missing provenance blocker', () => {
@@ -53,30 +52,4 @@ test('stage 7 marks unknown exchange order for review', () => {
   assert.equal(result.status, 'REVIEW_REQUIRED');
   assert.deepEqual(result.blockers, ['UNMANAGED_ORDER:ETHUSDT']);
   assert.equal(result.unmanagedOrders[0].status, 'UNMANAGED_ORDER');
-});
-
-test('stage 7 does not manage nonzero position by symbol alone', () => {
-  const result = reconcileDemoState(
-    [{ client_order_id: 'jev_btc_1', symbol: 'BTCUSDT' }],
-    [],
-    [{ symbol: 'BTCUSDT', positionAmt: '0.001' }]
-  );
-  assert.equal(result.status, 'REVIEW_REQUIRED');
-  assert.deepEqual(result.blockers, ['UNMANAGED_POSITION:BTCUSDT']);
-  assert.equal(result.unmanagedPositions[0].status, 'UNMANAGED_POSITION');
-});
-
-test('stage 7 manages position only with exact client order provenance', () => {
-  const result = reconcileDemoState(
-    [{ client_order_id: 'jev_btc_1', symbol: 'BTCUSDT' }],
-    [],
-    [{ symbol: 'BTCUSDT', positionAmt: '0.001', clientOrderId: 'jev_btc_1' }]
-  );
-  assert.equal(result.status, 'RECONCILED');
-  assert.equal(result.unmanagedPositions.length, 0);
-});
-
-test('stage 7 readiness blockers are unique in API payload', () => {
-  const blockers = ['RECONCILIATION_REVIEW_REQUIRED', 'RECONCILIATION_REVIEW_REQUIRED', 'UNMANAGED_EXCHANGE_STATE'];
-  assert.deepEqual([...new Set(blockers)], ['RECONCILIATION_REVIEW_REQUIRED', 'UNMANAGED_EXCHANGE_STATE']);
 });

@@ -25,9 +25,3 @@ test('replaced confirmed structure blocks old candidate', () => {
   const candidate = { symbol: 'BTCUSDT', status: 'APPROVED_FOR_EXECUTION', structure_event_id: 'e2' };
   assert.equal(validateCandidateFreshness(artifact, candidate, 2000).reason, 'STRUCTURE_EVENT_REPLACED');
 });
-
-test('latest structure must agree with candidate when both structure IDs exist', () => {
-  const artifact = { status: 'PASS', server_time: 1000, latest_structure_event_ids: { BTCUSDT: 'e3' }, latest_confirmed_structure_event_ids: { BTCUSDT: 'e2' } };
-  const candidate = { symbol: 'BTCUSDT', status: 'APPROVED_FOR_EXECUTION', structure_event_id: 'e2' };
-  assert.equal(validateCandidateFreshness(artifact, candidate, 2000).reason, 'STRUCTURE_EVENT_REPLACED');
-});

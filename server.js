@@ -20,7 +20,6 @@ import { startBinanceMarketStream, getBinanceStreamPrices, getBinanceStreamCandl
 import { startBinanceUserStream, stopBinanceUserStream, getBinanceUserStreamState } from './v2/scripts/binance_user_stream.js';
 import { closeReasonFromClientOrderId } from './v2/scripts/telegram_execution.js';
 import { findActiveSessionId } from './v2/scripts/recovery_session.js';
-import { atomicWriteFile } from './v2/scripts/atomic_write.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -513,7 +512,9 @@ function persistClosedCandle(candle) {
   const rows = Array.isArray(cache[key]) ? cache[key] : [];
   const row = { open: candle.open, high: candle.high, low: candle.low, close: candle.close, volume: candle.volume, taker_buy_volume: candle.takerBuyVolume || 0, open_time: candle.openTime, close_time: candle.closeTime };
   cache[key] = [...rows.filter(item => Number(item.open_time) !== candle.openTime), row].sort((a, b) => a.open_time - b.open_time).slice(-500);
-  atomicWriteFile(cachePath, JSON.stringify(cache));
+  const tmp = `${cachePath}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(cache));
+  fs.renameSync(tmp, cachePath);
 }
 function startMarketStructureStreamTrigger() {
   if (marketCandleUnsubscribe) return;
@@ -593,8 +594,7 @@ app.get('/api/binance-demo/live-readiness', auth, async (req, res) => {
     if (lastExecution?.status === 'PROTECTION_FAILED_EMERGENCY_CLOSE_FAILED') blockers.push('UNCONTAINED_EXECUTION_FAILURE');
     if (reconciliation.status !== 'RECONCILED') blockers.push('RECONCILIATION_REVIEW_REQUIRED');
     if (reconciliation.unmanagedOrders?.length || reconciliation.unmanagedPositions?.length) blockers.push('UNMANAGED_EXCHANGE_STATE');
-    const uniqueBlockers = [...new Set(blockers)];
-    res.json({ ok: true, ready: uniqueBlockers.length === 0, executionMode: 'LIVE_DEMO', demoOnly: true, blockers: uniqueBlockers, reconciliationStatus: reconciliation.status, userStream: getBinanceUserStreamState(String(req.userId)), candidateCount: candidates.length, validCandidateCount: candidates.filter(x => x.sizing.status === 'SIZED' && x.precision === 'VALID').length, ordersSent: null, withdrawalsSent: null });
+    res.json({ ok: true, ready: blockers.length === 0, executionMode: 'LIVE_DEMO', demoOnly: true, blockers, reconciliationStatus: reconciliation.status, userStream: getBinanceUserStreamState(String(req.userId)), candidateCount: candidates.length, validCandidateCount: candidates.filter(x => x.sizing.status === 'SIZED' && x.precision === 'VALID').length, ordersSent: null, withdrawalsSent: null });
   } catch (error) { res.status(502).json({ ok: false, ready: false, executionMode: 'LIVE_DEMO', demoOnly: true, blockers: ['BINANCE_DEMO_READINESS_FAILED'], error: error.message, ordersSent: null, withdrawalsSent: null }); }
 });app.get('/api/binance-demo/execution-preflight', auth, async (req, res) => {
   const keyRow = get("SELECT * FROM api_keys WHERE id = (SELECT id FROM api_keys WHERE user_id = ? AND exchange = 'binanceTestnet' AND status = 'connected' ORDER BY id DESC LIMIT 1)", [req.userId]);
@@ -738,7 +738,7 @@ function markCandidateInvalidated(clientOrderId, status) {
       changed = true;
     }
   }
-  if (changed) atomicWriteFile(artifactPath, JSON.stringify(artifact, null, 2));
+  if (changed) fs.writeFileSync(artifactPath, JSON.stringify(artifact, null, 2));
   return changed;
 }
 async function executeDemoCandidate(req, res) {

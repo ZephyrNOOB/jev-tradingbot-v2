@@ -113,7 +113,7 @@ def _stable_thesis_key(plan):
         return ("EVENT_FALLBACK", plan.get("symbol"), plan.get("structure_event_id"))
     return (
         plan.get("symbol"), plan.get("side"), plan.get("setup_id"),
-        round(float(plan.get("entry")), 8), round(float(plan.get("sl")), 8), round(float(plan.get("tp")), 8),
+        round(float(plan.get("entry")), 8), round(float(plan.get("sl")), 8),
         evidence.get("entry_source"), evidence.get("sl_source"), evidence.get("tp_source"),
     )
 
@@ -263,16 +263,6 @@ def event_visual_geometry(event, candles):
         "label_price": event.broken_level or (break_candle.get("close") if break_candle else None),
     }
 
-def build_artifact_status(payload):
-    """Mark empty execution output explicitly while retaining rejection evidence."""
-    candidates = payload.get("execution_candidates") or []
-    diagnostics = []
-    for symbol, data in (payload.get("symbols") or {}).items():
-        diagnostics.extend({"symbol": symbol, "gate_rejection": row["gate_rejection"]} for row in data.get("recent_events", []) if row.get("gate_rejection"))
-    status = "PASS" if candidates else "NO_TRADE"
-    return {**payload, "status": status, "execution_status": status, "rejection_diagnostics": diagnostics}
-
-
 def main():
     server_time = int(get("/fapi/v1/time")["serverTime"])
     previous_active_plans = {}
@@ -354,7 +344,7 @@ def main():
     totals["live_demo_candidates"] = len(execution_candidates)
 
     active_plan_by_symbol = {candidate["symbol"]: candidate for candidate in execution_candidates}
-    out = build_artifact_status({"name": "BINANCE_DEMO_LIVE_PIPELINE", "environment": "demo-fapi", "server_time": server_time, "symbols": observations, "latest_structure_event_ids": latest_structure_event_ids, "latest_confirmed_structure_event_ids": latest_confirmed_structure_event_ids, "execution_candidates": execution_candidates, "active_plan_by_symbol": active_plan_by_symbol, "totals": totals, "live_demo_plan": False, "next_action": "Live Demo executor processes fresh APPROVED_FOR_EXECUTION candidates."})
+    out = {"name": "BINANCE_DEMO_LIVE_PIPELINE", "status": "PASS", "environment": "demo-fapi", "server_time": server_time, "symbols": observations, "latest_structure_event_ids": latest_structure_event_ids, "latest_confirmed_structure_event_ids": latest_confirmed_structure_event_ids, "execution_candidates": execution_candidates, "active_plan_by_symbol": active_plan_by_symbol, "totals": totals, "execution_status": "LIVE_DEMO", "live_demo_plan": False, "next_action": "Live Demo executor processes fresh APPROVED_FOR_EXECUTION candidates."}
     _write_artifact(out)
     print(json.dumps(out, indent=2))
 
