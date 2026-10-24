@@ -51,6 +51,7 @@ async function api(path, opts = {}) {
 
 const chartPairs = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XAUUSDT'];
 let selectedChartInterval = localStorage.getItem('jev_chart_timeframe') || '15m';
+const chartCandleLimits = { '1h': 160, '15m': 200, '5m': 180 };
 const charts = new Map();
 function changeChartTimeframe(interval) {
   if (!['1h', '15m', '5m'].includes(interval)) return;
@@ -168,7 +169,7 @@ async function refreshCharts() {
       const state = document.getElementById(`chartState-${symbol}`);
       try {
         const interval = selectedChartInterval;
-        const result = await api(`/chart/candles?symbol=${symbol}&interval=${interval}&limit=500`);
+        const result = await api(`/chart/candles?symbol=${symbol}&interval=${interval}&limit=${chartCandleLimits[interval]}`);
         if (!result?.ok) throw new Error(result?.error || 'Unavailable');
         const key = `${symbol}-${interval}`;
         const view = charts.get(key) || createChart(document.getElementById(`chart-${key}`));
