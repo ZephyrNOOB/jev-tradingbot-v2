@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { reconcileDemoState } from '../v2/scripts/demo_reconciliation.js';
+import { reconcileDemoState, selectReconciliationCandidates } from '../v2/scripts/demo_reconciliation.js';
 import { monitorProtectionState, readinessBlockers } from '../v2/scripts/demo_monitoring.js';
 
 test('stage 7 reconciles only current candidates and blocks unsafe position', () => {
@@ -21,6 +21,16 @@ test('stage 7 reconciliation exposes missing provenance blocker', () => {
   const result = reconcileDemoState([], [], [], [{ status: 'BLOCKED_MISSING_PROVENANCE' }]);
   assert.equal(result.status, 'REVIEW_REQUIRED');
   assert.deepEqual(result.blockers, ['BLOCKED_MISSING_PROVENANCE']);
+});
+
+test('stage 7 keeps replaced exchange order ID managed by stable client identity', () => {
+  const candidates = [{ client_order_id: 'jev_f425cbf38a03b947876c9fde', symbol: 'XAUUSDT' }];
+  const openOrders = [{ orderId: 608942647, clientOrderId: 'jev_f425cbf38a03b947876c9fde', symbol: 'XAUUSDT', status: 'NEW' }];
+  const selected = selectReconciliationCandidates([], openOrders, candidates);
+  const result = reconcileDemoState(selected, openOrders, []);
+  assert.equal(result.status, 'RECONCILED');
+  assert.equal(result.unmanagedOrders.length, 0);
+  assert.equal(result.managedOrders[0].orderId, 608942647);
 });
 
 test('stage 7 reports pair-level provenance for unmanaged position, unmanaged order, and managed pending order', () => {

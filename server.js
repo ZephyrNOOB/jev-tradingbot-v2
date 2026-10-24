@@ -10,13 +10,14 @@ import { execFile } from 'node:child_process';
 import { sizeCandidate, validateCandidatePrecision, normalizeCandidatePrices } from './v2/scripts/execution_sizing.js';
 import { buildDemoEntryOrder, canSendDemoEntry, demoExecutionGate } from './v2/scripts/demo_entry_executor.js';
 import { buildProtectionOrders, verifyEntryFill, buildEmergencyCloseOrder } from './v2/scripts/demo_protection.js';
-import { reconcileDemoState } from './v2/scripts/demo_reconciliation.js';
+import { reconcileDemoState, selectReconciliationCandidates } from './v2/scripts/demo_reconciliation.js';
 import { monitorProtectionState, readinessBlockers } from './v2/scripts/demo_monitoring.js';
 import { buildRecoveryPlan } from './v2/scripts/demo_recovery.js';
 import { summarizeDemoDryRun } from './v2/scripts/demo_cycle.js';
 import { validateCandidateFreshness } from './v2/scripts/candidate_freshness.js';
 import { startBinanceMarketStream, getBinanceStreamPrices, getBinanceStreamCandles, getBinanceStreamState, onClosedCandle } from './v2/scripts/binance_market_stream.js';
 import { startBinanceUserStream, stopBinanceUserStream, getBinanceUserStreamState } from './v2/scripts/binance_user_stream.js';
+import { closeReasonFromClientOrderId } from './v2/scripts/telegram_execution.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -118,6 +119,15 @@ const MARKET_INTERVAL_MS = 15 * 60_000;
 const EXECUTION_INTERVAL_MS = 5_000;
 const telegramSent = new Set();
 const telegramInFlight = new Set();
+const telegramExecutionQueues = new Map();
+function queueTelegramExecution(userId, work) {
+  const previous = telegramExecutionQueues.get(userId) || Promise.resolve();
+  const next = previous.catch(() => {}).then(work).finally(() => {
+    if (telegramExecutionQueues.get(userId) === next) telegramExecutionQueues.delete(userId);
+  });
+  telegramExecutionQueues.set(userId, next);
+  return next;
+}
 async function sendTelegram(text, dedupKey, userId) {
   const configured = userId ? get('SELECT * FROM telegram_connections WHERE user_id = ?', [userId]) : null;
   const token = configured?.bot_token_encrypted ? decryptSecret(configured.bot_token_encrypted) : null;
@@ -151,12 +161,21 @@ async function sendTelegram(text, dedupKey, userId) {
 function notifyTelegramExecution(event, userId) {
   const order = event?.o;
   if (event?.e !== 'ORDER_TRADE_UPDATE' || order?.X !== 'FILLED' || !order?.i) return;
-  const key = 'EXEC:' + order.s + ':' + order.i + ':FILLED';
-  sendTelegram(
-    'JEV EXECUTION\nPair: ' + (order.s || '-') + '\nSide: ' + (order.S || '-') +
-    '\nOrderID: ' + order.i + '\nPrice: ' + (order.ap || '-') +
-    '\nQty: ' + (order.z || '-') + '\nStatus: FILLED', key, userId
-  );
+  queueTelegramExecution(userId, async () => {
+    const key = 'EXEC:' + order.s + ':' + order.i + ':FILLED';
+    await sendTelegram(
+      'JEV EXECUTION\nPair: ' + (order.s || '-') + '\nSide: ' + (order.S || '-') +
+      '\nOrderID: ' + order.i + '\nPrice: ' + (order.ap || '-') +
+      '\nQty: ' + (order.z || '-') + '\nStatus: FILLED', key, userId
+    );
+    const closeReason = closeReasonFromClientOrderId(order.c);
+    if (closeReason) await sendTelegram(
+      'JEV CLOSE\nPair: ' + (order.s || '-') + '\nReason: ' + closeReason +
+      '\nOrderID: ' + order.i + '\nPrice: ' + (order.ap || '-') +
+      '\nQty: ' + (order.z || '-') + '\nStatus: CLOSED',
+      'CLOSE:' + order.s + ':' + order.i + ':' + closeReason, userId
+    );
+  });
 }
 
 async function protectFilledEvent(userId, candidate) {
@@ -551,7 +570,8 @@ app.get('/api/binance-demo/live-readiness', auth, async (req, res) => {
     reconcileManualClosedLifecycles(req.userId, positions);
     const monitoring = monitorProtectionState(artifact.execution_candidates || [], openOrders, openPositions);
     blockers.push(...readinessBlockers(monitoring));
-    const reconciliation = reconcileDemoState((artifact.execution_candidates || []).filter(candidate => validateCandidateFreshness(artifact, candidate).ok), openOrders, positions, monitoring);
+    const reconciliationCandidates = selectReconciliationCandidates([], openOrders, artifact.execution_candidates || []);
+    const reconciliation = reconcileDemoState(reconciliationCandidates, openOrders, positions, monitoring);
     blockers.push(...(reconciliation.blockers || []));
     if (reconciliation.status !== 'RECONCILED') blockers.push('RECONCILIATION_REVIEW_REQUIRED');
     const lastExecution = demoExecutionSummaries.get(String(req.userId));
@@ -591,7 +611,8 @@ app.get('/api/binance-demo/reconciliation', auth, async (req, res) => {
     const artifact = JSON.parse(fs.readFileSync(path.join(__dirname, 'v2', 'artifacts', 'BINANCE_DEMO_LIVE_PIPELINE.json'), 'utf8'));
     const candidates = (artifact.execution_candidates || []).filter(candidate => validateCandidateFreshness(artifact, candidate).ok && !lifecycleBlocksReentry(req.userId, candidate));
     const monitoring = monitorProtectionState(candidates, ordersBySymbol.flat(), positions);
-    const reconciliation = reconcileDemoState(candidates, ordersBySymbol.flat(), positions, monitoring);
+    const reconciliationCandidates = selectReconciliationCandidates([], ordersBySymbol.flat(), artifact.execution_candidates || []);
+    const reconciliation = reconcileDemoState(reconciliationCandidates, ordersBySymbol.flat(), positions, monitoring);
     const status = reconciliation.status === 'RECONCILED' && !readinessBlockers(monitoring).length ? 'RECONCILIATION_PASS' : 'RECONCILIATION_BLOCKED';
     res.json({ ok: true, executionMode: 'LIVE_DEMO', demoOnly: true, status, observedAt: new Date().toISOString(), ordersSent: null, withdrawalsSent: null, monitoring, ...reconciliation });
   } catch (error) { res.status(502).json({ ok: false, demoOnly: true, error: error.message || 'Demo reconciliation failed' }); }
@@ -675,6 +696,10 @@ function reconcileManualClosedLifecycles(userId, positions) {
     const now = Date.now();
     run('UPDATE execution_lifecycles SET position_status=\'CLOSED\', close_reason=\'MANUAL\', updated_at=?, completed_at=? WHERE user_id=? AND thesis_key=? AND position_status=\'OPEN\'', [now, now, userId, lifecycle.thesis_key]);
     run('UPDATE trade_history SET status=\'CLOSED\', close_reason=\'MANUAL\', completed_at=? WHERE user_id=? AND thesis_key=? AND status != \'CLOSED\'', [now, userId, lifecycle.thesis_key]);
+    queueTelegramExecution(userId, () => sendTelegram(
+      'JEV CLOSE\nPair: ' + lifecycle.symbol + '\nReason: MANUAL\nStatus: CLOSED',
+      'CLOSE:' + lifecycle.symbol + ':' + lifecycle.thesis_key + ':MANUAL', userId
+    ));
   }
 }
 function assertCurrentActivePlan(candidateId) {

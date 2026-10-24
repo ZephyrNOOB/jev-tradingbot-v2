@@ -1,5 +1,14 @@
 import { readinessBlockers } from './demo_monitoring.js';
 
+export function selectReconciliationCandidates(candidates = [], openOrders = [], knownCandidates = []) {
+  const activeIds = new Set(openOrders.map(order => String(order.clientOrderId || '').replace(/_(?:sl|tp)$/, '')).filter(Boolean));
+  const byClientOrderId = new Map(candidates.filter(candidate => candidate?.client_order_id).map(candidate => [candidate.client_order_id, candidate]));
+  for (const candidate of knownCandidates) {
+    if (candidate?.client_order_id && activeIds.has(candidate.client_order_id)) byClientOrderId.set(candidate.client_order_id, candidate);
+  }
+  return [...byClientOrderId.values()];
+}
+
 export function reconcileDemoState(candidates = [], openOrders = [], positions = [], monitoring = []) {
   const blockers = readinessBlockers(monitoring);
   const candidateIds = new Set(candidates.map(x => x.client_order_id).filter(Boolean));
