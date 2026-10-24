@@ -45,7 +45,7 @@ async function signedBinanceRequest(apiKey, secret, method, apiPath, params = {}
     const text = await response.text();
     let data; try { data = text ? JSON.parse(text) : null; } catch { data = null; }
     if (response.ok) return data;
-    if (response.status === 400 && /timestamp.*recvWindow|outside of the recvWindow/i.test(data?.msg || text)) {
+    if (response.status === 400 && /timestamp.*(?:recvWindow|ahead of the server)|outside of the recvWindow/i.test(data?.msg || text)) {
       await syncBinanceServerTime(true);
       continue;
     }
@@ -505,13 +505,7 @@ app.get('/api/binance-demo/live-readiness', auth, async (req, res) => {
         notifyTelegramExecution(event, req.userId);
       }
     }).catch(() => null);
-    const signed = async (method, apiPath, params = {}) => {
-      await syncBinanceServerTime();
-      const query = new URLSearchParams({ ...params, recvWindow: '10000', timestamp: String(binanceTimestamp()) });
-      const queryString = query.toString();
-      const response = await fetchBinance(EXCHANGES.binanceTestnet.base + apiPath + '?' + queryString + '&signature=' + binanceSignature(secret, queryString), { method, headers: { 'X-MBX-APIKEY': apiKey }, signal: AbortSignal.timeout(10000) });
-            const data = await response.json(); if (!response.ok) throw new Error(`BINANCE_${method}_${apiPath}_${response.status}: ${data?.msg || 'readiness failed'}`); return data;
-    };
+    const signed = (method, apiPath, params = {}) => signedBinanceRequest(apiKey, secret, method, apiPath, params);
     const [exchangeInfo, account, positions, income] = await Promise.all([fetchExchangeInfo(), signed('GET', '/fapi/v2/account'), signed('GET', '/fapi/v2/positionRisk'), signed('GET', '/fapi/v1/income', { incomeType: 'REALIZED_PNL', startTime: String(Date.now() - 24 * 60 * 60 * 1000), limit: '1000' })]);
     const filters = Object.fromEntries(exchangeInfo.symbols.filter(x => SUPPORTED_SYMBOLS.includes(x.symbol)).map(x => [x.symbol, { filters: x.filters.filter(f => ['LOT_SIZE', 'PRICE_FILTER', 'MIN_NOTIONAL', 'NOTIONAL'].includes(f.filterType)) }]));
     const balances = (account.assets || []).filter(x => x.asset === 'USDT').map(x => ({ asset: x.asset, availableBalance: Number(x.availableBalance) }));
@@ -619,16 +613,8 @@ async function syncTradeHistory(userId) {
   const key = get("SELECT * FROM api_keys WHERE user_id = ? AND exchange = 'binanceTestnet' AND status = 'connected' ORDER BY id DESC LIMIT 1", [userId]);
   if (!key) return;
   const apiKey = decryptSecret(key.api_key), secret = decryptSecret(key.secret_key);
-  const signed = async (symbol) => {
-      await syncBinanceServerTime();
-      const query = new URLSearchParams({ symbol, limit: '100', recvWindow: '10000', timestamp: String(binanceTimestamp()) });
-    const queryString = query.toString();
-    const response = await fetchBinance(EXCHANGES.binanceTestnet.base + '/fapi/v1/userTrades?' + queryString + '&signature=' + binanceSignature(secret, queryString), { headers: { 'X-MBX-APIKEY': apiKey }, signal: AbortSignal.timeout(10_000) });
-    const data = await response.json();
-    if (!response.ok || !Array.isArray(data)) throw new Error(data?.msg || 'Trade history sync failed');
-    return data;
-  };
-  for (const symbol of SUPPORTED_SYMBOLS) for (const trade of await signed(symbol)) {
+  const signed = (method, apiPath, params = {}) => signedBinanceRequest(apiKey, secret, method, apiPath, params);
+  for (const symbol of SUPPORTED_SYMBOLS) for (const trade of await signed('GET', '/fapi/v1/userTrades', { symbol, limit: '100' })) {
     const orderId = String(trade.orderId || '');
     const tradeId = String(trade.id || trade.tradeId || '');
     if (!orderId || (tradeId ? get('SELECT id FROM trade_history WHERE user_id = ? AND trade_id = ?', [userId, tradeId]) : get('SELECT id FROM trade_history WHERE user_id = ? AND order_id = ? AND price = ? AND ts = ?', [userId, orderId, Number(trade.price), Number(trade.time || 0)]))) continue;
