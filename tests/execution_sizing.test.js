@@ -80,6 +80,7 @@ test('reconciles managed, unmanaged, and pending exchange state', () => {
   assert.equal(result.status, 'REVIEW_REQUIRED');
   assert.equal(result.unmanagedOrders[0].status, 'UNMANAGED_ORDER');
   assert.equal(result.unmanagedPositions[0].status, 'UNMANAGED_POSITION');
+  assert.equal(result.unmanagedPositions[0].action, 'BLOCKED_REQUIRES_LINK_OR_CONTAINMENT');
   assert.equal(result.pendingCandidates[0].status, 'NOT_ON_EXCHANGE');
 });
 

@@ -13,6 +13,30 @@ test('stage 7 reconciles only current candidates and blocks unsafe position', ()
   assert.equal(reconciliation.status, 'RECONCILED');
 });
 
+test('stage 7 readiness exposes missing provenance blocker', () => {
+  assert.deepEqual(readinessBlockers([{ status: 'BLOCKED_MISSING_PROVENANCE' }]), ['BLOCKED_MISSING_PROVENANCE']);
+});
+
+test('stage 7 reconciliation exposes missing provenance blocker', () => {
+  const result = reconcileDemoState([], [], [], [{ status: 'BLOCKED_MISSING_PROVENANCE' }]);
+  assert.equal(result.status, 'REVIEW_REQUIRED');
+  assert.deepEqual(result.blockers, ['BLOCKED_MISSING_PROVENANCE']);
+});
+
+test('stage 7 reports pair-level provenance for unmanaged position, unmanaged order, and managed pending order', () => {
+  const candidates = [{ client_order_id: 'jev_xau_1', symbol: 'XAUUSDT' }];
+  const result = reconcileDemoState(candidates, [
+    { orderId: 17, clientOrderId: 'external_sol', symbol: 'SOLUSDT', status: 'NEW' },
+    { orderId: 23, clientOrderId: 'jev_xau_1', symbol: 'XAUUSDT', status: 'NEW' }
+  ], [{ symbol: 'ETHUSDT', positionAmt: '1' }]);
+
+  assert.deepEqual(result.pairExposure, [
+    { symbol: 'ETHUSDT', status: 'UNMANAGED_POSITION', positionAmt: '1', action: 'BLOCKED_REQUIRES_LINK_OR_CONTAINMENT' },
+    { symbol: 'SOLUSDT', status: 'UNMANAGED_ORDER', orderId: '17', clientOrderId: 'external_sol', action: 'BLOCKED_REQUIRES_PROVENANCE_OR_CANCEL_REVIEW' },
+    { symbol: 'XAUUSDT', status: 'MANAGED_PENDING_ORDER', orderId: '23', clientOrderId: 'jev_xau_1', action: 'MONITOR_PENDING_FILL' }
+  ]);
+});
+
 test('stage 7 marks unknown exchange order for review', () => {
   const result = reconcileDemoState([], [{ orderId: 9, clientOrderId: 'external', symbol: 'ETHUSDT' }], []);
   assert.equal(result.status, 'REVIEW_REQUIRED');
