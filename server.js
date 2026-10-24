@@ -174,7 +174,7 @@ function recordExchangeOrderUpdate(userId, event) {
     return;
   }
   if (status === 'FILLED' && clientOrderId && !/_ec$/i.test(clientOrderId)) {
-    run('INSERT INTO execution_lifecycles (user_id,thesis_key,symbol,client_order_id,entry_order_id,entry_status,position_status,protection_status,updated_at) VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT(user_id,thesis_key) DO UPDATE SET entry_order_id=excluded.entry_order_id,entry_status=excluded.entry_status,position_status=\'OPEN\',updated_at=excluded.updated_at', [userId, clientOrderId, order.s, clientOrderId, String(order.i), 'FILLED', 'OPEN', 'UNKNOWN', now]);
+    run('INSERT INTO execution_lifecycles (user_id,thesis_key,symbol,client_order_id,entry_order_id,entry_status,position_status,protection_status,updated_at) VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT(user_id,thesis_key) DO UPDATE SET entry_order_id=excluded.entry_order_id,entry_status=excluded.entry_status,position_status=\'OPEN\',updated_at=excluded.updated_at', [userId, clientOrderId, order.s, clientOrderId, String(order.i), 'FILLED', 'OPEN', 'PENDING']);
     run('UPDATE trade_history SET entry_order_id=?, thesis_key=? WHERE user_id=? AND order_id=?', [String(order.i), clientOrderId, userId, String(order.i)]);
   }
 }
@@ -642,7 +642,12 @@ function getExecutionLifecycle(userId, thesisKey) {
 function lifecycleBlocksReentry(userId, candidate) {
   const lifecycle = getExecutionLifecycle(userId, candidate.client_order_id);
   if (!lifecycle) return false;
-  return lifecycle.position_status === 'CLOSED' || lifecycle.completed_at != null || ['NEW', 'PARTIALLY_FILLED', 'FILLED'].includes(lifecycle.entry_status) || ['OPEN', 'CLOSED'].includes(lifecycle.position_status);
+  if (lifecycle.position_status === 'CLOSED' || lifecycle.completed_at != null) return true;
+  if (lifecycle.position_status === 'OPEN' && lifecycle.entry_status === 'FILLED' && lifecycle.protection_status !== 'VERIFIED') return false;
+  return ['NEW', 'PARTIALLY_FILLED', 'FILLED'].includes(lifecycle.entry_status) || lifecycle.position_status === 'OPEN';
+}
+function markLifecycleProtection(userId, thesisKey, status) {
+  run('UPDATE execution_lifecycles SET protection_status=?, updated_at=? WHERE user_id=? AND thesis_key=?', [status, Date.now(), userId, thesisKey]);
 }
 function reconcileManualClosedLifecycles(userId, positions) {
   const openSymbols = new Set(positions.filter(position => Number(position.positionAmt) !== 0).map(position => position.symbol));
@@ -709,7 +714,10 @@ async function executeDemoCandidate(req, res) {
         try {
           for (const protective of expected) if (!existingIds.has(protective.clientOrderId.slice(0, 36))) protection.push(await submitProtection(protective));
           const verifiedIds = new Set((await listProtection()).map(item => item.clientAlgoId || item.clientOrderId));
-          return { expected, protection, protectionVerified: expected.every(item => verifiedIds.has(item.clientOrderId.slice(0, 36))) };
+          const protectionVerified = expected.every(item => verifiedIds.has(item.clientOrderId.slice(0, 36)));
+          if (protectionVerified) markLifecycleProtection(req.userId, candidate.client_order_id, 'VERIFIED');
+          else markLifecycleProtection(req.userId, candidate.client_order_id, 'PENDING');
+          return { expected, protection, protectionVerified };
         } catch (error) {
           lastError = error;
           await new Promise(resolve => setTimeout(resolve, 500 * (attempt + 1)));
@@ -738,10 +746,16 @@ async function executeDemoCandidate(req, res) {
       const protectionOrders = buildProtectionOrders(candidate, sizing, precision).orders;
       const protection = [];
       try { for (const protective of protectionOrders) protection.push(await submitProtection(protective)); }
-      catch (error) { const emergency = buildEmergencyCloseOrder(candidate, existing.executedQty); try { const emergencyClose = await signed('POST', '/fapi/v1/order', { symbol: emergency.symbol, side: emergency.side, type: emergency.type, quantity: emergency.quantity, reduceOnly: emergency.reduceOnly, newClientOrderId: emergency.clientOrderId }); return res.status(502).json({ ok: false, demoOnly: true, status: 'PROTECTION_FAILED_POSITION_CLOSED', entry: existing, protection, emergencyClose, error: error.message, ordersSent: true, withdrawalsSent: false }); } catch (closeError) { return res.status(502).json({ ok: false, demoOnly: true, status: 'PROTECTION_FAILED_EMERGENCY_CLOSE_FAILED', entry: existing, error: error.message, emergencyCloseError: closeError.message, ordersSent: true, withdrawalsSent: false }); } }
+      catch (error) {
+        markLifecycleProtection(req.userId, candidate.client_order_id, 'PENDING');
+        return res.status(202).json({ ok: false, demoOnly: true, status: 'FILLED_PROTECTION_PENDING', entry: existing, protection, protectionVerified: false, error: error.message, ordersSent: true, withdrawalsSent: false });
+      }
       const openOrders = await listProtection();
       const protectionVerified = protectionOrders.every(order => openOrders.some(open => (open.clientAlgoId || open.clientOrderId) === order.clientOrderId));
-      if (!protectionVerified) return res.status(409).json({ ok: false, demoOnly: true, status: 'PROTECTION_VERIFICATION_FAILED', entry: existing, protection, ordersSent: true, withdrawalsSent: false });
+      if (!protectionVerified) {
+        markLifecycleProtection(req.userId, candidate.client_order_id, 'PENDING');
+        return res.status(202).json({ ok: false, demoOnly: true, status: 'FILLED_PROTECTION_PENDING', entry: existing, protection, protectionVerified: false, ordersSent: true, withdrawalsSent: false });
+      }
       demoExecutionSummaries.set(String(req.userId), { status: 'FILLED_PROTECTED', orderId: existing.orderId, clientOrderId: candidate.client_order_id, protectionVerified: true, updatedAt: new Date().toISOString() });
       return res.json({ ok: true, demoOnly: true, idempotent: true, status: 'FILLED_PROTECTED', entry: existing, protection, protectionVerified: true, ordersSent: true, withdrawalsSent: false });
     }
@@ -802,13 +816,16 @@ async function executeDemoCandidate(req, res) {
       protectionAfterFill = ensured.protection;
       protectionVerified = ensured.protectionVerified;
     } catch (error) {
+      markLifecycleProtection(req.userId, candidate.client_order_id, 'PENDING');
       demoExecutionSummaries.set(String(req.userId), { status: 'FILLED_PROTECTION_PENDING', orderId: current.orderId, clientOrderId: candidate.client_order_id, protectionVerified: false, error: error.message, updatedAt: new Date().toISOString() });
       return res.status(202).json({ ok: false, demoOnly: true, status: 'FILLED_PROTECTION_PENDING', entry: current, protection: protectionAfterFill, protectionVerified: false, error: error.message, ordersSent: true, withdrawalsSent: false });
     }
     if (!protectionVerified) {
+      markLifecycleProtection(req.userId, candidate.client_order_id, 'PENDING');
       demoExecutionSummaries.set(String(req.userId), { status: 'FILLED_PROTECTION_PENDING', orderId: current.orderId, clientOrderId: candidate.client_order_id, protectionVerified: false, updatedAt: new Date().toISOString() });
       return res.status(202).json({ ok: false, demoOnly: true, status: 'FILLED_PROTECTION_PENDING', entry: current, protection: protectionAfterFill, protectionVerified: false, ordersSent: true, withdrawalsSent: false });
     }
+    markLifecycleProtection(req.userId, candidate.client_order_id, 'VERIFIED');
     demoExecutionSummaries.set(String(req.userId), { status: 'FILLED_PROTECTED', orderId: current.orderId, clientOrderId: candidate.client_order_id, attemptAt: new Date().toISOString(), updatedAt: new Date().toISOString(), protectionVerified: true });
         return res.json({ ok: true, demoOnly: true, status: 'FILLED_PROTECTED', entry: current, protection: protectionAfterFill, protectionVerified: true, ordersSent: true, withdrawalsSent: false });
   } catch (error) { res.status(502).json({ ok: false, demoOnly: true, error: error.message || 'Binance Demo execution failed', ordersSent: false, withdrawalsSent: false }); }
