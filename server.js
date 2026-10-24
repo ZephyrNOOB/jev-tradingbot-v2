@@ -465,8 +465,9 @@ function startMarketStructureStreamTrigger() {
   });
 }app.get('/api/bot/status', auth, (req, res) => {
   const runner = botRunners.get('execution:' + req.cookies.sid) || botRunners.get('global');
-  const observer = marketObservers.get('global');
-  res.json({ ok: true, enabled: botStates.get(req.cookies.sid) === true, observing: Boolean(observer?.timer), running: Boolean(runner?.running), cycles: runner?.cycles || 0, error: runner?.error || null, observer_error: observer?.error || null, last_started_at: runner?.last_started_at || null, last_finished_at: runner?.last_finished_at || null, last_polled_at: observer?.last_polled_at || null, watermark: observer?.watermark || {}, mode: 'demo_execution', marketStream: getBinanceStreamState(), demoCycle: demoCycleSummaries.get('global') || null, demoExecution: demoExecutionSummaries.get(req.cookies.sid) || null, ordersEnabled: demoExecutionEnabled });
+    const observer = marketObservers.get('global');
+    const executionSummaries = [...demoExecutionSummaries.entries()].filter(([key]) => key.startsWith(req.cookies.sid + ':')).map(([, value]) => value);
+    res.json({ ok: true, enabled: botStates.get(req.cookies.sid) === true, observing: Boolean(observer?.timer), running: Boolean(runner?.running), cycles: runner?.cycles || 0, error: runner?.error || null, observer_error: observer?.error || null, last_started_at: runner?.last_started_at || null, last_finished_at: runner?.last_finished_at || null, last_polled_at: observer?.last_polled_at || null, watermark: observer?.watermark || {}, mode: 'demo_execution', marketStream: getBinanceStreamState(), demoCycle: demoCycleSummaries.get('global') || null, demoExecution: executionSummaries, ordersEnabled: demoExecutionEnabled });
 });
 
 app.post('/api/bot/toggle', auth, async (req, res) => {
@@ -830,22 +831,23 @@ async function runExecutionCycle(sid) {
     demoExecutionSummaries.set(sid, { status: 'ARTIFACT_STALE', updatedAt: new Date().toISOString() });
     return;
   }
-  for (const candidate of (artifact.execution_candidates || [])) {
+  const executions = (artifact.execution_candidates || []).map(async candidate => {
     const freshness = validateCandidateFreshness(artifact, candidate);
-    if (!freshness.ok || candidate.status !== 'APPROVED_FOR_EXECUTION') continue;
+    if (!freshness.ok || candidate.status !== 'APPROVED_FOR_EXECUTION') return;
     const planDedup = 'PLAN:' + candidate.symbol + ':' + candidate.client_order_id;
     sendTelegram('JEV PLAN READY\nPair: ' + candidate.symbol + '\nSetup: ' + (candidate.setup_id || '-') + '\nSide: ' + (candidate.side || '-') + '\nEntry: ' + (candidate.entry || '-') + '\nSL: ' + (candidate.sl || '-') + '\nTP: ' + (candidate.tp || '-') + '\nStatus: APPROVED\nExecution: runner submitting to Binance', planDedup, userId);
     if (botStates.get(sid) !== true) return;
     const key = sid + ":" + candidate.client_order_id;
     const prior = demoExecutionSummaries.get(key);
-    if (!candidate.client_order_id || lifecycleBlocksReentry(userId, candidate) || (executionAttempts.has(key) && ['FILLED_PROTECTED', 'PROTECTION_FAILED_POSITION_CLOSED', 'PROTECTION_FAILED_EMERGENCY_CLOSE_FAILED'].includes(prior?.status))) continue;
+    if (!candidate.client_order_id || lifecycleBlocksReentry(userId, candidate) || (executionAttempts.has(key) && ['FILLED_PROTECTED', 'PROTECTION_FAILED_POSITION_CLOSED', 'PROTECTION_FAILED_EMERGENCY_CLOSE_FAILED'].includes(prior?.status))) return;
     executionAttempts.set(key, true);
     let payload;
     const response = { statusCode: 200, status(code) { this.statusCode = code; return this; }, json(body) { payload = body; return this; } };
     await executeDemoCandidate({ userId: sessions.get(sid), cookies: { sid }, internalRunner: true, body: { clientOrderId: candidate.client_order_id, explicitApproval: true } }, response);
     demoExecutionSummaries.set(key, { ...(payload || { ok: false, error: 'empty_executor_response' }), symbol: candidate.symbol, clientOrderId: candidate.client_order_id, attemptAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
     if (!payload?.ordersSent && payload?.status !== 'ENTRY_ALREADY_OPEN') executionAttempts.delete(key);
-  }
+  });
+  await Promise.allSettled(executions);
 }
 
 function startExecutionRunner(sid) {
