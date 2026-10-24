@@ -22,5 +22,10 @@ export function reconcileDemoState(candidates = [], openOrders = [], positions =
     ...unmanagedOrders,
     ...managedOrders.filter(order => ['NEW', 'PARTIALLY_FILLED'].includes(String(order.status || ''))).map(order => ({ symbol: order.symbol, status: 'MANAGED_PENDING_ORDER', orderId: String(order.orderId || ''), clientOrderId: order.clientOrderId || null, action: 'MONITOR_PENDING_FILL' }))
   ];
-  return { status: blockers.length || unmanagedOrders.length || unmanagedPositions.length ? 'REVIEW_REQUIRED' : 'RECONCILED', blockers, managedOrders, unmanagedOrders, unmanagedPositions, pendingCandidates, pairExposure };
+  const exposureBlockers = [
+    ...unmanagedOrders.map(order => `UNMANAGED_ORDER:${order.symbol}`),
+    ...unmanagedPositions.map(position => `UNMANAGED_POSITION:${position.symbol}`)
+  ];
+  const allBlockers = [...new Set([...blockers, ...exposureBlockers])];
+  return { status: allBlockers.length ? 'REVIEW_REQUIRED' : 'RECONCILED', blockers: allBlockers, managedOrders, unmanagedOrders, unmanagedPositions, pendingCandidates, pairExposure };
 }

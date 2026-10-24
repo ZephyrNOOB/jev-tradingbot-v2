@@ -570,7 +570,8 @@ app.get('/api/binance-demo/live-readiness', auth, async (req, res) => {
     reconcileManualClosedLifecycles(req.userId, positions);
     const monitoring = monitorProtectionState(artifact.execution_candidates || [], openOrders, openPositions);
     blockers.push(...readinessBlockers(monitoring));
-    const reconciliationCandidates = selectReconciliationCandidates([], openOrders, artifact.execution_candidates || []);
+    const durableCandidates = all("SELECT candidate_json FROM execution_lifecycles WHERE user_id = ? AND position_status = 'OPEN' AND candidate_json IS NOT NULL", [req.userId]).flatMap(row => { try { const candidate = JSON.parse(row.candidate_json); return candidate?.client_order_id ? [candidate] : []; } catch { return []; } });
+    const reconciliationCandidates = selectReconciliationCandidates(durableCandidates, openOrders, artifact.execution_candidates || []);
     const reconciliation = reconcileDemoState(reconciliationCandidates, openOrders, positions, monitoring);
     blockers.push(...(reconciliation.blockers || []));
     if (reconciliation.status !== 'RECONCILED') blockers.push('RECONCILIATION_REVIEW_REQUIRED');
@@ -611,7 +612,8 @@ app.get('/api/binance-demo/reconciliation', auth, async (req, res) => {
     const artifact = JSON.parse(fs.readFileSync(path.join(__dirname, 'v2', 'artifacts', 'BINANCE_DEMO_LIVE_PIPELINE.json'), 'utf8'));
     const candidates = (artifact.execution_candidates || []).filter(candidate => validateCandidateFreshness(artifact, candidate).ok && !lifecycleBlocksReentry(req.userId, candidate));
     const monitoring = monitorProtectionState(candidates, ordersBySymbol.flat(), positions);
-    const reconciliationCandidates = selectReconciliationCandidates([], ordersBySymbol.flat(), artifact.execution_candidates || []);
+    const durableCandidates = all("SELECT candidate_json FROM execution_lifecycles WHERE user_id = ? AND position_status = 'OPEN' AND candidate_json IS NOT NULL", [req.userId]).flatMap(row => { try { const candidate = JSON.parse(row.candidate_json); return candidate?.client_order_id ? [candidate] : []; } catch { return []; } });
+    const reconciliationCandidates = selectReconciliationCandidates(durableCandidates, ordersBySymbol.flat(), artifact.execution_candidates || []);
     const reconciliation = reconcileDemoState(reconciliationCandidates, ordersBySymbol.flat(), positions, monitoring);
     const status = reconciliation.status === 'RECONCILED' && !readinessBlockers(monitoring).length ? 'RECONCILIATION_PASS' : 'RECONCILIATION_BLOCKED';
     res.json({ ok: true, executionMode: 'LIVE_DEMO', demoOnly: true, status, observedAt: new Date().toISOString(), ordersSent: null, withdrawalsSent: null, monitoring, ...reconciliation });
@@ -914,7 +916,10 @@ async function runExecutionCycle(sid) {
   if (botStates.get(sid) !== true) return;
   const lifecycleRows = all('SELECT candidate_json, client_order_id FROM execution_lifecycles WHERE user_id = ? AND position_status = \'OPEN\' AND candidate_json IS NOT NULL', [userId]);
   const tradeRows = all('SELECT raw_json, client_order_id FROM trade_history WHERE user_id = ? AND status = \'OPEN\' AND raw_json IS NOT NULL', [userId]);
-  const recoveryRows = [...lifecycleRows, ...tradeRows];
+  const recoveryRows = [...lifecycleRows, ...tradeRows].filter(row => {
+    const lifecycle = row.client_order_id ? getExecutionLifecycle(userId, row.client_order_id) : null;
+    return lifecycle?.position_status === 'OPEN';
+  });
   await Promise.allSettled(recoveryRows.map(row => recoverOpenTrade(userId, row)));
   let artifact;
   try { artifact = JSON.parse(fs.readFileSync(path.join(__dirname, 'v2', 'artifacts', 'BINANCE_DEMO_LIVE_PIPELINE.json'), 'utf8')); } catch (error) {

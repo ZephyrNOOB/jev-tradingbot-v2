@@ -50,5 +50,6 @@ test('stage 7 reports pair-level provenance for unmanaged position, unmanaged or
 test('stage 7 marks unknown exchange order for review', () => {
   const result = reconcileDemoState([], [{ orderId: 9, clientOrderId: 'external', symbol: 'ETHUSDT' }], []);
   assert.equal(result.status, 'REVIEW_REQUIRED');
+  assert.deepEqual(result.blockers, ['UNMANAGED_ORDER:ETHUSDT']);
   assert.equal(result.unmanagedOrders[0].status, 'UNMANAGED_ORDER');
 });
