@@ -47,6 +47,20 @@ test('stage 7 reports pair-level provenance for unmanaged position, unmanaged or
   ]);
 });
 
+test('stage 7 blocks durable managed NEW and PARTIALLY_FILLED entries with zero position', () => {
+  for (const status of ['NEW', 'PARTIALLY_FILLED']) {
+    const openOrders = [{ orderId: 23, clientOrderId: 'jev_xau_1', symbol: 'XAUUSDT', type: 'LIMIT', status }];
+    const candidates = selectReconciliationCandidates([], openOrders, [{ client_order_id: 'jev_xau_1', symbol: 'XAUUSDT' }]);
+    const positions = [{ symbol: 'XAUUSDT', positionAmt: '0' }];
+    const monitoring = monitorProtectionState(candidates, openOrders, positions);
+    assert.equal(monitoring[0].status, 'ENTRY_PENDING_FILL');
+    assert.deepEqual(readinessBlockers(monitoring), ['ENTRY_PENDING_FILL']);
+    const reconciliation = reconcileDemoState(candidates, openOrders, positions, monitoring);
+    assert.equal(reconciliation.status, 'REVIEW_REQUIRED');
+    assert.deepEqual(reconciliation.blockers, ['ENTRY_PENDING_FILL']);
+  }
+});
+
 test('stage 7 marks unknown exchange order for review', () => {
   const result = reconcileDemoState([], [{ orderId: 9, clientOrderId: 'external', symbol: 'ETHUSDT' }], []);
   assert.equal(result.status, 'REVIEW_REQUIRED');

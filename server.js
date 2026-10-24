@@ -584,10 +584,10 @@ app.get('/api/binance-demo/live-readiness', auth, async (req, res) => {
     const openAlgoOrders = await signed('GET', '/fapi/v1/openAlgoOrders');
     reconcilePendingClosedLifecycles(req.userId, openOrders);
     reconcileManualClosedLifecycles(req.userId, positions);
-    const monitoring = monitorProtectionState(artifact.execution_candidates || [], openOrders, openPositions);
-    blockers.push(...readinessBlockers(monitoring));
     const durableCandidates = all("SELECT candidate_json FROM execution_lifecycles WHERE user_id = ? AND position_status = 'OPEN' AND candidate_json IS NOT NULL", [req.userId]).flatMap(row => { try { const candidate = JSON.parse(row.candidate_json); return candidate?.client_order_id ? [candidate] : []; } catch { return []; } });
     const reconciliationCandidates = selectReconciliationCandidates(durableCandidates, openOrders, artifact.execution_candidates || []);
+    const monitoring = monitorProtectionState(reconciliationCandidates, openOrders, openPositions);
+    blockers.push(...readinessBlockers(monitoring));
     const reconciliation = reconcileDemoState(reconciliationCandidates, openOrders, positions, monitoring);
     blockers.push(...(reconciliation.blockers || []));
     if (reconciliation.status !== 'RECONCILED') blockers.push('RECONCILIATION_REVIEW_REQUIRED');
