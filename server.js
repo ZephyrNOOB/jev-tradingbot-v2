@@ -596,7 +596,8 @@ app.get('/api/binance-demo/live-readiness', auth, async (req, res) => {
     if (lastExecution?.status === 'PROTECTION_FAILED_EMERGENCY_CLOSE_FAILED') blockers.push('UNCONTAINED_EXECUTION_FAILURE');
     if (reconciliation.status !== 'RECONCILED') blockers.push('RECONCILIATION_REVIEW_REQUIRED');
     if (reconciliation.unmanagedOrders?.length || reconciliation.unmanagedPositions?.length) blockers.push('UNMANAGED_EXCHANGE_STATE');
-    res.json({ ok: true, ready: blockers.length === 0, executionMode: 'LIVE_DEMO', demoOnly: true, blockers, reconciliationStatus: reconciliation.status, userStream: getBinanceUserStreamState(String(req.userId)), candidateCount: candidates.length, validCandidateCount: candidates.filter(x => x.sizing.status === 'SIZED' && x.precision === 'VALID').length, ordersSent: null, withdrawalsSent: null });
+    const uniqueBlockers = [...new Set(blockers)];
+    res.json({ ok: true, ready: uniqueBlockers.length === 0, executionMode: 'LIVE_DEMO', demoOnly: true, blockers: uniqueBlockers, reconciliationStatus: reconciliation.status, userStream: getBinanceUserStreamState(String(req.userId)), candidateCount: candidates.length, validCandidateCount: candidates.filter(x => x.sizing.status === 'SIZED' && x.precision === 'VALID').length, ordersSent: null, withdrawalsSent: null });
   } catch (error) { res.status(502).json({ ok: false, ready: false, executionMode: 'LIVE_DEMO', demoOnly: true, blockers: ['BINANCE_DEMO_READINESS_FAILED'], error: error.message, ordersSent: null, withdrawalsSent: null }); }
 });app.get('/api/binance-demo/execution-preflight', auth, async (req, res) => {
   const keyRow = get("SELECT * FROM api_keys WHERE id = (SELECT id FROM api_keys WHERE user_id = ? AND exchange = 'binanceTestnet' AND status = 'connected' ORDER BY id DESC LIMIT 1)", [req.userId]);
@@ -628,9 +629,9 @@ app.get('/api/binance-demo/reconciliation', auth, async (req, res) => {
     reconcileManualClosedLifecycles(req.userId, positions);
     const artifact = JSON.parse(fs.readFileSync(path.join(__dirname, 'v2', 'artifacts', 'BINANCE_DEMO_LIVE_PIPELINE.json'), 'utf8'));
     const candidates = (artifact.execution_candidates || []).filter(candidate => validateCandidateFreshness(artifact, candidate).ok && !lifecycleBlocksReentry(req.userId, candidate));
-    const monitoring = monitorProtectionState(candidates, ordersBySymbol.flat(), positions);
     const durableCandidates = all("SELECT candidate_json FROM execution_lifecycles WHERE user_id = ? AND position_status = 'OPEN' AND candidate_json IS NOT NULL", [req.userId]).flatMap(row => { try { const candidate = JSON.parse(row.candidate_json); return candidate?.client_order_id ? [candidate] : []; } catch { return []; } });
     const reconciliationCandidates = selectReconciliationCandidates(durableCandidates, ordersBySymbol.flat(), artifact.execution_candidates || []);
+    const monitoring = monitorProtectionState(reconciliationCandidates, ordersBySymbol.flat(), positions);
     const reconciliation = reconcileDemoState(reconciliationCandidates, ordersBySymbol.flat(), positions, monitoring);
     const status = reconciliation.status === 'RECONCILED' && !readinessBlockers(monitoring).length ? 'RECONCILIATION_PASS' : 'RECONCILIATION_BLOCKED';
     res.json({ ok: true, executionMode: 'LIVE_DEMO', demoOnly: true, status, observedAt: new Date().toISOString(), ordersSent: null, withdrawalsSent: null, monitoring, ...reconciliation });

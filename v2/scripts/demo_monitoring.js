@@ -3,7 +3,7 @@ export function readinessBlockers(monitoring = []) {
   if (monitoring.some(item => ['ENTRY_FILLED_NO_PROTECTION', 'PROTECTION_INCOMPLETE'].includes(item.status))) blockers.push('PROTECTIVE_ORDER_VERIFICATION_REQUIRED', 'POSITION_MONITORING_REQUIRED');
   if (monitoring.some(item => item.status === 'ENTRY_PENDING_FILL')) blockers.push('ENTRY_PENDING_FILL');
   if (monitoring.some(item => item.status === 'BLOCKED_MISSING_PROVENANCE')) blockers.push('BLOCKED_MISSING_PROVENANCE');
-  return blockers;
+  return [...new Set(blockers)];
 }
 
 export function monitorProtectionState(candidates = [], openOrders = [], positions = []) {

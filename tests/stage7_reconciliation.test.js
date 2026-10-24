@@ -47,6 +47,14 @@ test('stage 7 reports pair-level provenance for unmanaged position, unmanaged or
   ]);
 });
 
+test('stage 7 deduplicates readiness blockers and reconciliation review', () => {
+  const monitoring = [{ status: 'ENTRY_PENDING_FILL' }, { status: 'ENTRY_PENDING_FILL' }];
+  assert.deepEqual(readinessBlockers(monitoring), ['ENTRY_PENDING_FILL']);
+  const reconciliation = reconcileDemoState([], [], [], monitoring);
+  assert.equal(reconciliation.status, 'REVIEW_REQUIRED');
+  assert.deepEqual(reconciliation.blockers, ['ENTRY_PENDING_FILL']);
+});
+
 test('stage 7 blocks durable managed NEW and PARTIALLY_FILLED entries with zero position', () => {
   for (const status of ['NEW', 'PARTIALLY_FILLED']) {
     const openOrders = [{ orderId: 23, clientOrderId: 'jev_xau_1', symbol: 'XAUUSDT', type: 'LIMIT', status }];
