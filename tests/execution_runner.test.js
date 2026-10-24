@@ -1,5 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+
+ test('entry submission persists complete provenance before exchange order', () => {
+  const source = fs.readFileSync(new URL('../server.js', import.meta.url), 'utf8');
+  const persistAt = source.indexOf("'SUBMITTING'");
+  const submitAt = source.indexOf("const entry = await signed('POST', '/fapi/v1/order'");
+  const preSubmit = source.slice(Math.max(0, persistAt - 500), submitAt);
+  assert.match(preSubmit, /JSON\.stringify\(candidate\)/);
+  assert.ok(preSubmit.includes('candidate.client_order_id'));
+});
+
 
 test('execution status is session-scoped', () => {
   const sid = 'session-1';
