@@ -19,6 +19,7 @@ import { runStartupRecovery as selectAndRunStartupRecovery } from './v2/scripts/
 import { startBinanceMarketStream, getBinanceStreamPrices, getBinanceStreamCandles, getBinanceStreamState, onClosedCandle } from './v2/scripts/binance_market_stream.js';
 import { startBinanceUserStream, stopBinanceUserStream, getBinanceUserStreamState } from './v2/scripts/binance_user_stream.js';
 import { closeReasonFromClientOrderId } from './v2/scripts/telegram_execution.js';
+import { restorePendingLifecycle } from './v2/scripts/pending_lifecycle_recovery.js';
 import { findActiveSessionId } from './v2/scripts/recovery_session.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -581,6 +582,7 @@ app.get('/api/binance-demo/live-readiness', auth, async (req, res) => {
     const openPositions = positions.filter(position => Number(position.positionAmt) !== 0);
     const openOrders = await Promise.all(SUPPORTED_SYMBOLS.map(symbol => signed('GET', '/fapi/v1/openOrders', { symbol }))).then(groups => groups.flat());
     const openAlgoOrders = await signed('GET', '/fapi/v1/openAlgoOrders');
+    reconcilePendingClosedLifecycles(req.userId, openOrders);
     reconcileManualClosedLifecycles(req.userId, positions);
     const monitoring = monitorProtectionState(artifact.execution_candidates || [], openOrders, openPositions);
     blockers.push(...readinessBlockers(monitoring));
@@ -622,6 +624,7 @@ app.get('/api/binance-demo/reconciliation', auth, async (req, res) => {
     const apiKey = decryptSecret(keyRow.api_key), secret = decryptSecret(keyRow.secret_key);
     const signed = (method, apiPath, params = {}) => signedBinanceRequest(apiKey, secret, method, apiPath, params);
     const [positions, ordersBySymbol] = await Promise.all([signed('GET', '/fapi/v2/positionRisk'), Promise.all(SUPPORTED_SYMBOLS.map(symbol => signed('GET', '/fapi/v1/openOrders', { symbol }))) ]);
+    reconcilePendingClosedLifecycles(req.userId, ordersBySymbol.flat());
     reconcileManualClosedLifecycles(req.userId, positions);
     const artifact = JSON.parse(fs.readFileSync(path.join(__dirname, 'v2', 'artifacts', 'BINANCE_DEMO_LIVE_PIPELINE.json'), 'utf8'));
     const candidates = (artifact.execution_candidates || []).filter(candidate => validateCandidateFreshness(artifact, candidate).ok && !lifecycleBlocksReentry(req.userId, candidate));
@@ -704,6 +707,14 @@ function lifecycleBlocksReentry(userId, candidate) {
 }
 function markLifecycleProtection(userId, thesisKey, status) {
   run('UPDATE execution_lifecycles SET protection_status=?, updated_at=? WHERE user_id=? AND thesis_key=?', [status, Date.now(), userId, thesisKey]);
+}
+function reconcilePendingClosedLifecycles(userId, openOrders) {
+  for (const lifecycle of all("SELECT * FROM execution_lifecycles WHERE user_id = ? AND position_status = 'CLOSED' AND entry_status IN ('NEW','PARTIALLY_FILLED') AND candidate_json IS NOT NULL", [userId])) {
+    const order = openOrders.find(item => String(item.clientOrderId || '') === String(lifecycle.client_order_id));
+    const restored = restorePendingLifecycle(lifecycle, order);
+    if (!restored) continue;
+    run('UPDATE execution_lifecycles SET position_status=?, close_reason=?, completed_at=?, updated_at=? WHERE user_id=? AND thesis_key=? AND position_status=\'CLOSED\'', [restored.position_status, restored.close_reason, restored.completed_at, Date.now(), userId, lifecycle.thesis_key]);
+  }
 }
 function reconcileManualClosedLifecycles(userId, positions) {
   const openSymbols = new Set(positions.filter(position => Number(position.positionAmt) !== 0).map(position => position.symbol));
