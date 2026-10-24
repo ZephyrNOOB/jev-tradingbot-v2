@@ -91,6 +91,8 @@ test('marks filled positions without complete protection as unsafe', () => {
   assert.equal(monitorProtectionState(candidates, [], position)[0].status, 'ENTRY_FILLED_NO_PROTECTION');
   assert.equal(monitorProtectionState(candidates, [{ clientOrderId: 'jev_1_sl', status: 'NEW' }], position)[0].status, 'PROTECTION_INCOMPLETE');
   assert.equal(monitorProtectionState(candidates, [{ clientOrderId: 'jev_1_sl', status: 'NEW' }, { clientOrderId: 'jev_1_tp', status: 'NEW' }], position)[0].status, 'HEALTHY');
+  assert.equal(monitorProtectionState(candidates, [{ clientOrderId: 'jev_1', symbol: 'BTCUSDT', orderId: 9, status: 'NEW' }], [])[0].status, 'ENTRY_PENDING_FILL');
+  assert.deepEqual(readinessBlockers([{ status: 'ENTRY_PENDING_FILL' }]), ['ENTRY_PENDING_FILL']);
 });
 
 test('readiness reports protection blockers only for unsafe open positions', () => {
