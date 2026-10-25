@@ -116,7 +116,7 @@ function completedBinanceTrades(data, date) {
   const start = date ? new Date(date + 'T00:00:00').getTime() : -Infinity;
   const end = date ? start + 86400000 : Infinity;
   const algoByOrder = new Map((data.algos || []).map(x => [String(x.actualOrderId || x.orderId || ''), x]));
-  const fills = (data.trades || []).filter(x => Number(x.time || 0) >= start && Number(x.time || 0) < end).sort((a, b) => Number(a.time || 0) - Number(b.time || 0));
+  const fills = (data.trades || []).slice().sort((a, b) => Number(a.time || 0) - Number(b.time || 0));
   const completed = [];
   for (const symbol of [...new Set(fills.map(x => x.symbol))]) {
     const open = [];
@@ -146,7 +146,7 @@ async function loadHistory() {
     updateSummary([]);
     return;
   }
-  const rows = completed.map(({ entry, close, closeQty, reason }) => ({
+  const rows = completed.filter(({ close }) => !date || (Number(close.time || 0) >= new Date(date + 'T00:00:00').getTime() && Number(close.time || 0) < new Date(date + 'T00:00:00').getTime() + 86400000)).map(({ entry, close, closeQty, reason }) => ({
     ts: close.time, inst_id: close.symbol, side: String(entry.side || '').toLowerCase(), pos_side: entry.positionSide || 'BOTH', size: closeQty,
     price: close.price, fee: Number(entry.commission || 0) + Number(close.commission || 0), funding_rate: 0,
     slippage: 0, pnl: Number(close.realizedPnl || 0), close_reason: reason
