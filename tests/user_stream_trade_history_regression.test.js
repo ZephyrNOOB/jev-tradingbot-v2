@@ -24,3 +24,11 @@ test('Binance history refreshes local JEV fill state before raw history response
   const route = source.slice(source.indexOf("app.get('/api/binance-history'"), source.indexOf("app.get('/api/history'"));
   assert.match(route, /await syncTradeHistory\(req\.userId\)/);
 });
+
+test('protection submission exposes Binance accept or reject evidence', () => {
+  const source = fs.readFileSync(new URL('../server.js', import.meta.url), 'utf8');
+  const execution = source.slice(source.indexOf('const submitProtection'), source.indexOf('const listProtection'));
+  assert.match(execution, /protectionLastAttempt/);
+  assert.match(execution, /status: 'ACCEPTED'/);
+  assert.match(execution, /status: 'REJECTED'/);
+});

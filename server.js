@@ -161,6 +161,10 @@ async function sendTelegram(text, dedupKey, userId) {
     return false;
   }
 }
+function updateDemoExecutionSummary(userId, payload) {
+  const key = String(userId);
+  demoExecutionSummaries.set(key, { ...(demoExecutionSummaries.get(key) || {}), ...payload });
+}
 function notifyTelegramExecution(event, userId) {
   const order = event?.o;
   if (event?.e !== 'ORDER_TRADE_UPDATE' || order?.X !== 'FILLED' || !order?.i) return;
@@ -793,7 +797,17 @@ async function executeDemoCandidate(req, res) {
     if (sizing.status !== 'SIZED') return res.status(409).json({ ok: false, demoOnly: true, reason: sizing.status, order, ordersSent: false, withdrawalsSent: false });
     const enabled = demoExecutionEnabled;
     const protectionPlan = buildProtectionOrders(candidate, sizing, precision);
-    const submitProtection = protective => signed('POST', '/fapi/v1/algoOrder', { symbol: protective.symbol, side: protective.side, algoType: 'CONDITIONAL', type: protective.type, triggerPrice: protective.stopPrice, closePosition: protective.closePosition === true || protective.closePosition === 'true' ? 'true' : 'false', workingType: protective.workingType, clientAlgoId: protective.clientOrderId.slice(0, 36) });
+    const submitProtection = async protective => {
+      const params = { symbol: protective.symbol, side: protective.side, algoType: 'CONDITIONAL', type: protective.type, triggerPrice: protective.stopPrice, closePosition: protective.closePosition === true || protective.closePosition === 'true' ? 'true' : 'false', workingType: protective.workingType, clientAlgoId: protective.clientOrderId.slice(0, 36) };
+      try {
+        const response = await signed('POST', '/fapi/v1/algoOrder', params);
+        updateDemoExecutionSummary(req.userId, { protectionLastAttempt: { clientAlgoId: params.clientAlgoId, type: params.type, triggerPrice: params.triggerPrice, status: 'ACCEPTED', response: { algoId: response?.algoId, clientAlgoId: response?.clientAlgoId } }, updatedAt: new Date().toISOString() });
+        return response;
+      } catch (error) {
+        updateDemoExecutionSummary(req.userId, { protectionLastAttempt: { clientAlgoId: params.clientAlgoId, type: params.type, triggerPrice: params.triggerPrice, status: 'REJECTED', error: error.message }, updatedAt: new Date().toISOString() });
+        throw error;
+      }
+    };
     const listProtection = () => signed('GET', '/fapi/v1/openAlgoOrders', { symbol: candidate.symbol });
     const waitForPosition = async () => {
       for (let attempt = 0; attempt < 6; attempt += 1) {
