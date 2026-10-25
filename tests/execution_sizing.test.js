@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { sizeCandidate, validateCandidatePrecision, normalizeCandidatePrices } from '../v2/scripts/execution_sizing.js';
 import { buildDemoEntryOrder, canSendDemoEntry, demoExecutionGate } from '../v2/scripts/demo_entry_executor.js';
-import { buildProtectionOrders, verifyEntryFill, buildEmergencyCloseOrder } from '../v2/scripts/demo_protection.js';
+import { buildProtectionOrders, verifyEntryFill, buildEmergencyCloseOrder, validateProtectionGeometry } from '../v2/scripts/demo_protection.js';
 import { reconcileDemoState } from '../v2/scripts/demo_reconciliation.js';
 import { monitorProtectionState, readinessBlockers } from '../v2/scripts/demo_monitoring.js';
 import { buildRecoveryPlan } from '../v2/scripts/demo_recovery.js';
@@ -70,6 +70,9 @@ test('builds opposite-side SL/TP only after confirmed entry fill', () => {
   const plan = buildProtectionOrders(candidate, { status: 'SIZED', quantity: '0.002', price: '82960.40' }, 'VALID');
   assert.equal(plan.status, 'READY_AFTER_ENTRY_FILL');
   assert.deepEqual(plan.orders.map(order => [order.type, order.side]), [['STOP_MARKET', 'SELL'], ['TAKE_PROFIT_MARKET', 'SELL']]);
+  assert.deepEqual(validateProtectionGeometry({ side: 'SELL', sl: 83100, tp: 82000 }, 82960.4), { ok: true });
+  assert.equal(validateProtectionGeometry({ side: 'SELL', sl: 82800, tp: 82000 }, 82960.4).reason, 'PROTECTION_GEOMETRY_INVALID_FOR_SHORT');
+  assert.equal(buildProtectionOrders({ ...candidate, side: 'SELL', sl: 82800 }, { status: 'SIZED', quantity: '0.002', price: '82960.40' }, 'VALID', 82960.4).status, 'REJECTED_PROTECTION_GEOMETRY');
   assert.equal(verifyEntryFill({ status: 'NEW' }).filled, false);
   assert.deepEqual(verifyEntryFill({ status: 'FILLED', executedQty: '0.002', avgPrice: '82960.40' }), { filled: true, status: 'FILLED', quantity: '0.002', averagePrice: '82960.40' });
 });

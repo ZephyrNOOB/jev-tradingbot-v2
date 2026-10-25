@@ -54,7 +54,15 @@ class CandidateInvalidationTests(unittest.TestCase):
         result = invalidate_stale_candidates([candidate], {'BTCUSDT': 'btc-new'}, {'BTCUSDT': []}, now_ms=1000)
         self.assertEqual([x['client_order_id'] for x in result], ['old'])
 
+    def test_candidate_structure_event_must_be_confirmed_before_execution(self):
+        candidate = self.fresh({'symbol': 'BTCUSDT', 'client_order_id': 'current', 'structure_event_id': 'btc-current', 'structure_index': 12, 'side': 'SELL'})
+        self.assertEqual(invalidate_stale_candidates([candidate], {'BTCUSDT': 'btc-current'}, {'BTCUSDT': [{'structure_index': 12, 'confirmation': 'WAITING', 'lifecycle_state': 'ACTIVE'}]}, now_ms=2000), [])
+        self.assertEqual(candidate['status'], 'INVALIDATED_UNCONFIRMED_STRUCTURE')
+
     def test_confirmed_newer_structure_replaces_old_plan(self):
+        candidate = self.fresh({'symbol': 'BTCUSDT', 'client_order_id': 'old', 'structure_event_id': 'btc-old', 'structure_index': 10, 'side': 'SELL'})
+        self.assertEqual(invalidate_stale_candidates([candidate], {'BTCUSDT': 'btc-current'}, {'BTCUSDT': [{'structure_index': 12, 'confirmation': 'CONFIRMED', 'lifecycle_state': 'ACTIVE'}]}, now_ms=2000), [])
+        self.assertEqual(candidate['status'], 'INVALIDATED_STRUCTURE_REPLACED')
         candidate = self.fresh({'symbol': 'BTCUSDT', 'client_order_id': 'old', 'structure_event_id': 'btc-old', 'structure_index': 10, 'side': 'SELL'})
         events = {'BTCUSDT': [
             {'event_id': 'btc-old', 'structure_index': 10, 'side': 'SHORT', 'kind': 'FVG', 'confirmation': 'CONFIRMED', 'lifecycle_state': 'PARTIAL_MITIGATION'},

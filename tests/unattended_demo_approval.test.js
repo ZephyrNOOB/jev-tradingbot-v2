@@ -10,7 +10,6 @@ test('BOT ON allows internal Demo runner after candidate gates pass', () => {
     protectiveOrdersReady: true,
     riskStatus: 'ALLOWED',
     demoExecutionEnabled: true,
-    unattendedDemoExecutionEnabled: false,
     internalRunner: true
   });
   assert.deepEqual(permission, { allowed: true, authorization: 'BOT_ENABLED' });

@@ -186,6 +186,10 @@ def invalidate_stale_candidates(candidates, latest_structure_event_ids, structur
             continue
         events = structure_events.get(symbol, [])
         candidate_index = int(candidate.get("structure_index", -1))
+        candidate_event = next((event for event in events if int(event.get("structure_index", -1)) == candidate_index), None)
+        if candidate_event and candidate_event.get("confirmation") != "CONFIRMED":
+            candidate["status"] = "INVALIDATED_UNCONFIRMED_STRUCTURE"
+            continue
         newer_confirmed = any(
             int(event.get("structure_index", -1)) > candidate_index
             and event.get("confirmation") == "CONFIRMED"
@@ -338,7 +342,11 @@ def main():
     plan_candidates = preserve_active_plans(previous_active_plans, plan_candidates)
     for candidate in plan_candidates:
         assert_candidate_contract(candidate)
+    for symbol in SYMBOLS:
+        confirmed_rows = [row for row in observations[symbol]["recent_events"] if row.get("confirmation") == "CONFIRMED" and row.get("selected_setup")]
+        latest_confirmed_structure_event_ids[symbol] = confirmed_rows[-1]["event_id"] if confirmed_rows else None
     plan_candidates = invalidate_stale_candidates(plan_candidates, latest_structure_event_ids, structure_events, server_time)
+    plan_candidates = [candidate for candidate in plan_candidates if candidate.get("structure_event_id") == latest_confirmed_structure_event_ids.get(candidate["symbol"])]
     rank_and_approve_candidates(plan_candidates, latest_structure_event_ids)
     execution_candidates = collapse_active_plans(observations, plan_candidates)
     totals["live_demo_candidates"] = len(execution_candidates)

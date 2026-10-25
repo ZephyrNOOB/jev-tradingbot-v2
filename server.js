@@ -247,7 +247,7 @@ const isProduction = process.env.NODE_ENV === 'production';
 const isHttps = process.env.HTTPS === 'true';
 const runtimeConfig = JSON.parse(fs.readFileSync(path.join(__dirname, 'config', 'runtime.json'), 'utf8'));
 const demoExecutionEnabled = runtimeConfig.demoExecutionEnabled === true;
-const unattendedDemoExecutionEnabled = runtimeConfig.unattendedDemoExecutionEnabled === true;
+
 let db;
 
 function loadMasterKey() {
@@ -783,8 +783,10 @@ async function executeDemoCandidate(req, res) {
       }
       return false;
     };
-    const ensureProtection = async () => {
-      const expected = buildProtectionOrders(candidate, sizing, precision).orders;
+    const ensureProtection = async (averagePrice = null) => {
+      const protectionPlanForFill = buildProtectionOrders(candidate, sizing, precision, averagePrice);
+      if (protectionPlanForFill.status !== 'READY_AFTER_ENTRY_FILL') return { expected: [], protection: [], protectionVerified: false, error: protectionPlanForFill.status };
+      const expected = protectionPlanForFill.orders;
       if (!(await waitForPosition())) return { expected, protection: [], protectionVerified: false, error: 'POSITION_NOT_VISIBLE_YET' };
       let lastError = null;
       for (let attempt = 0; attempt < 5; attempt += 1) {
@@ -805,7 +807,7 @@ async function executeDemoCandidate(req, res) {
       }
       throw lastError || new Error('PROTECTION_RETRY_EXHAUSTED');
     };
-    const permission = demoExecutionGate({ botEnabled: recovery || botStates.get(req.userId) === true, ordersEnabled: enabled, protectiveOrdersReady: protectionPlan.status === 'READY_AFTER_ENTRY_FILL', riskStatus: 'ALLOWED', demoExecutionEnabled: enabled, unattendedDemoExecutionEnabled, internalRunner: req.internalRunner === true, explicitApproval: req.body?.explicitApproval === true });
+    const permission = demoExecutionGate({ botEnabled: recovery || botStates.get(req.userId) === true, ordersEnabled: enabled, protectiveOrdersReady: protectionPlan.status === 'READY_AFTER_ENTRY_FILL', riskStatus: 'ALLOWED', demoExecutionEnabled: enabled, internalRunner: req.internalRunner === true, explicitApproval: req.body?.explicitApproval === true });
         if (!permission.allowed) {
           const status = permission.reason;
           demoExecutionSummaries.set(String(req.userId), { status, authorization: 'NONE', clientOrderId: candidate.client_order_id, ordersSent: false, updatedAt: new Date().toISOString() });
@@ -827,9 +829,10 @@ async function executeDemoCandidate(req, res) {
         catch (error) { return res.status(502).json({ ok: false, demoOnly: true, status: 'FILLED_THESIS_INVALIDATED_EMERGENCY_CLOSE_FAILED', entry: existing, error: error.message, ordersSent: true, withdrawalsSent: false }); }
         return res.status(409).json({ ok: false, demoOnly: true, status: 'FILLED_THESIS_INVALIDATED_POSITION_CLOSED', entry: existing, emergencyClose, ordersSent: true, withdrawalsSent: false });
       }
-      const protectionOrders = buildProtectionOrders(candidate, sizing, precision).orders;
+      const protectionOrders = buildProtectionOrders(candidate, sizing, precision, existing.avgPrice || existing.price);
       const protection = [];
-      try { for (const protective of protectionOrders) protection.push(await submitProtection(protective)); }
+      if (protectionOrders.status !== 'READY_AFTER_ENTRY_FILL') return res.status(409).json({ ok: false, demoOnly: true, status: 'FILLED_PROTECTION_GEOMETRY_INVALID', entry: existing, protection: [], protectionVerified: false, error: protectionOrders.status, ordersSent: true, withdrawalsSent: false });
+      try { for (const protective of protectionOrders.orders) protection.push(await submitProtection(protective)); }
       catch (error) {
         markLifecycleProtection(req.userId, candidate.client_order_id, 'PENDING');
         return res.status(202).json({ ok: false, demoOnly: true, status: 'FILLED_PROTECTION_PENDING', entry: existing, protection, protectionVerified: false, error: error.message, ordersSent: true, withdrawalsSent: false });
@@ -859,7 +862,7 @@ async function executeDemoCandidate(req, res) {
     const entry = await signed('POST', '/fapi/v1/order', { symbol: candidate.symbol, side: candidate.side, type: 'LIMIT', timeInForce: 'GTC', quantity: sizing.quantity, price: sizing.price, newClientOrderId: candidate.client_order_id });
     run('UPDATE execution_lifecycles SET entry_order_id=?, entry_status=?, position_status=\'OPEN\', updated_at=?, candidate_json=? WHERE user_id=? AND thesis_key=?', [String(entry.orderId), entry.status || 'NEW', Date.now(), JSON.stringify(candidate), req.userId, candidate.client_order_id]);
     let protectionState = { protection: [], protectionVerified: false };
-    try { protectionState = await ensureProtection(); } catch (error) { protectionState.error = error.message; }
+    try { protectionState = await ensureProtection(entry.avgPrice || entry.price); } catch (error) { protectionState.error = error.message; }
     demoExecutionSummaries.set(String(req.userId), { status: entry.status || 'ORDER_SENT', orderId: entry.orderId, clientOrderId: candidate.client_order_id, protectionVerified: protectionState.protectionVerified, protectionError: protectionState.error || null, attemptAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
     let current = entry;
     while (!['FILLED', 'CANCELED', 'EXPIRED', 'REJECTED'].includes(current.status)) {
@@ -894,11 +897,15 @@ async function executeDemoCandidate(req, res) {
     }
     const execDedup = 'EXEC:' + candidate.symbol + ':' + current.orderId + ':FILLED';
     sendTelegram('<b>JEV EXECUTION</b>\nPair: ' + candidate.symbol + '\nSide: ' + (candidate.side || '-') + '\nOrderID: ' + current.orderId + '\nPrice: ' + (current.avgPrice || current.price || '-') + '\nQty: ' + (current.executedQty || '-') + '\nStatus: FILLED', execDedup, req.userId);
-    const protectionOrdersAfterFill = buildProtectionOrders(candidate, sizing, precision).orders;
+    const protectionOrdersAfterFill = buildProtectionOrders(candidate, sizing, precision, current.avgPrice || current.price);
     let protectionAfterFill = [];
+    if (protectionOrdersAfterFill.status !== 'READY_AFTER_ENTRY_FILL') {
+    markLifecycleProtection(req.userId, candidate.client_order_id, 'PENDING');
+    return res.status(202).json({ ok: false, demoOnly: true, status: 'FILLED_PROTECTION_GEOMETRY_INVALID', entry: current, protection: [], protectionVerified: false, error: protectionOrdersAfterFill.status, ordersSent: true, withdrawalsSent: false });
+    }
     let protectionVerified = false;
     try {
-      const ensured = await ensureProtection();
+      const ensured = await ensureProtection(current.avgPrice || current.price);
       protectionAfterFill = ensured.protection;
       protectionVerified = ensured.protectionVerified;
     } catch (error) {

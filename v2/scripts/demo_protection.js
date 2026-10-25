@@ -1,5 +1,16 @@
-export function buildProtectionOrders(candidate, sizing, precisionValidation) {
+export function validateProtectionGeometry(candidate, averagePrice) {
+  const entry = Number(averagePrice);
+  const sl = Number(candidate?.sl);
+  const tp = Number(candidate?.tp);
+  if (![entry, sl, tp].every(Number.isFinite) || entry <= 0 || sl <= 0 || tp <= 0) return { ok: false, reason: 'INVALID_PROTECTION_PRICE' };
+  if (candidate.side === 'BUY' && !(sl < entry && tp > entry)) return { ok: false, reason: 'PROTECTION_GEOMETRY_INVALID_FOR_LONG' };
+  if (candidate.side === 'SELL' && !(sl > entry && tp < entry)) return { ok: false, reason: 'PROTECTION_GEOMETRY_INVALID_FOR_SHORT' };
+  return { ok: true };
+}
+
+export function buildProtectionOrders(candidate, sizing, precisionValidation, averagePrice = null) {
   if (sizing?.status !== 'SIZED') return { status: sizing?.status || 'REJECTED_NOT_SIZED', orders: [] };
+  if (averagePrice != null && !validateProtectionGeometry(candidate, averagePrice).ok) return { status: 'REJECTED_PROTECTION_GEOMETRY', orders: [] };
   if (precisionValidation !== 'VALID') return { status: precisionValidation || 'REJECTED_PRECISION', orders: [] };
   if (!candidate?.client_order_id || !['BUY', 'SELL'].includes(candidate.side)) return { status: 'REJECTED_INVALID_CANDIDATE', orders: [] };
   const exitSide = candidate.side === 'BUY' ? 'SELL' : 'BUY';

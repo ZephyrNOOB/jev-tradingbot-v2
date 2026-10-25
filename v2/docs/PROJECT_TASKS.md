@@ -264,9 +264,9 @@ Stage 7 reconciles fresh approved candidates against Binance Demo positions/orde
 
 ## Stage 8 — Controlled Demo execution
 
-Status: IMPLEMENTED — BLOCKED UNTIL EXPLICIT APPROVAL
+Status: IMPLEMENTED — BOT ON DEMO RUNNER ACTIVE
 
-Execution revalidates candidate freshness, approval, structure event, sizing, precision, account state, and protection flow. Direct execution requires `explicitApproval: true`; this path remains user-approved. Automatic runner execution is Demo-only and fail-closed: it records `APPROVAL_REQUIRED` without signing or submitting an order unless `config/runtime.json` explicitly sets `unattendedDemoExecutionEnabled: true`. Authorization is recorded as `UNATTENDED_DEMO_AUTHORIZED`; no credentials enter approval state.
+Execution revalidates candidate freshness, structure event, sizing, precision, account state, and protection flow. Direct execution may require `explicitApproval: true`; BOT ON internal runner executes fresh approved pair candidates in Binance Demo. Duplicate active material thesis remains blocked; no credentials enter execution state.
 
 
 Active V2 workflow:
