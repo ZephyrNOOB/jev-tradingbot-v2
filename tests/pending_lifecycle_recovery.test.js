@@ -15,7 +15,7 @@ test('restores exact XAU pending lifecycle without treating NEW as manual close'
   };
   const order = { symbol: 'XAUUSDT', clientOrderId: 'jev_xau_1', side: 'SELL', price: '4015.46', status: 'NEW' };
   assert.deepEqual(restorePendingLifecycle(lifecycle, order), {
-    position_status: 'PENDING', close_reason: null, completed_at: null
+    position_status: 'OPEN', close_reason: null, completed_at: null
   });
 });
 

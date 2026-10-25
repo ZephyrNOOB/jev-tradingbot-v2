@@ -7,6 +7,6 @@ export function restorePendingLifecycle(lifecycle, order) {
   const sameSide = String(candidate.side || '').toUpperCase() === String(order.side || '').toUpperCase();
   const samePrice = Math.abs(Number(candidate.entry) - Number(order.price)) < 1e-8;
   return sameIdentity && sameSymbol && sameSide && samePrice && ['NEW', 'PARTIALLY_FILLED'].includes(order.status)
-    ? { position_status: 'PENDING', close_reason: null, completed_at: null }
+    ? { position_status: 'OPEN', close_reason: null, completed_at: null }
     : null;
 }

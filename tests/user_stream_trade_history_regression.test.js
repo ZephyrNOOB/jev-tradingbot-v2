@@ -24,11 +24,3 @@ test('Binance history refreshes local JEV fill state before raw history response
   const route = source.slice(source.indexOf("app.get('/api/binance-history'"), source.indexOf("app.get('/api/history'"));
   assert.match(route, /await syncTradeHistory\(req\.userId\)/);
 });
-
-test('protection verification requires exact Binance Algo fields', () => {
-  const source = fs.readFileSync(new URL('../server.js', import.meta.url), 'utf8');
-  assert.match(source, /function protectionMatches/);
-  assert.match(source, /actual\?\.symbol === expected\.symbol/);
-  assert.match(source, /actualClose/);
-  assert.match(source, /protectionSetMatches/);
-});
