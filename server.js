@@ -184,6 +184,18 @@ function notifyTelegramExecution(event, userId) {
   });
 }
 
+function protectionMatches(actual, expected) {
+  const clientId = String(expected.clientOrderId || '').slice(0, 36);
+  const actualId = String(actual?.clientAlgoId || actual?.clientOrderId || '');
+  const actualType = String(actual?.orderType || actual?.type || '');
+  const actualTrigger = Number(actual?.triggerPrice ?? actual?.stopPrice);
+  const actualClose = actual?.closePosition === true || String(actual?.closePosition || '').toLowerCase() === 'true';
+  const status = String(actual?.algoStatus || actual?.status || '').toUpperCase();
+  return actualId === clientId && actual?.symbol === expected.symbol && String(actual?.side || '').toUpperCase() === String(expected.side || '').toUpperCase() && actualType === expected.type && Math.abs(actualTrigger - Number(expected.stopPrice)) < 1e-8 && String(actual?.workingType || '') === String(expected.workingType || '') && actualClose && (!status || ['NEW', 'OPEN', 'WORKING'].includes(status));
+}
+function protectionSetMatches(actualOrders, expectedOrders) {
+  return expectedOrders.every(expected => actualOrders.some(actual => protectionMatches(actual, expected)));
+}
 async function protectFilledEvent(userId, candidate) {
   if (!candidate?.client_order_id || !candidate.symbol || !Number.isFinite(Number(candidate.sl)) || !Number.isFinite(Number(candidate.tp))) return { protectionVerified: false, status: 'BLOCKED_MISSING_PROVENANCE' };
   const keyRow = get("SELECT * FROM api_keys WHERE user_id = ? AND exchange = 'binanceTestnet' AND status = 'connected' ORDER BY id DESC LIMIT 1", [userId]);
@@ -194,10 +206,8 @@ async function protectFilledEvent(userId, candidate) {
   const positions = await signed('GET', '/fapi/v2/positionRisk', { symbol: candidate.symbol });
   if (!positions.some(item => Number(item.positionAmt) !== 0)) return { protectionVerified: false, status: 'ENTRY_PENDING_FILL' };
   const existing = await signed('GET', '/fapi/v1/openAlgoOrders', { symbol: candidate.symbol });
-  const ids = new Set(existing.map(item => item.clientAlgoId || item.clientOrderId));
-  for (const order of expected) if (!ids.has(order.clientOrderId.slice(0, 36))) await signed('POST', '/fapi/v1/algoOrder', { symbol: order.symbol, side: order.side, algoType: 'CONDITIONAL', type: order.type, triggerPrice: order.stopPrice, closePosition: 'true', workingType: order.workingType, clientAlgoId: order.clientOrderId.slice(0, 36) });
-  const verified = new Set((await signed('GET', '/fapi/v1/openAlgoOrders', { symbol: candidate.symbol })).map(item => item.clientAlgoId || item.clientOrderId));
-  const protectionVerified = expected.every(order => verified.has(order.clientOrderId.slice(0, 36)));
+  for (const order of expected) if (!existing.some(item => protectionMatches(item, order))) await signed('POST', '/fapi/v1/algoOrder', { symbol: order.symbol, side: order.side, algoType: 'CONDITIONAL', type: order.type, triggerPrice: order.stopPrice, closePosition: 'true', workingType: order.workingType, clientAlgoId: order.clientOrderId.slice(0, 36) });
+  const protectionVerified = protectionSetMatches(await signed('GET', '/fapi/v1/openAlgoOrders', { symbol: candidate.symbol }), expected);
   markLifecycleProtection(userId, candidate.client_order_id, protectionVerified ? 'VERIFIED' : 'PENDING');
   return { protectionVerified, status: protectionVerified ? 'FILLED_PROTECTED' : 'FILLED_PROTECTION_PENDING' };
 }
@@ -341,7 +351,9 @@ async function initDb() {
   try { run('ALTER TABLE trade_history ADD COLUMN structure_event_id TEXT'); } catch {}
   try { run('ALTER TABLE trade_history ADD COLUMN status TEXT DEFAULT \'FILLED\''); } catch {}
   try { run('ALTER TABLE trade_history ADD COLUMN trade_id TEXT'); } catch {}
-  try { run('CREATE UNIQUE INDEX IF NOT EXISTS idx_trade_history_trade_id ON trade_history(user_id, trade_id) WHERE trade_id IS NOT NULL AND trade_id != \'\''); } catch {}
+  try {  run('DELETE FROM trade_history WHERE order_id IS NOT NULL AND order_id != \'\' AND id NOT IN (SELECT MIN(id) FROM trade_history WHERE order_id IS NOT NULL AND order_id != \'\' GROUP BY user_id, order_id)');
+  run('CREATE UNIQUE INDEX IF NOT EXISTS idx_trade_history_order_id ON trade_history(user_id, order_id) WHERE order_id IS NOT NULL AND order_id != \'\'');
+  run('CREATE UNIQUE INDEX IF NOT EXISTS idx_trade_history_trade_id ON trade_history(user_id, trade_id) WHERE trade_id IS NOT NULL AND trade_id != \'\''); } catch {}
   run('CREATE TABLE IF NOT EXISTS sessions (sid_hash TEXT PRIMARY KEY, user_id INTEGER NOT NULL, expires_at INTEGER NOT NULL)');
   run('CREATE TABLE IF NOT EXISTS trade_amounts (user_id INTEGER PRIMARY KEY, amount_usdt REAL NOT NULL, leverage INTEGER NOT NULL DEFAULT 1, margin_mode TEXT NOT NULL DEFAULT \'ISOLATED\', updated_at TEXT NOT NULL)');
   try { run("ALTER TABLE trade_amounts ADD COLUMN leverage INTEGER NOT NULL DEFAULT 1"); } catch {}
@@ -586,7 +598,7 @@ app.get('/api/binance-demo/live-readiness', auth, async (req, res) => {
     const openAlgoOrders = await signed('GET', '/fapi/v1/openAlgoOrders');
     reconcilePendingClosedLifecycles(req.userId, openOrders);
     reconcileManualClosedLifecycles(req.userId, positions, exchangeTrades);
-    const durableCandidates = all("SELECT candidate_json FROM execution_lifecycles WHERE user_id = ? AND position_status = 'OPEN' AND candidate_json IS NOT NULL", [req.userId]).flatMap(row => { try { const candidate = JSON.parse(row.candidate_json); return candidate?.client_order_id ? [candidate] : []; } catch { return []; } });
+    const durableCandidates = all("SELECT candidate_json FROM execution_lifecycles WHERE user_id = ? AND position_status = 'OPEN' AND entry_status = 'FILLED' AND candidate_json IS NOT NULL", [req.userId]).flatMap(row => { try { const candidate = JSON.parse(row.candidate_json); return candidate?.client_order_id ? [candidate] : []; } catch { return []; } });
     const reconciliationCandidates = selectReconciliationCandidates(durableCandidates, openOrders, artifact.execution_candidates || []);
     const monitoring = monitorProtectionState(reconciliationCandidates, openOrders, openPositions);
     blockers.push(...readinessBlockers(monitoring));
@@ -632,7 +644,7 @@ app.get('/api/binance-demo/reconciliation', auth, async (req, res) => {
     reconcileManualClosedLifecycles(req.userId, positions, exchangeTrades);
     const artifact = JSON.parse(fs.readFileSync(path.join(__dirname, 'v2', 'artifacts', 'BINANCE_DEMO_LIVE_PIPELINE.json'), 'utf8'));
     const candidates = (artifact.execution_candidates || []).filter(candidate => validateCandidateFreshness(artifact, candidate).ok && !lifecycleBlocksReentry(req.userId, candidate));
-    const durableCandidates = all("SELECT candidate_json FROM execution_lifecycles WHERE user_id = ? AND position_status = 'OPEN' AND candidate_json IS NOT NULL", [req.userId]).flatMap(row => { try { const candidate = JSON.parse(row.candidate_json); return candidate?.client_order_id ? [candidate] : []; } catch { return []; } });
+    const durableCandidates = all("SELECT candidate_json FROM execution_lifecycles WHERE user_id = ? AND position_status = 'OPEN' AND entry_status = 'FILLED' AND candidate_json IS NOT NULL", [req.userId]).flatMap(row => { try { const candidate = JSON.parse(row.candidate_json); return candidate?.client_order_id ? [candidate] : []; } catch { return []; } });
     const reconciliationCandidates = selectReconciliationCandidates(durableCandidates, ordersBySymbol.flat(), artifact.execution_candidates || []);
     const monitoring = monitorProtectionState(reconciliationCandidates, ordersBySymbol.flat(), positions);
     const reconciliation = reconcileDemoState(reconciliationCandidates, ordersBySymbol.flat(), positions, monitoring);
@@ -700,10 +712,12 @@ async function syncTradeHistory(userId) {
     if (duplicateTrade && !existing) continue;
     const candidate = get('SELECT setup_id, structure_event_id, client_order_id, thesis_key FROM trade_history WHERE user_id = ? AND order_id = ? LIMIT 1', [userId, orderId]);
     if (existing) {
-      run('UPDATE trade_history SET trade_id=?, fee=?, pnl=?, raw_json=?, client_order_id=COALESCE(NULLIF(client_order_id, \'\'), ?), setup_id=COALESCE(NULLIF(setup_id, \'\'), ?), structure_event_id=COALESCE(NULLIF(structure_event_id, \'\'), ?), thesis_key=COALESCE(NULLIF(thesis_key, \'\'), ?) WHERE id=?', [tradeId, Number(trade.commission || 0), Number(trade.realizedPnl || 0), JSON.stringify(trade), candidate?.client_order_id || trade.clientOrderId || '', candidate?.setup_id || '', candidate?.structure_event_id || '', candidate?.thesis_key || '', existing.id]);
+      const closeReason = closeReasonFromClientOrderId(trade.clientOrderId);
+      run(`UPDATE trade_history SET trade_id=?, fee=?, pnl=?, raw_json=?, status=CASE WHEN ? IS NOT NULL THEN 'CLOSED' ELSE status END, close_reason=COALESCE(close_reason, ?), client_order_id=COALESCE(NULLIF(client_order_id, ''), ?), setup_id=COALESCE(NULLIF(setup_id, ''), ?), structure_event_id=COALESCE(NULLIF(structure_event_id, ''), ?), thesis_key=COALESCE(NULLIF(thesis_key, ''), ?) WHERE id=?`, [tradeId, Number(trade.commission || 0), Number(trade.realizedPnl || 0), JSON.stringify(trade), closeReason, closeReason, candidate?.client_order_id || trade.clientOrderId || '', candidate?.setup_id || '', candidate?.structure_event_id || '', candidate?.thesis_key || '', existing.id]);
       continue;
     }
-    run('INSERT INTO trade_history (user_id,inst_id,side,pos_side,size,price,fee,funding_rate,slippage,pnl,ts,raw_json,client_order_id,order_id,trade_id,setup_id,structure_event_id,status,thesis_key) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', [userId, symbol, String(trade.side || '').toLowerCase(), trade.positionSide || '', Number(trade.qty || 0), Number(trade.price || 0), Number(trade.commission || 0), 0, 0, Number(trade.realizedPnl || 0), Number(trade.time || Date.now()), JSON.stringify(trade), candidate?.client_order_id || trade.clientOrderId || '', orderId, tradeId, candidate?.setup_id || '', candidate?.structure_event_id || '', Number(trade.realizedPnl || 0) !== 0 ? 'CLOSED' : 'OPEN', candidate?.thesis_key || '']);
+    const closeReason = closeReasonFromClientOrderId(trade.clientOrderId);
+    run('INSERT INTO trade_history (user_id,inst_id,side,pos_side,size,price,fee,funding_rate,slippage,pnl,ts,raw_json,client_order_id,order_id,trade_id,setup_id,structure_event_id,status,thesis_key,close_reason) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', [userId, symbol, String(trade.side || '').toLowerCase(), trade.positionSide || '', Number(trade.qty || 0), Number(trade.price || 0), Number(trade.commission || 0), 0, 0, Number(trade.realizedPnl || 0), Number(trade.time || Date.now()), JSON.stringify(trade), candidate?.client_order_id || trade.clientOrderId || '', orderId, tradeId, candidate?.setup_id || '', candidate?.structure_event_id || '', closeReason ? 'CLOSED' : (Number(trade.realizedPnl || 0) !== 0 ? 'CLOSED' : 'OPEN'), candidate?.thesis_key || '', closeReason]);
   }
 }
 function getExecutionLifecycle(userId, thesisKey) {
@@ -742,11 +756,12 @@ function reconcileManualClosedLifecycles(userId, positions, tradesBySymbol = {})
     const exchangeClose = closeQty + 1e-12 >= entryQty ? closeTrades[closeTrades.length - 1] : null;
     if (openSymbols.has(lifecycle.symbol) || !exchangeClose) continue;
     const now = Date.now();
-    run('UPDATE execution_lifecycles SET position_status=\'CLOSED\', close_reason=\'MANUAL\', exit_order_id=?, updated_at=?, completed_at=? WHERE user_id=? AND thesis_key=? AND position_status=\'OPEN\'', [exchangeClose ? String(exchangeClose.orderId || '') : null, now, now, userId, lifecycle.thesis_key]);
-    run('UPDATE trade_history SET status=\'CLOSED\', close_reason=\'MANUAL\', exit_order_id=?, completed_at=? WHERE user_id=? AND thesis_key=? AND status != \'CLOSED\'', [exchangeClose ? String(exchangeClose.orderId || '') : null, now, userId, lifecycle.thesis_key]);
+    const closeReason = closeReasonFromClientOrderId(exchangeClose.clientOrderId) || 'MANUAL';
+    run('UPDATE execution_lifecycles SET position_status=\'CLOSED\', close_reason=?, exit_order_id=?, updated_at=?, completed_at=? WHERE user_id=? AND thesis_key=? AND position_status=\'OPEN\'', [closeReason, String(exchangeClose.orderId || ''), now, now, userId, lifecycle.thesis_key]);
+    run('UPDATE trade_history SET status=\'CLOSED\', close_reason=COALESCE(close_reason, ?), exit_order_id=?, completed_at=? WHERE user_id=? AND thesis_key=? AND status != \'CLOSED\'', [closeReason, String(exchangeClose.orderId || ''), now, userId, lifecycle.thesis_key]);
     queueTelegramExecution(userId, () => sendTelegram(
-      'JEV CLOSE\nPair: ' + lifecycle.symbol + '\nReason: MANUAL\nStatus: CLOSED',
-      'CLOSE:' + lifecycle.symbol + ':' + lifecycle.thesis_key + ':MANUAL', userId
+      'JEV CLOSE\nPair: ' + lifecycle.symbol + '\nReason: ' + closeReason + '\nStatus: CLOSED',
+      'CLOSE:' + lifecycle.symbol + ':' + lifecycle.thesis_key + ':' + closeReason, userId
     ));
   }
 }
@@ -858,7 +873,7 @@ async function executeDemoCandidate(req, res) {
         return res.status(202).json({ ok: false, demoOnly: true, status: 'FILLED_PROTECTION_PENDING', entry: existing, protection, protectionVerified: false, error: error.message, ordersSent: true, withdrawalsSent: false });
       }
       const openOrders = await listProtection();
-      const protectionVerified = protectionOrders.every(order => openOrders.some(open => (open.clientAlgoId || open.clientOrderId) === order.clientOrderId));
+      const protectionVerified = protectionSetMatches(openOrders, protectionOrders);
       if (!protectionVerified) {
         markLifecycleProtection(req.userId, candidate.client_order_id, 'PENDING');
         return res.status(202).json({ ok: false, demoOnly: true, status: 'FILLED_PROTECTION_PENDING', entry: existing, protection, protectionVerified: false, ordersSent: true, withdrawalsSent: false });
@@ -880,7 +895,7 @@ async function executeDemoCandidate(req, res) {
     await signed('POST', '/fapi/v1/leverage', { symbol: candidate.symbol, leverage: String(settings.leverage) });
     run('INSERT INTO execution_lifecycles (user_id,thesis_key,symbol,client_order_id,entry_order_id,entry_status,position_status,protection_status,updated_at,candidate_json) VALUES (?,?,?,?,?,?,?,?,?,?) ON CONFLICT(user_id,thesis_key) DO UPDATE SET updated_at=excluded.updated_at,candidate_json=excluded.candidate_json', [req.userId, candidate.client_order_id, candidate.symbol, candidate.client_order_id, null, 'SUBMITTING', 'PENDING', 'PENDING', Date.now(), JSON.stringify(candidate)]);
     const entry = await signed('POST', '/fapi/v1/order', { symbol: candidate.symbol, side: candidate.side, type: 'LIMIT', timeInForce: 'GTC', quantity: sizing.quantity, price: sizing.price, newClientOrderId: candidate.client_order_id });
-    run('UPDATE execution_lifecycles SET entry_order_id=?, entry_status=?, position_status=\'OPEN\', updated_at=?, candidate_json=? WHERE user_id=? AND thesis_key=?', [String(entry.orderId), entry.status || 'NEW', Date.now(), JSON.stringify(candidate), req.userId, candidate.client_order_id]);
+    run('UPDATE execution_lifecycles SET entry_order_id=?, entry_status=?, position_status=?, updated_at=?, candidate_json=? WHERE user_id=? AND thesis_key=?', [String(entry.orderId), entry.status || 'NEW', entry.status === 'FILLED' ? 'OPEN' : 'PENDING', Date.now(), JSON.stringify(candidate), req.userId, candidate.client_order_id]);
     let protectionState = { protection: [], protectionVerified: false };
     try { protectionState = await ensureProtection(null, false); } catch (error) { protectionState.error = error.message; }
     demoExecutionSummaries.set(String(req.userId), { status: entry.status || 'ORDER_SENT', orderId: entry.orderId, clientOrderId: candidate.client_order_id, protectionVerified: protectionState.protectionVerified, protectionError: protectionState.error || null, attemptAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
