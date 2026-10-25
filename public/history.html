@@ -27,11 +27,7 @@
   </aside>
   <main class="main">
     <div class="page-header" id="historyHeader" hidden>
-      <h2 class="page-title">TRADE HISTORY</h2>
-      <div class="history-tabs" role="tablist" style="display:flex;gap:8px;margin-left:20px">
-        <button class="history-tab active" id="jevTab" onclick="showHistoryTab('jev')">JEV HISTORY</button>
-        <button class="history-tab" id="binanceTab" onclick="showHistoryTab('binance')">BINANCE HISTORY</button>
-      </div>
+      <h2 class="page-title" id="historyTitle">HISTORY</h2>
       <div style="display:flex;gap:10px;align-items:center">
         <input type="date" id="dateFilter" style="width:auto;margin:0">
         <button onclick="loadHistory()" style="width:auto;padding:8px 16px">FILTER</button>
@@ -100,10 +96,9 @@ function esc(v) { return String(v ?? '--').replace(/[&<>"']/g, c => ({'&':'&amp;
 function showHistoryTab(tab) {
   document.getElementById('historyHeader').hidden = false;
   document.getElementById('emptyHistoryPanel').hidden = true;
+  document.getElementById('historyTitle').textContent = tab === 'jev' ? 'JEV HISTORY' : 'BINANCE HISTORY';
   document.getElementById('jevHistoryPanel').hidden = tab !== 'jev';
   document.getElementById('binanceHistoryPanel').hidden = tab !== 'binance';
-  document.getElementById('jevTab').classList.toggle('active', tab === 'jev');
-  document.getElementById('binanceTab').classList.toggle('active', tab === 'binance');
   if (tab === 'binance') loadBinanceHistory();
 }
 async function loadBinanceHistory() {
