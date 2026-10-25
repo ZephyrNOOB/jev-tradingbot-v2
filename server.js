@@ -807,7 +807,7 @@ async function executeDemoCandidate(req, res) {
     };
     const permission = demoExecutionGate({ botEnabled: recovery || botStates.get(req.userId) === true, ordersEnabled: enabled, protectiveOrdersReady: protectionPlan.status === 'READY_AFTER_ENTRY_FILL', riskStatus: 'ALLOWED', demoExecutionEnabled: enabled, unattendedDemoExecutionEnabled, internalRunner: req.internalRunner === true, explicitApproval: req.body?.explicitApproval === true });
         if (!permission.allowed) {
-          const status = permission.reason === 'APPROVAL_REQUIRED' ? 'APPROVAL_REQUIRED' : permission.reason;
+          const status = permission.reason;
           demoExecutionSummaries.set(String(req.userId), { status, authorization: 'NONE', clientOrderId: candidate.client_order_id, ordersSent: false, updatedAt: new Date().toISOString() });
           return res.status(409).json({ ok: false, demoOnly: true, ...permission, status, order, ordersSent: false, withdrawalsSent: false });
         }
