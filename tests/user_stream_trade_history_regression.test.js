@@ -10,3 +10,11 @@ test('ORDER_TRADE_UPDATE FILLED creates trade_history row when entry row is miss
   assert.match(update, /client_order_id/);
   assert.match(update, /order_id/);
 });
+
+test('REST trade sync merges by order_id before trade_id to avoid duplicate fills', () => {
+  const source = fs.readFileSync(new URL('../server.js', import.meta.url), 'utf8');
+  const sync = source.slice(source.indexOf('async function syncTradeHistory'), source.indexOf('function getExecutionLifecycle'));
+  assert.match(sync, /const existing = get/);
+  assert.match(sync, /SELECT id FROM trade_history WHERE user_id = \? AND order_id = \?/);
+  assert.match(sync, /if \(existing\)/);
+});
