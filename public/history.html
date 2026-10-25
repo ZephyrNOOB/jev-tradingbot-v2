@@ -13,7 +13,13 @@
     <nav class="sidebar-nav">
       <a class="nav-item" href="/dashboard.html">Dashboard</a>
       <a class="nav-item" href="/exchange.html">Settings</a>
-      <a class="nav-item active" href="/history.html">Trade History</a>
+      <div class="nav-history-menu">
+        <a class="nav-item active" href="/history.html" aria-haspopup="true">Trade History</a>
+        <div class="nav-history-submenu" role="menu">
+          <a href="/history.html?view=jev" role="menuitem">JEV History</a>
+          <a href="/history.html?view=binance" role="menuitem">Binance History</a>
+        </div>
+      </div>
     </nav>
     <div class="sidebar-footer">
       <button onclick="logout()">LOGOUT</button>
@@ -77,6 +83,7 @@
   </main>
 </div>
 <script>
+const initialView = new URLSearchParams(location.search).get('view');
 function csrfToken() { return document.cookie.split('; ').find(x => x.startsWith('csrf='))?.split('=')[1] || ''; }
 async function api(path, opts = {}) {
   const headers = { 'Content-Type': 'application/json', ...(opts.headers || {}) };
@@ -187,6 +194,7 @@ async function logout() {
 // Set today as default
 document.getElementById('dateFilter').value = new Date().toISOString().split('T')[0];
 loadHistory();
+if (initialView === 'binance') showHistoryTab('binance');
 </script>
 </body>
 </html>
