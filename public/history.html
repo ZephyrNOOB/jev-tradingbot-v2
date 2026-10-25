@@ -99,7 +99,8 @@ function showHistoryTab(tab) {
   document.getElementById('historyTitle').textContent = tab === 'jev' ? 'JEV HISTORY' : 'BINANCE HISTORY';
   document.getElementById('jevHistoryPanel').hidden = tab !== 'jev';
   document.getElementById('binanceHistoryPanel').hidden = tab !== 'binance';
-  if (tab === 'binance') loadBinanceHistory();
+  if (tab === 'jev') loadHistory();
+  else loadBinanceHistory();
 }
 async function loadBinanceHistory() {
   const data = await api('/binance-history');
