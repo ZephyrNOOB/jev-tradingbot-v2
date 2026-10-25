@@ -1423,12 +1423,13 @@ app.get('/api/binance-history', auth, async (req, res) => {
   try {
     const apiKey = decryptSecret(keyRow.api_key), secret = decryptSecret(keyRow.secret_key);
     const signed = (method, apiPath, params = {}) => signedBinanceRequest(apiKey, secret, method, apiPath, params);
-    const [orders, trades, income] = await Promise.all([
+    const [orders, trades, algos, income] = await Promise.all([
       Promise.all(SUPPORTED_SYMBOLS.map(symbol => signed('GET', '/fapi/v1/allOrders', { symbol, limit: '1000' }))),
       Promise.all(SUPPORTED_SYMBOLS.map(symbol => signed('GET', '/fapi/v1/userTrades', { symbol, limit: '1000' }))),
+      Promise.all(SUPPORTED_SYMBOLS.map(symbol => signed('GET', '/fapi/v1/allAlgoOrders', { symbol, limit: '1000' }))),
       signed('GET', '/fapi/v1/income', { limit: '1000' })
     ]);
-    res.json({ ok: true, demoOnly: true, orders: orders.flat(), trades: trades.flat(), income });
+    res.json({ ok: true, demoOnly: true, orders: orders.flat(), trades: trades.flat(), algos: algos.flat(), income });
   } catch (error) {
     res.status(502).json({ ok: false, demoOnly: true, error: error.message || 'Binance history read failed' });
   }
