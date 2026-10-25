@@ -21,8 +21,10 @@ import { startBinanceUserStream, stopBinanceUserStream, getBinanceUserStreamStat
 import { closeReasonFromClientOrderId } from './v2/scripts/telegram_execution.js';
 import { restorePendingLifecycle } from './v2/scripts/pending_lifecycle_recovery.js';
 import { findActiveSessionId } from './v2/scripts/recovery_session.js';
+import { appendLossTrade } from './v2/scripts/loss_trade_logger.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const LOSS_TRADES_FILE = path.join(__dirname, 'v2', 'artifacts', 'LOSS_TRADES.jsonl');
 const app = express();
 let binanceCircuitOpenUntil = 0;
 let binanceRateLimitReason = null;
@@ -223,6 +225,41 @@ function recordExchangeOrderUpdate(userId, event) {
     const closeReason = closeReasonFromClientOrderId(clientOrderId);
     run('INSERT INTO execution_lifecycles (user_id,thesis_key,symbol,client_order_id,entry_order_id,entry_status,position_status,protection_status,exit_order_id,close_reason,updated_at,completed_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(user_id,thesis_key) DO UPDATE SET exit_order_id=excluded.exit_order_id,position_status=\'CLOSED\',close_reason=excluded.close_reason,updated_at=excluded.updated_at,completed_at=excluded.completed_at', [userId, lifecycle?.thesis_key || rootClientOrderId, order.s, lifecycle?.client_order_id || rootClientOrderId, lifecycle?.entry_order_id || '', lifecycle?.entry_status || 'FILLED', 'CLOSED', 'VERIFIED', String(order.i), closeReason, now, now]);
     run('UPDATE trade_history SET status=\'CLOSED\',close_reason=?,exit_order_id=?,completed_at=? WHERE user_id=? AND client_order_id=? AND status != \'CLOSED\'', [closeReason, String(order.i), now, userId, rootClientOrderId]);
+    const realizedPnl = Number(order.rp || 0);
+    if (realizedPnl < 0) {
+      const entry = get('SELECT * FROM trade_history WHERE user_id = ? AND client_order_id = ? ORDER BY id DESC LIMIT 1', [userId, rootClientOrderId]);
+      let setup = {};
+      try { setup = lifecycle?.candidate_json ? JSON.parse(lifecycle.candidate_json) : {}; } catch {}
+      const lossSource = entry?.raw_json ? (() => { try { return JSON.parse(entry.raw_json).provenance || {}; } catch { return {}; } })() : {};
+      setup = Object.keys(setup).length ? setup : lossSource;
+      appendLossTrade(LOSS_TRADES_FILE, {
+        recordedAt: new Date(now).toISOString(),
+        userId,
+        symbol: order.s,
+        side: entry?.side || '',
+        setupId: setup.setup_id || '',
+        structureEventId: setup.structure_event_id || '',
+        entryOrderId: entry?.entry_order_id || entry?.order_id || '',
+        tradeId: String(order.t || ''),
+        exitOrderId: String(order.i),
+        closeReason,
+        lossCause: closeReason === 'SL' ? 'STOP_LOSS_TRIGGERED' : closeReason === 'TP' ? 'TAKE_PROFIT_TRIGGERED' : 'EXCHANGE_CLOSE_LOSS',
+        lossExplanation: closeReason === 'SL'
+          ? 'Exchange triggered SetupBot Stop Loss; exit fill produced negative realized PnL.'
+          : closeReason === 'TP'
+            ? 'Exchange triggered SetupBot Take Profit; exchange reported negative realized PnL.'
+            : 'Exchange close order produced negative realized PnL; exact cause requires exchange close metadata.',
+        entryPrice: Number(entry?.price || 0),
+        exitPrice: Number(order.ap || order.p || 0),
+        quantity: Number(order.z || order.q || 0),
+        realizedPnl,
+        exitCommission: Number(order.n || 0),
+        entryTime: Number(entry?.ts || 0),
+        exitTime: Number(order.T || order.E || now),
+        setup,
+        raw: order
+      });
+    }
     return;
   }
   if (status === 'FILLED' && clientOrderId && !/_ec$/i.test(clientOrderId)) {
@@ -705,9 +742,34 @@ async function syncTradeHistory(userId) {
     const candidate = get('SELECT setup_id, structure_event_id, client_order_id, thesis_key FROM trade_history WHERE user_id = ? AND order_id = ? LIMIT 1', [userId, orderId]);
     if (existing) {
       run('UPDATE trade_history SET trade_id=?, fee=?, pnl=?, raw_json=?, client_order_id=COALESCE(NULLIF(client_order_id, \'\'), ?), setup_id=COALESCE(NULLIF(setup_id, \'\'), ?), structure_event_id=COALESCE(NULLIF(structure_event_id, \'\'), ?), thesis_key=COALESCE(NULLIF(thesis_key, \'\'), ?) WHERE id=?', [tradeId, Number(trade.commission || 0), Number(trade.realizedPnl || 0), JSON.stringify(trade), candidate?.client_order_id || trade.clientOrderId || '', candidate?.setup_id || '', candidate?.structure_event_id || '', candidate?.thesis_key || '', existing.id]);
+      if (Number(trade.realizedPnl || 0) < 0) {
+        const root = String(trade.clientOrderId || '').replace(/_(?:sl|tp|ec)$/i, '');
+        const lifecycle = get('SELECT * FROM execution_lifecycles WHERE user_id = ? AND thesis_key = ?', [userId, root]);
+        let setup = {};
+        try { setup = lifecycle?.candidate_json ? JSON.parse(lifecycle.candidate_json) : {}; } catch {}
+        appendLossTrade(LOSS_TRADES_FILE, {
+          recordedAt: new Date(Number(trade.time || Date.now())).toISOString(), userId, symbol,
+          side: candidate?.side || trade.side || '', setupId: setup.setup_id || '', structureEventId: setup.structure_event_id || '',
+          entryOrderId: lifecycle?.entry_order_id || candidate?.order_id || '', exitOrderId: orderId, tradeId,
+          closeReason: closeReasonFromClientOrderId(trade.clientOrderId) || 'UNKNOWN',
+          lossCause: 'EXCHANGE_REPORTED_NEGATIVE_PNL',
+          lossExplanation: 'Binance userTrades reported negative realized PnL; close reason metadata was not present in this REST record.',
+          entryPrice: Number(candidate?.price || 0), exitPrice: Number(trade.price || 0), quantity: Number(trade.qty || 0),
+          realizedPnl: Number(trade.realizedPnl || 0), exitCommission: Number(trade.commission || 0), entryTime: Number(candidate?.ts || 0), exitTime: Number(trade.time || 0), setup, raw: trade
+        });
+      }
       continue;
     }
     run('INSERT INTO trade_history (user_id,inst_id,side,pos_side,size,price,fee,funding_rate,slippage,pnl,ts,raw_json,client_order_id,order_id,trade_id,setup_id,structure_event_id,status,thesis_key) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', [userId, symbol, String(trade.side || '').toLowerCase(), trade.positionSide || '', Number(trade.qty || 0), Number(trade.price || 0), Number(trade.commission || 0), 0, 0, Number(trade.realizedPnl || 0), Number(trade.time || Date.now()), JSON.stringify(trade), candidate?.client_order_id || trade.clientOrderId || '', orderId, tradeId, candidate?.setup_id || '', candidate?.structure_event_id || '', Number(trade.realizedPnl || 0) !== 0 ? 'CLOSED' : 'OPEN', candidate?.thesis_key || '']);
+    if (Number(trade.realizedPnl || 0) < 0) {
+      appendLossTrade(LOSS_TRADES_FILE, {
+        recordedAt: new Date(Number(trade.time || Date.now())).toISOString(), userId, symbol,
+        side: trade.side || '', entryOrderId: '', exitOrderId: orderId, tradeId, closeReason: closeReasonFromClientOrderId(trade.clientOrderId) || 'UNKNOWN',
+        lossCause: 'EXCHANGE_REPORTED_NEGATIVE_PNL', lossExplanation: 'Binance userTrades reported negative realized PnL; entry provenance was not available in the local row.',
+        entryPrice: 0, exitPrice: Number(trade.price || 0), quantity: Number(trade.qty || 0), realizedPnl: Number(trade.realizedPnl || 0),
+        exitCommission: Number(trade.commission || 0), entryTime: 0, exitTime: Number(trade.time || 0), setup: {}, raw: trade
+      });
+    }
   }
 }
 function getExecutionLifecycle(userId, thesisKey) {
