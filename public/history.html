@@ -26,7 +26,7 @@
     </div>
   </aside>
   <main class="main">
-    <div class="page-header">
+    <div class="page-header" id="historyHeader" hidden>
       <h2 class="page-title">TRADE HISTORY</h2>
       <div class="history-tabs" role="tablist" style="display:flex;gap:8px;margin-left:20px">
         <button class="history-tab active" id="jevTab" onclick="showHistoryTab('jev')">JEV HISTORY</button>
@@ -39,9 +39,7 @@
       </div>
     </div>
 
-    <section id="emptyHistoryPanel" class="card" style="padding:40px;text-align:center;color:var(--muted)">
-      Pilih <strong>JEV History</strong> atau <strong>Binance History</strong> dari menu Trade History.
-    </section>
+    <section id="emptyHistoryPanel" style="display:none"></section>
     <section id="jevHistoryPanel" hidden>
     <!-- Summary Cards -->
     <div class="card-grid" id="summaryCards">
@@ -100,6 +98,7 @@ function fmt(n, d = 4) { return Number(n || 0).toFixed(d); }
 function fmtUsd(n) { return (n >= 0 ? '+' : '') + Number(n || 0).toFixed(2); }
 function esc(v) { return String(v ?? '--').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function showHistoryTab(tab) {
+  document.getElementById('historyHeader').hidden = false;
   document.getElementById('emptyHistoryPanel').hidden = true;
   document.getElementById('jevHistoryPanel').hidden = tab !== 'jev';
   document.getElementById('binanceHistoryPanel').hidden = tab !== 'binance';
