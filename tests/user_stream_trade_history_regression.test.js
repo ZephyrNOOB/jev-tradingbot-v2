@@ -18,3 +18,9 @@ test('REST trade sync merges by order_id before trade_id to avoid duplicate fill
   assert.match(sync, /SELECT id FROM trade_history WHERE user_id = \? AND order_id = \?/);
   assert.match(sync, /if \(existing\)/);
 });
+
+test('Binance history refreshes local JEV fill state before raw history response', () => {
+  const source = fs.readFileSync(new URL('../server.js', import.meta.url), 'utf8');
+  const route = source.slice(source.indexOf("app.get('/api/binance-history'"), source.indexOf("app.get('/api/history'"));
+  assert.match(route, /await syncTradeHistory\(req\.userId\)/);
+});

@@ -694,9 +694,11 @@ async function syncTradeHistory(userId) {
   for (const symbol of SUPPORTED_SYMBOLS) for (const trade of await signed('GET', '/fapi/v1/userTrades', { symbol, limit: '100' })) {
     const orderId = String(trade.orderId || '');
     const tradeId = String(trade.id || trade.tradeId || '');
-    if (!orderId || (tradeId ? get('SELECT id FROM trade_history WHERE user_id = ? AND trade_id = ?', [userId, tradeId]) : get('SELECT id FROM trade_history WHERE user_id = ? AND order_id = ? AND price = ? AND ts = ?', [userId, orderId, Number(trade.price), Number(trade.time || 0)]))) continue;
-    const candidate = get('SELECT setup_id, structure_event_id, client_order_id, thesis_key FROM trade_history WHERE user_id = ? AND order_id = ? LIMIT 1', [userId, orderId]);
+    if (!orderId) continue;
     const existing = get('SELECT id FROM trade_history WHERE user_id = ? AND order_id = ? LIMIT 1', [userId, orderId]);
+    const duplicateTrade = tradeId ? get('SELECT id FROM trade_history WHERE user_id = ? AND trade_id = ? LIMIT 1', [userId, tradeId]) : null;
+    if (duplicateTrade && !existing) continue;
+    const candidate = get('SELECT setup_id, structure_event_id, client_order_id, thesis_key FROM trade_history WHERE user_id = ? AND order_id = ? LIMIT 1', [userId, orderId]);
     if (existing) {
       run('UPDATE trade_history SET trade_id=?, fee=?, pnl=?, raw_json=?, client_order_id=COALESCE(NULLIF(client_order_id, \'\'), ?), setup_id=COALESCE(NULLIF(setup_id, \'\'), ?), structure_event_id=COALESCE(NULLIF(structure_event_id, \'\'), ?), thesis_key=COALESCE(NULLIF(thesis_key, \'\'), ?) WHERE id=?', [tradeId, Number(trade.commission || 0), Number(trade.realizedPnl || 0), JSON.stringify(trade), candidate?.client_order_id || trade.clientOrderId || '', candidate?.setup_id || '', candidate?.structure_event_id || '', candidate?.thesis_key || '', existing.id]);
       continue;
@@ -1418,6 +1420,7 @@ app.post('/api/history', auth, (req, res) => {
 });
 
 app.get('/api/binance-history', auth, async (req, res) => {
+  try { await syncTradeHistory(req.userId); } catch {}
   const keyRow = get("SELECT * FROM api_keys WHERE user_id = ? AND exchange = 'binanceTestnet' AND status = 'connected' ORDER BY id DESC LIMIT 1", [req.userId]);
   if (!keyRow) return res.status(400).json({ ok: false, error: 'Connected Binance Demo key required' });
   try {
