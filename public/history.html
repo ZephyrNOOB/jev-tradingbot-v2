@@ -22,6 +22,10 @@
   <main class="main">
     <div class="page-header">
       <h2 class="page-title">TRADE HISTORY</h2>
+      <div class="history-tabs" role="tablist" style="display:flex;gap:8px;margin-left:20px">
+        <button class="history-tab active" id="jevTab" onclick="showHistoryTab('jev')">JEV HISTORY</button>
+        <button class="history-tab" id="binanceTab" onclick="showHistoryTab('binance')">BINANCE HISTORY</button>
+      </div>
       <div style="display:flex;gap:10px;align-items:center">
         <input type="date" id="dateFilter" style="width:auto;margin:0">
         <button onclick="loadHistory()" style="width:auto;padding:8px 16px">FILTER</button>
@@ -29,6 +33,7 @@
       </div>
     </div>
 
+    <section id="jevHistoryPanel">
     <!-- Summary Cards -->
     <div class="card-grid" id="summaryCards">
       <div class="card"><div class="stat-label">Total Trades</div><div class="stat-value" id="sumTrades">0</div></div>
@@ -65,6 +70,10 @@
         </table>
       </div>
     </div>
+    </section>
+    <section id="binanceHistoryPanel" hidden>
+      <div class="card"><div class="table-wrap"><table><thead><tr><th>Type</th><th>Time</th><th>Pair</th><th>Order ID</th><th>Client Order ID</th><th>Side</th><th>Status</th><th>Price</th><th>Qty</th><th>Realized PnL</th><th>Commission</th></tr></thead><tbody id="binanceHistoryBody"><tr><td colspan="11" style="text-align:center;color:var(--muted);padding:40px">No Binance history loaded</td></tr></tbody></table></div></div>
+    </section>
   </main>
 </div>
 <script>
@@ -79,6 +88,24 @@ async function api(path, opts = {}) {
 
 function fmt(n, d = 4) { return Number(n || 0).toFixed(d); }
 function fmtUsd(n) { return (n >= 0 ? '+' : '') + Number(n || 0).toFixed(2); }
+function esc(v) { return String(v ?? '--').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function showHistoryTab(tab) {
+  document.getElementById('jevHistoryPanel').hidden = tab !== 'jev';
+  document.getElementById('binanceHistoryPanel').hidden = tab !== 'binance';
+  document.getElementById('jevTab').classList.toggle('active', tab === 'jev');
+  document.getElementById('binanceTab').classList.toggle('active', tab === 'binance');
+  if (tab === 'binance') loadBinanceHistory();
+}
+async function loadBinanceHistory() {
+  const data = await api('/binance-history');
+  if (!data?.ok) return;
+  const rows = [
+    ...(data.orders || []).map(x => ({ type: 'ORDER', time: x.updateTime || x.time, symbol: x.symbol, orderId: x.orderId, client: x.clientOrderId, side: x.side, status: x.status, price: x.avgPrice || x.price, qty: x.executedQty || x.origQty, pnl: '', commission: '' })),
+    ...(data.trades || []).map(x => ({ type: 'TRADE', time: x.time, symbol: x.symbol, orderId: x.orderId, client: x.clientOrderId, side: x.side, status: 'FILL', price: x.price, qty: x.qty, pnl: x.realizedPnl, commission: x.commission })),
+    ...(data.income || []).map(x => ({ type: 'INCOME', time: x.time, symbol: x.symbol || x.asset, orderId: '', client: '', side: '', status: x.incomeType, price: '', qty: '', pnl: x.income, commission: '' }))
+  ].sort((a,b) => Number(b.time || 0) - Number(a.time || 0));
+  document.getElementById('binanceHistoryBody').innerHTML = rows.length ? rows.map(x => `<tr><td>${esc(x.type)}</td><td>${esc(x.time ? new Date(x.time).toLocaleString() : '--')}</td><td>${esc(x.symbol)}</td><td>${esc(x.orderId)}</td><td>${esc(x.client)}</td><td>${esc(x.side)}</td><td>${esc(x.status)}</td><td>${esc(x.price)}</td><td>${esc(x.qty)}</td><td>${esc(x.pnl)}</td><td>${esc(x.commission)}</td></tr>`).join('') : '<tr><td colspan="11" style="text-align:center;color:var(--muted);padding:40px">No Binance history found</td></tr>';
+}
 
 async function loadHistory() {
   const date = document.getElementById('dateFilter').value;

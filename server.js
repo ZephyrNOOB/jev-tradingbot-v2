@@ -695,8 +695,13 @@ async function syncTradeHistory(userId) {
     const orderId = String(trade.orderId || '');
     const tradeId = String(trade.id || trade.tradeId || '');
     if (!orderId || (tradeId ? get('SELECT id FROM trade_history WHERE user_id = ? AND trade_id = ?', [userId, tradeId]) : get('SELECT id FROM trade_history WHERE user_id = ? AND order_id = ? AND price = ? AND ts = ?', [userId, orderId, Number(trade.price), Number(trade.time || 0)]))) continue;
-    const candidate = get('SELECT setup_id, structure_event_id, client_order_id FROM trade_history WHERE user_id = ? AND order_id = ? LIMIT 1', [userId, orderId]);
-    run('INSERT INTO trade_history (user_id,inst_id,side,pos_side,size,price,fee,funding_rate,slippage,pnl,ts,raw_json,client_order_id,order_id,trade_id,setup_id,structure_event_id,status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', [userId, symbol, String(trade.side || '').toLowerCase(), trade.positionSide || '', Number(trade.qty || 0), Number(trade.price || 0), Number(trade.commission || 0), 0, 0, Number(trade.realizedPnl || 0), Number(trade.time || Date.now()), JSON.stringify(trade), candidate?.client_order_id || trade.clientOrderId || '', orderId, tradeId, candidate?.setup_id || '', candidate?.structure_event_id || '', Number(trade.realizedPnl || 0) !== 0 ? 'CLOSED' : 'OPEN']);
+    const candidate = get('SELECT setup_id, structure_event_id, client_order_id, thesis_key FROM trade_history WHERE user_id = ? AND order_id = ? LIMIT 1', [userId, orderId]);
+    const existing = get('SELECT id FROM trade_history WHERE user_id = ? AND order_id = ? LIMIT 1', [userId, orderId]);
+    if (existing) {
+      run('UPDATE trade_history SET trade_id=?, fee=?, pnl=?, raw_json=?, client_order_id=COALESCE(NULLIF(client_order_id, \'\'), ?), setup_id=COALESCE(NULLIF(setup_id, \'\'), ?), structure_event_id=COALESCE(NULLIF(structure_event_id, \'\'), ?), thesis_key=COALESCE(NULLIF(thesis_key, \'\'), ?) WHERE id=?', [tradeId, Number(trade.commission || 0), Number(trade.realizedPnl || 0), JSON.stringify(trade), candidate?.client_order_id || trade.clientOrderId || '', candidate?.setup_id || '', candidate?.structure_event_id || '', candidate?.thesis_key || '', existing.id]);
+      continue;
+    }
+    run('INSERT INTO trade_history (user_id,inst_id,side,pos_side,size,price,fee,funding_rate,slippage,pnl,ts,raw_json,client_order_id,order_id,trade_id,setup_id,structure_event_id,status,thesis_key) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', [userId, symbol, String(trade.side || '').toLowerCase(), trade.positionSide || '', Number(trade.qty || 0), Number(trade.price || 0), Number(trade.commission || 0), 0, 0, Number(trade.realizedPnl || 0), Number(trade.time || Date.now()), JSON.stringify(trade), candidate?.client_order_id || trade.clientOrderId || '', orderId, tradeId, candidate?.setup_id || '', candidate?.structure_event_id || '', Number(trade.realizedPnl || 0) !== 0 ? 'CLOSED' : 'OPEN', candidate?.thesis_key || '']);
   }
 }
 function getExecutionLifecycle(userId, thesisKey) {
@@ -1410,6 +1415,23 @@ app.post('/api/history', auth, (req, res) => {
       [req.userId, t.instId, t.side, t.posSide||'', t.size||0, t.price||0, t.fee||0, t.fundingRate||0, t.slippage||0, t.pnl||0, t.ts||Date.now(), JSON.stringify(t)]);
   }
   res.json({ ok: true, count: trades.length });
+});
+
+app.get('/api/binance-history', auth, async (req, res) => {
+  const keyRow = get("SELECT * FROM api_keys WHERE user_id = ? AND exchange = 'binanceTestnet' AND status = 'connected' ORDER BY id DESC LIMIT 1", [req.userId]);
+  if (!keyRow) return res.status(400).json({ ok: false, error: 'Connected Binance Demo key required' });
+  try {
+    const apiKey = decryptSecret(keyRow.api_key), secret = decryptSecret(keyRow.secret_key);
+    const signed = (method, apiPath, params = {}) => signedBinanceRequest(apiKey, secret, method, apiPath, params);
+    const [orders, trades, income] = await Promise.all([
+      Promise.all(SUPPORTED_SYMBOLS.map(symbol => signed('GET', '/fapi/v1/allOrders', { symbol, limit: '1000' }))),
+      Promise.all(SUPPORTED_SYMBOLS.map(symbol => signed('GET', '/fapi/v1/userTrades', { symbol, limit: '1000' }))),
+      signed('GET', '/fapi/v1/income', { limit: '1000' })
+    ]);
+    res.json({ ok: true, demoOnly: true, orders: orders.flat(), trades: trades.flat(), income });
+  } catch (error) {
+    res.status(502).json({ ok: false, demoOnly: true, error: error.message || 'Binance history read failed' });
+  }
 });
 
 app.get('/api/history', auth, async (req, res) => {
