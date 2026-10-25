@@ -796,11 +796,11 @@ async function executeDemoCandidate(req, res) {
       }
       return false;
     };
-    const ensureProtection = async (averagePrice = null) => {
-      const protectionPlanForFill = buildProtectionOrders(candidate, sizing, precision, averagePrice);
-      if (protectionPlanForFill.status !== 'READY_AFTER_ENTRY_FILL') return { expected: [], protection: [], protectionVerified: false, error: protectionPlanForFill.status };
-      const expected = protectionPlanForFill.orders;
-      if (!(await waitForPosition())) return { expected, protection: [], protectionVerified: false, error: 'POSITION_NOT_VISIBLE_YET' };
+    const ensureProtection = async (averagePrice = null, waitForOpenPosition = true) => {
+          const protectionPlanForFill = buildProtectionOrders(candidate, sizing, precision, averagePrice);
+          if (protectionPlanForFill.status !== 'READY_AFTER_ENTRY_FILL') return { expected: [], protection: [], protectionVerified: false, error: protectionPlanForFill.status };
+          const expected = protectionPlanForFill.orders;
+          if (waitForOpenPosition && !(await waitForPosition())) return { expected, protection: [], protectionVerified: false, error: 'POSITION_NOT_VISIBLE_YET' };
       let lastError = null;
       for (let attempt = 0; attempt < 5; attempt += 1) {
         const existingProtection = await listProtection();
@@ -875,7 +875,7 @@ async function executeDemoCandidate(req, res) {
     const entry = await signed('POST', '/fapi/v1/order', { symbol: candidate.symbol, side: candidate.side, type: 'LIMIT', timeInForce: 'GTC', quantity: sizing.quantity, price: sizing.price, newClientOrderId: candidate.client_order_id });
     run('UPDATE execution_lifecycles SET entry_order_id=?, entry_status=?, position_status=\'OPEN\', updated_at=?, candidate_json=? WHERE user_id=? AND thesis_key=?', [String(entry.orderId), entry.status || 'NEW', Date.now(), JSON.stringify(candidate), req.userId, candidate.client_order_id]);
     let protectionState = { protection: [], protectionVerified: false };
-    try { protectionState = await ensureProtection(entry.avgPrice || entry.price); } catch (error) { protectionState.error = error.message; }
+    try { protectionState = await ensureProtection(null, false); } catch (error) { protectionState.error = error.message; }
     demoExecutionSummaries.set(String(req.userId), { status: entry.status || 'ORDER_SENT', orderId: entry.orderId, clientOrderId: candidate.client_order_id, protectionVerified: protectionState.protectionVerified, protectionError: protectionState.error || null, attemptAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
     let current = entry;
     while (!['FILLED', 'CANCELED', 'EXPIRED', 'REJECTED'].includes(current.status)) {

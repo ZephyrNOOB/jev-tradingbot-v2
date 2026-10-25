@@ -3,6 +3,9 @@ import assert from 'node:assert/strict';
 import { sizeCandidate, validateCandidatePrecision, normalizeCandidatePrices } from '../v2/scripts/execution_sizing.js';
 import { buildDemoEntryOrder, canSendDemoEntry, demoExecutionGate } from '../v2/scripts/demo_entry_executor.js';
 import { buildProtectionOrders, verifyEntryFill, buildEmergencyCloseOrder, validateProtectionGeometry } from '../v2/scripts/demo_protection.js';
+import fs from 'node:fs';
+
+const serverSource = fs.readFileSync(new URL('../server.js', import.meta.url), 'utf8');
 import { reconcileDemoState } from '../v2/scripts/demo_reconciliation.js';
 import { monitorProtectionState, readinessBlockers } from '../v2/scripts/demo_monitoring.js';
 import { buildRecoveryPlan } from '../v2/scripts/demo_recovery.js';
@@ -63,6 +66,13 @@ test('entry executor stays disabled before protection exists', () => {
 test('builds emergency close order for filled entry without protection', () => {
   const order = buildEmergencyCloseOrder({ client_order_id: 'jev_test_1', symbol: 'BTCUSDT', side: 'BUY' }, '0.002');
   assert.deepEqual(order, { clientOrderId: 'jev_test_1_ec', symbol: 'BTCUSDT', side: 'SELL', type: 'MARKET', quantity: '0.002', reduceOnly: 'true' });
+});
+
+test('submits entry and SetupBot protection in same execution path', () => {
+  const submitIndex = serverSource.indexOf("const entry = await signed('POST', '/fapi/v1/order'");
+  const protectionIndex = serverSource.indexOf('try { protectionState = await ensureProtection(null, false); }', submitIndex);
+  const fillWaitIndex = serverSource.indexOf("while (!['FILLED', 'CANCELED', 'EXPIRED', 'REJECTED'].includes(current.status))", submitIndex);
+  assert.ok(submitIndex >= 0 && protectionIndex > submitIndex && protectionIndex < fillWaitIndex);
 });
 
 test('builds opposite-side SL/TP only after confirmed entry fill', () => {
