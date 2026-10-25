@@ -574,8 +574,10 @@ app.get('/api/binance-demo/live-readiness', auth, async (req, res) => {
     const executionPolicy = { tradeAmountUsdt: Number(tradeAmount?.amount_usdt), leverage: Number(tradeAmount?.leverage || 1), marginMode: tradeAmount?.margin_mode || 'ISOLATED' };
     const artifact = JSON.parse(fs.readFileSync(path.join(__dirname, 'v2', 'artifacts', 'BINANCE_DEMO_LIVE_PIPELINE.json'), 'utf8'));
     const dailyPnl = Array.isArray(income) ? income.reduce((total, row) => total + Number(row.income || 0), 0) : 0;
-    reconcileManualClosedLifecycles(req.userId, positions);
+    const exchangeTrades = Object.fromEntries(await Promise.all(SUPPORTED_SYMBOLS.map(async symbol => [symbol, await signed('GET', '/fapi/v1/userTrades', { symbol, limit: '100' })])));
+    reconcileManualClosedLifecycles(req.userId, positions, exchangeTrades);
     const artifactFreshness = validateCandidateFreshness(artifact, artifact.execution_candidates?.[0]);
+
     if (!artifactFreshness.ok) blockers.push(artifactFreshness.reason);
     const candidates = (artifact.execution_candidates || []).filter(candidate => !lifecycleBlocksReentry(req.userId, candidate)).map(candidate => { const freshness = validateCandidateFreshness(artifact, candidate); const normalized = normalizeCandidatePrices(candidate, filters[candidate.symbol]); const sizing = sizeCandidate(normalized, executionPolicy, balances[0] || {}, filters[candidate.symbol]); return { candidate: normalized, freshness, sizing, precision: validateCandidatePrecision(normalized, sizing, filters[candidate.symbol]) }; });
     if (!candidates.some(x => x.freshness.ok && x.sizing.status === 'SIZED' && x.precision === 'VALID')) blockers.push('NO_VALID_SERVER_SIZED_CANDIDATE');
@@ -583,7 +585,7 @@ app.get('/api/binance-demo/live-readiness', auth, async (req, res) => {
     const openOrders = await Promise.all(SUPPORTED_SYMBOLS.map(symbol => signed('GET', '/fapi/v1/openOrders', { symbol }))).then(groups => groups.flat());
     const openAlgoOrders = await signed('GET', '/fapi/v1/openAlgoOrders');
     reconcilePendingClosedLifecycles(req.userId, openOrders);
-    reconcileManualClosedLifecycles(req.userId, positions);
+    reconcileManualClosedLifecycles(req.userId, positions, exchangeTrades);
     const durableCandidates = all("SELECT candidate_json FROM execution_lifecycles WHERE user_id = ? AND position_status = 'OPEN' AND candidate_json IS NOT NULL", [req.userId]).flatMap(row => { try { const candidate = JSON.parse(row.candidate_json); return candidate?.client_order_id ? [candidate] : []; } catch { return []; } });
     const reconciliationCandidates = selectReconciliationCandidates(durableCandidates, openOrders, artifact.execution_candidates || []);
     const monitoring = monitorProtectionState(reconciliationCandidates, openOrders, openPositions);
@@ -626,7 +628,8 @@ app.get('/api/binance-demo/reconciliation', auth, async (req, res) => {
     const signed = (method, apiPath, params = {}) => signedBinanceRequest(apiKey, secret, method, apiPath, params);
     const [positions, ordersBySymbol] = await Promise.all([signed('GET', '/fapi/v2/positionRisk'), Promise.all(SUPPORTED_SYMBOLS.map(symbol => signed('GET', '/fapi/v1/openOrders', { symbol }))) ]);
     reconcilePendingClosedLifecycles(req.userId, ordersBySymbol.flat());
-    reconcileManualClosedLifecycles(req.userId, positions);
+    const exchangeTrades = Object.fromEntries(await Promise.all(SUPPORTED_SYMBOLS.map(async symbol => [symbol, await signed('GET', '/fapi/v1/userTrades', { symbol, limit: '100' })])));
+    reconcileManualClosedLifecycles(req.userId, positions, exchangeTrades);
     const artifact = JSON.parse(fs.readFileSync(path.join(__dirname, 'v2', 'artifacts', 'BINANCE_DEMO_LIVE_PIPELINE.json'), 'utf8'));
     const candidates = (artifact.execution_candidates || []).filter(candidate => validateCandidateFreshness(artifact, candidate).ok && !lifecycleBlocksReentry(req.userId, candidate));
     const durableCandidates = all("SELECT candidate_json FROM execution_lifecycles WHERE user_id = ? AND position_status = 'OPEN' AND candidate_json IS NOT NULL", [req.userId]).flatMap(row => { try { const candidate = JSON.parse(row.candidate_json); return candidate?.client_order_id ? [candidate] : []; } catch { return []; } });
@@ -717,13 +720,23 @@ function reconcilePendingClosedLifecycles(userId, openOrders) {
     run('UPDATE execution_lifecycles SET position_status=?, close_reason=?, completed_at=?, updated_at=? WHERE user_id=? AND thesis_key=? AND position_status=\'CLOSED\'', [restored.position_status, restored.close_reason, restored.completed_at, Date.now(), userId, lifecycle.thesis_key]);
   }
 }
-function reconcileManualClosedLifecycles(userId, positions) {
+function reconcileManualClosedLifecycles(userId, positions, tradesBySymbol = {}) {
   const openSymbols = new Set(positions.filter(position => Number(position.positionAmt) !== 0).map(position => position.symbol));
   for (const lifecycle of all('SELECT * FROM execution_lifecycles WHERE user_id = ? AND position_status = \'OPEN\' AND entry_status = \'FILLED\'', [userId])) {
-    if (openSymbols.has(lifecycle.symbol)) continue;
+    let candidate = null;
+    try { candidate = lifecycle.candidate_json ? JSON.parse(lifecycle.candidate_json) : null; } catch {}
+    const entrySide = String(candidate?.side || '').toUpperCase();
+    const symbolTrades = Array.isArray(tradesBySymbol[lifecycle.symbol]) ? tradesBySymbol[lifecycle.symbol] : [];
+    const entryTrades = symbolTrades.filter(trade => String(trade.orderId || '') === String(lifecycle.entry_order_id));
+    const entryQty = entryTrades.reduce((sum, trade) => sum + Number(trade.qty || 0), 0);
+    const entryTime = entryTrades.reduce((max, trade) => Math.max(max, Number(trade.time || 0)), 0);
+    const closeTrades = entrySide && entryQty > 0 ? symbolTrades.filter(trade => String(trade.side || '').toUpperCase() !== entrySide && Number(trade.time || 0) >= entryTime) : [];
+    const closeQty = closeTrades.reduce((sum, trade) => sum + Number(trade.qty || 0), 0);
+    const exchangeClose = closeQty + 1e-12 >= entryQty ? closeTrades[closeTrades.length - 1] : null;
+    if (openSymbols.has(lifecycle.symbol) || !exchangeClose) continue;
     const now = Date.now();
-    run('UPDATE execution_lifecycles SET position_status=\'CLOSED\', close_reason=\'MANUAL\', updated_at=?, completed_at=? WHERE user_id=? AND thesis_key=? AND position_status=\'OPEN\'', [now, now, userId, lifecycle.thesis_key]);
-    run('UPDATE trade_history SET status=\'CLOSED\', close_reason=\'MANUAL\', completed_at=? WHERE user_id=? AND thesis_key=? AND status != \'CLOSED\'', [now, userId, lifecycle.thesis_key]);
+    run('UPDATE execution_lifecycles SET position_status=\'CLOSED\', close_reason=\'MANUAL\', exit_order_id=?, updated_at=?, completed_at=? WHERE user_id=? AND thesis_key=? AND position_status=\'OPEN\'', [exchangeClose ? String(exchangeClose.orderId || '') : null, now, now, userId, lifecycle.thesis_key]);
+    run('UPDATE trade_history SET status=\'CLOSED\', close_reason=\'MANUAL\', exit_order_id=?, completed_at=? WHERE user_id=? AND thesis_key=? AND status != \'CLOSED\'', [exchangeClose ? String(exchangeClose.orderId || '') : null, now, userId, lifecycle.thesis_key]);
     queueTelegramExecution(userId, () => sendTelegram(
       'JEV CLOSE\nPair: ' + lifecycle.symbol + '\nReason: MANUAL\nStatus: CLOSED',
       'CLOSE:' + lifecycle.symbol + ':' + lifecycle.thesis_key + ':MANUAL', userId

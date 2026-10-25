@@ -14,4 +14,6 @@ test('manual reconciliation ignores pending entry lifecycles', () => {
   const reconcile = source.slice(source.indexOf('function reconcileManualClosedLifecycles'), source.indexOf('function assertCurrentActivePlan'));
   assert.match(reconcile, /position_status = \\\'OPEN\\\'/);
   assert.match(reconcile, /entry_status = \\\'FILLED\\\'/);
+  assert.match(reconcile, /tradesBySymbol/);
+  assert.match(reconcile, /entry_order_id/);
 });
