@@ -404,7 +404,7 @@ app.post('/api/login', async (req, res) => {
   const expiresAt = Date.now() + 86400000;
   sessions.set(sid, row.id);
   run('INSERT INTO sessions (sid_hash, user_id, expires_at) VALUES (?, ?, ?)', [sessionHash(sid), row.id, expiresAt]);
-  botStates.set(sid, false);
+  if (!botStates.has(row.id)) botStates.set(row.id, false);
   const cookieOptions = { httpOnly: true, sameSite: 'strict', secure: isHttps, maxAge: 86400000, path: '/' };
   res.cookie('sid', sid, cookieOptions);
   res.cookie('csrf', csrfToken, { ...cookieOptions, httpOnly: false });
@@ -414,7 +414,6 @@ app.post('/api/login', async (req, res) => {
 app.post('/api/logout', (req, res) => {
   sessions.delete(req.cookies.sid);
   run('DELETE FROM sessions WHERE sid_hash = ?', [sessionHash(req.cookies.sid || '')]);
-  botStates.delete(req.cookies.sid);
   res.clearCookie('sid');
   res.json({ ok: true });
 });
@@ -524,11 +523,12 @@ function startMarketStructureStreamTrigger() {
     if (candle.interval !== '15m') return;
     runLiveDemoWorkflowCycle('global');
   });
-}app.get('/api/bot/status', auth, (req, res) => {
-  const runner = botRunners.get('execution:' + req.cookies.sid) || botRunners.get('global');
+}
+app.get('/api/bot/status', auth, (req, res) => {
+  const runner = botRunners.get('execution:' + req.userId) || botRunners.get('global');
     const observer = marketObservers.get('global');
-    const executionSummaries = [...demoExecutionSummaries.entries()].filter(([key]) => key.startsWith(req.cookies.sid + ':') || key.startsWith('recovery:' + req.userId + ':')).map(([, value]) => value);
-    res.json({ ok: true, enabled: botStates.get(req.cookies.sid) === true, observing: Boolean(observer?.timer), running: Boolean(runner?.running), cycles: runner?.cycles || 0, error: runner?.error || null, observer_error: observer?.error || null, last_started_at: runner?.last_started_at || null, last_finished_at: runner?.last_finished_at || null, last_polled_at: observer?.last_polled_at || null, watermark: observer?.watermark || {}, mode: 'demo_execution', marketStream: getBinanceStreamState(), demoCycle: demoCycleSummaries.get('global') || null, demoExecution: executionSummaries, ordersEnabled: demoExecutionEnabled });
+    const executionSummaries = [...demoExecutionSummaries.entries()].filter(([key]) => key.startsWith(req.userId + ':') || key.startsWith('recovery:' + req.userId + ':')).map(([, value]) => value);
+    res.json({ ok: true, enabled: botStates.get(req.userId) === true, observing: Boolean(observer?.timer), running: Boolean(runner?.running), cycles: runner?.cycles || 0, error: runner?.error || null, observer_error: observer?.error || null, last_started_at: runner?.last_started_at || null, last_finished_at: runner?.last_finished_at || null, last_polled_at: observer?.last_polled_at || null, watermark: observer?.watermark || {}, mode: 'demo_execution', marketStream: getBinanceStreamState(), demoCycle: demoCycleSummaries.get('global') || null, demoExecution: executionSummaries, ordersEnabled: demoExecutionEnabled });
 });
 
 app.post('/api/bot/toggle', auth, async (req, res) => {
@@ -545,11 +545,11 @@ app.post('/api/bot/toggle', auth, async (req, res) => {
   } else stopBinanceUserStream(String(req.userId));
 
   if (enabled && !get('SELECT id FROM api_keys WHERE user_id = ? AND exchange = ? AND status = ?', [req.userId, 'binanceTestnet', 'connected'])) return res.status(400).json({ ok:false, error:'Connected Binance Demo account required before BOT ON' });
-  botStates.set(req.cookies.sid, enabled);
-  if (enabled) startExecutionRunner(req.cookies.sid); else stopExecutionRunner(req.cookies.sid);
-  const runner = botRunners.get('execution:' + req.cookies.sid) || botRunners.get('global');
+  botStates.set(req.userId, enabled);
+  if (enabled) startExecutionRunner(req.userId); else stopExecutionRunner(req.userId);
+  const runner = botRunners.get('execution:' + req.userId) || botRunners.get('global');
   const observer = marketObservers.get('global');
-  res.json({ ok: true, enabled, observing: Boolean(observer?.timer), running: Boolean(runner?.running), cycles: runner?.cycles || 0, last_started_at: runner?.last_started_at || null, last_finished_at: runner?.last_finished_at || null, error: runner?.error || null, mode: 'demo_execution', marketStream: getBinanceStreamState(), demoCycle: demoCycleSummaries.get('global') || null, demoExecution: demoExecutionSummaries.get(req.cookies.sid) || null, ordersEnabled: demoExecutionEnabled });
+  res.json({ ok: true, enabled, observing: Boolean(observer?.timer), running: Boolean(runner?.running), cycles: runner?.cycles || 0, last_started_at: runner?.last_started_at || null, last_finished_at: runner?.last_finished_at || null, error: runner?.error || null, mode: 'demo_execution', marketStream: getBinanceStreamState(), demoCycle: demoCycleSummaries.get('global') || null, demoExecution: demoExecutionSummaries.get(req.userId) || null, ordersEnabled: demoExecutionEnabled });
 });
 app.get('/api/binance-demo/live-readiness', auth, async (req, res) => {
   const blockers = [];
@@ -805,7 +805,7 @@ async function executeDemoCandidate(req, res) {
       }
       throw lastError || new Error('PROTECTION_RETRY_EXHAUSTED');
     };
-    const permission = demoExecutionGate({ botEnabled: recovery || botStates.get(req.cookies.sid) === true, ordersEnabled: enabled, protectiveOrdersReady: protectionPlan.status === 'READY_AFTER_ENTRY_FILL', riskStatus: 'ALLOWED', demoExecutionEnabled: enabled, unattendedDemoExecutionEnabled, internalRunner: req.internalRunner === true, explicitApproval: req.body?.explicitApproval === true });
+    const permission = demoExecutionGate({ botEnabled: recovery || botStates.get(req.userId) === true, ordersEnabled: enabled, protectiveOrdersReady: protectionPlan.status === 'READY_AFTER_ENTRY_FILL', riskStatus: 'ALLOWED', demoExecutionEnabled: enabled, unattendedDemoExecutionEnabled, internalRunner: req.internalRunner === true, explicitApproval: req.body?.explicitApproval === true });
         if (!permission.allowed) {
           const status = permission.reason === 'APPROVAL_REQUIRED' ? 'APPROVAL_REQUIRED' : permission.reason;
           demoExecutionSummaries.set(String(req.userId), { status, authorization: 'NONE', clientOrderId: candidate.client_order_id, ordersSent: false, updatedAt: new Date().toISOString() });
@@ -943,9 +943,8 @@ async function recoverOpenTrade(userId, row) {
   await executeDemoCandidate({ userId, recovery: true, cookies: { sid }, body: { clientOrderId: candidate.client_order_id, explicitApproval: true } }, response);
   if (!payload?.protectionVerified) executionAttempts.delete(key);
 }
-async function runExecutionCycle(sid) {
-  const userId = sessions.get(sid);
-  if (botStates.get(sid) !== true) return;
+async function runExecutionCycle(userId) {
+  if (botStates.get(userId) !== true) return;
   const lifecycleRows = all('SELECT candidate_json, client_order_id FROM execution_lifecycles WHERE user_id = ? AND entry_status = \'FILLED\' AND position_status = \'OPEN\' AND candidate_json IS NOT NULL', [userId]);
   const tradeRows = all('SELECT raw_json, client_order_id FROM trade_history WHERE user_id = ? AND status = \'OPEN\' AND raw_json IS NOT NULL', [userId]);
   const recoveryRows = [...lifecycleRows, ...tradeRows].filter(row => {
@@ -967,14 +966,16 @@ async function runExecutionCycle(sid) {
     if (!freshness.ok || candidate.status !== 'APPROVED_FOR_EXECUTION') return;
     const planDedup = 'PLAN:' + candidate.symbol + ':' + candidate.client_order_id;
     sendTelegram('JEV PLAN READY\nPair: ' + candidate.symbol + '\nSetup: ' + (candidate.setup_id || '-') + '\nSide: ' + (candidate.side || '-') + '\nEntry: ' + (candidate.entry || '-') + '\nSL: ' + (candidate.sl || '-') + '\nTP: ' + (candidate.tp || '-') + '\nStatus: APPROVED\nExecution: runner submitting to Binance', planDedup, userId);
-    if (botStates.get(sid) !== true) return;
-    const key = sid + ":" + candidate.client_order_id;
+    if (botStates.get(userId) !== true) return;
+    const key = userId + ":" + candidate.client_order_id;
     const prior = demoExecutionSummaries.get(key);
     if (!candidate.client_order_id || lifecycleBlocksReentry(userId, candidate) || (executionAttempts.has(key) && ['FILLED_PROTECTED', 'PROTECTION_FAILED_POSITION_CLOSED', 'PROTECTION_FAILED_EMERGENCY_CLOSE_FAILED'].includes(prior?.status))) return;
     executionAttempts.set(key, true);
     let payload;
     const response = { statusCode: 200, status(code) { this.statusCode = code; return this; }, json(body) { payload = body; return this; } };
-    await executeDemoCandidate({ userId: sessions.get(sid), cookies: { sid }, internalRunner: true, body: { clientOrderId: candidate.client_order_id } }, response);
+    const sid = findActiveSessionId(sessions, botStates, userId);
+    if (!sid) { executionAttempts.delete(key); return; }
+    await executeDemoCandidate({ userId, cookies: { sid }, internalRunner: true, body: { clientOrderId: candidate.client_order_id } }, response);
     demoExecutionSummaries.set(key, { ...(payload || { ok: false, error: 'empty_executor_response' }), symbol: candidate.symbol, clientOrderId: candidate.client_order_id, attemptAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
     if (!payload?.ordersSent && payload?.status !== 'ENTRY_ALREADY_OPEN') executionAttempts.delete(key);
   });
@@ -989,15 +990,15 @@ async function runStartupRecoveryRows(rows) {
   await selectAndRunStartupRecovery(rows, recoverOpenTrade);
 }
 
-function startExecutionRunner(sid) {
-  const key = "execution:" + sid;
+function startExecutionRunner(userId) {
+  const key = "execution:" + userId;
   if (botRunners.get(key)?.timer) return botRunners.get(key);
   const runner = { timer: null, running: false, cycles: 0, error: null, last_started_at: null, last_finished_at: null };
   const tick = async () => {
-    if (runner.running || botStates.get(sid) !== true) return;
+    if (runner.running || botStates.get(userId) !== true) return;
     runner.running = true;
     runner.last_started_at = Date.now();
-    try { await runExecutionCycle(sid); runner.cycles += 1; runner.error = null; }
+    try { await runExecutionCycle(userId); runner.cycles += 1; runner.error = null; }
     catch (error) { runner.error = error?.message || 'execution_cycle_failed'; runner.last_error_at = Date.now(); }
     finally { runner.running = false; runner.last_finished_at = Date.now(); }
   };
@@ -1007,8 +1008,8 @@ function startExecutionRunner(sid) {
   return runner;
 }
 
-function stopExecutionRunner(sid) {
-  const key = "execution:" + sid;
+function stopExecutionRunner(userId) {
+  const key = "execution:" + userId;
   const runner = botRunners.get(key);
   if (runner?.timer) clearInterval(runner.timer);
   botRunners.delete(key);
