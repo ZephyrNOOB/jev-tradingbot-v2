@@ -39,7 +39,10 @@
       </div>
     </div>
 
-    <section id="jevHistoryPanel">
+    <section id="emptyHistoryPanel" class="card" style="padding:40px;text-align:center;color:var(--muted)">
+      Pilih <strong>JEV History</strong> atau <strong>Binance History</strong> dari menu Trade History.
+    </section>
+    <section id="jevHistoryPanel" hidden>
     <!-- Summary Cards -->
     <div class="card-grid" id="summaryCards">
       <div class="card"><div class="stat-label">Total Trades</div><div class="stat-value" id="sumTrades">0</div></div>
@@ -97,6 +100,7 @@ function fmt(n, d = 4) { return Number(n || 0).toFixed(d); }
 function fmtUsd(n) { return (n >= 0 ? '+' : '') + Number(n || 0).toFixed(2); }
 function esc(v) { return String(v ?? '--').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function showHistoryTab(tab) {
+  document.getElementById('emptyHistoryPanel').hidden = true;
   document.getElementById('jevHistoryPanel').hidden = tab !== 'jev';
   document.getElementById('binanceHistoryPanel').hidden = tab !== 'binance';
   document.getElementById('jevTab').classList.toggle('active', tab === 'jev');
@@ -193,8 +197,8 @@ async function logout() {
 
 // Set today as default
 document.getElementById('dateFilter').value = new Date().toISOString().split('T')[0];
-loadHistory();
-if (initialView === 'binance') showHistoryTab('binance');
+if (initialView === 'jev') showHistoryTab('jev');
+else if (initialView === 'binance') showHistoryTab('binance');
 </script>
 </body>
 </html>
