@@ -105,10 +105,14 @@ function showHistoryTab(tab) {
 async function loadBinanceHistory() {
   const data = await api('/binance-history');
   if (!data?.ok) return;
+  const date = document.getElementById('dateFilter').value;
+  const dayStart = date ? new Date(date + 'T00:00:00').getTime() : -Infinity;
+  const dayEnd = date ? dayStart + 86400000 : Infinity;
+  const inSelectedDate = item => Number(item.time || item.updateTime || 0) >= dayStart && Number(item.time || item.updateTime || 0) < dayEnd;
   const rows = [
-    ...(data.orders || []).map(x => ({ type: 'ORDER', time: x.updateTime || x.time, symbol: x.symbol, orderId: x.orderId, client: x.clientOrderId, side: x.side, status: x.status, price: x.avgPrice || x.price, qty: x.executedQty || x.origQty, pnl: '', commission: '' })),
-    ...(data.trades || []).map(x => ({ type: 'TRADE', time: x.time, symbol: x.symbol, orderId: x.orderId, client: x.clientOrderId, side: x.side, status: 'FILL', price: x.price, qty: x.qty, pnl: x.realizedPnl, commission: x.commission })),
-    ...(data.income || []).map(x => ({ type: 'INCOME', time: x.time, symbol: x.symbol || x.asset, orderId: '', client: '', side: '', status: x.incomeType, price: '', qty: '', pnl: x.income, commission: '' }))
+    ...(data.orders || []).filter(inSelectedDate).map(x => ({ type: 'ORDER', time: x.updateTime || x.time, symbol: x.symbol, orderId: x.orderId, client: x.clientOrderId, side: x.side, status: x.status, price: x.avgPrice || x.price, qty: x.executedQty || x.origQty, pnl: '', commission: '' })),
+    ...(data.trades || []).filter(inSelectedDate).map(x => ({ type: 'TRADE', time: x.time, symbol: x.symbol, orderId: x.orderId, client: x.clientOrderId, side: x.side, status: 'FILL', price: x.price, qty: x.qty, pnl: x.realizedPnl, commission: x.commission })),
+    ...(data.income || []).filter(inSelectedDate).map(x => ({ type: 'INCOME', time: x.time, symbol: x.symbol || x.asset, orderId: '', client: '', side: '', status: x.incomeType, price: '', qty: '', pnl: x.income, commission: '' }))
   ].sort((a,b) => Number(b.time || 0) - Number(a.time || 0));
   document.getElementById('binanceHistoryBody').innerHTML = rows.length ? rows.map(x => `<tr><td>${esc(x.type)}</td><td>${esc(x.time ? new Date(x.time).toLocaleString() : '--')}</td><td>${esc(x.symbol)}</td><td>${esc(x.orderId)}</td><td>${esc(x.client)}</td><td>${esc(x.side)}</td><td>${esc(x.status)}</td><td>${esc(x.price)}</td><td>${esc(x.qty)}</td><td>${esc(x.pnl)}</td><td>${esc(x.commission)}</td></tr>`).join('') : '<tr><td colspan="11" style="text-align:center;color:var(--muted);padding:40px">No Binance history found</td></tr>';
 }
