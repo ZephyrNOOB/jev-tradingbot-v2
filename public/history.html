@@ -34,7 +34,7 @@
           <p class="journal-subtitle">Verified exchange fills, completed trades, and performance review.</p>
         </div>
         <div class="journal-actions">
-          <label class="journal-date">DATE <input type="date" id="dateFilter"></label>
+          <label class="journal-date"><input type="date" id="dateFilter" aria-label="Trade date" onclick="this.showPicker?.()"></label>
           <button class="journal-button" onclick="loadHistory()">FILTER</button>
           <button class="journal-button journal-button-muted" onclick="loadHistory()">REFRESH</button>
         </div>
@@ -98,6 +98,7 @@ function fmt(n, d = 4) { return Number(n || 0).toFixed(d); }
 function fmtUsd(n) { return (n >= 0 ? '+' : '') + Number(n || 0).toFixed(2); }
 function esc(v) { return String(v ?? '--').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 let journalRows = [];
+let calendarRows = [];
 let calendarMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
 
 function renderSvgChart(id, values, color) {
@@ -131,7 +132,7 @@ function renderPnlCalendar() {
   const month = calendarMonth.getMonth();
   document.getElementById('calendarLabel').textContent = calendarMonth.toLocaleString(undefined, { month: 'long', year: 'numeric' }).toUpperCase();
   const totals = new Map();
-  for (const t of journalRows) {
+  for (const t of calendarRows) {
     const key = new Date(t.ts).toISOString().slice(0, 10);
     totals.set(key, (totals.get(key) || 0) + t.pnl - Math.abs(t.fee));
   }
@@ -241,24 +242,37 @@ async function loadBinanceHistory() {
   document.getElementById('binanceHistoryBody').innerHTML = rows.length ? rows.map(x => `<tr><td>${esc(x.type)}</td><td>${esc(x.time ? new Date(x.time).toLocaleString() : '--')}</td><td>${esc(x.symbol)}</td><td>${esc(x.orderId)}</td><td>${esc(x.client)}</td><td>${esc(x.side)}</td><td>${esc(x.status)}</td><td>${esc(x.price)}</td><td>${esc(x.qty)}</td><td>${esc(x.pnl)}</td><td>${esc(x.commission)}</td></tr>`).join('') : '<tr><td colspan="11" style="text-align:center;color:var(--muted);padding:40px">No Binance history found</td></tr>';
 }
 
-function completedBinanceTrades(data, date) {
-  const start = date ? new Date(date + 'T00:00:00').getTime() : -Infinity;
-  const end = date ? start + 86400000 : Infinity;
+function completedBinanceTrades(data) {
   const algoByOrder = new Map((data.algos || []).map(x => [String(x.actualOrderId || x.orderId || ''), x]));
-  const fills = (data.trades || []).slice().sort((a, b) => Number(a.time || 0) - Number(b.time || 0));
+  const grouped = new Map();
+  for (const fill of data.trades || []) {
+    const symbol = String(fill.symbol || '');
+    const side = String(fill.side || '').toUpperCase();
+    const orderId = String(fill.orderId || '');
+    const qty = Number(fill.qty || 0);
+    if (!symbol || !side || !orderId || qty <= 0) continue;
+    const key = `${symbol}|${orderId}|${side}`;
+    const row = grouped.get(key) || { ...fill, symbol, side, orderId, qty: 0, quoteQty: 0, commission: 0, realizedPnl: 0, time: Number(fill.time || 0), weightedPrice: 0 };
+    row.weightedPrice += Number(fill.price || 0) * qty;
+    row.qty += qty;
+    row.quoteQty += Number(fill.quoteQty || 0);
+    row.commission += Number(fill.commission || 0);
+    row.realizedPnl += Number(fill.realizedPnl || 0);
+    row.time = Math.min(row.time, Number(fill.time || row.time));
+    grouped.set(key, row);
+  }
+  const fills = [...grouped.values()].map(row => ({ ...row, price: row.qty ? row.weightedPrice / row.qty : 0 })).sort((a, b) => Number(a.time || 0) - Number(b.time || 0));
   const completed = [];
   for (const symbol of [...new Set(fills.map(x => x.symbol))]) {
     const open = [];
     for (const fill of fills.filter(x => x.symbol === symbol)) {
-      const side = String(fill.side || '').toUpperCase();
-      const qty = Number(fill.qty || 0);
       const last = open[open.length - 1];
-      if (last && last.side !== side && last.remaining > 0) {
-        const closeQty = Math.min(last.remaining, qty);
+      if (last && last.side !== fill.side && last.remaining > 0) {
+        const closeQty = Math.min(last.remaining, fill.qty);
         last.remaining -= closeQty;
         completed.push({ entry: last, close: fill, closeQty, reason: /_sl$/i.test(String(algoByOrder.get(String(fill.orderId))?.clientAlgoId || '')) ? 'SL' : /_tp$/i.test(String(algoByOrder.get(String(fill.orderId))?.clientAlgoId || '')) ? 'TP' : 'MANUAL' });
-        if (qty > closeQty) open.push({ ...fill, side, remaining: qty - closeQty });
-      } else if (qty > 0) open.push({ ...fill, side, remaining: qty });
+        if (fill.qty > closeQty) open.push({ ...fill, remaining: fill.qty - closeQty });
+      } else if (fill.qty > 0) open.push({ ...fill, remaining: fill.qty });
     }
   }
   return completed;
@@ -268,7 +282,15 @@ async function loadHistory() {
   const date = document.getElementById('dateFilter').value;
   const data = await api('/binance-history');
   if (!data?.ok) return;
-  const completed = completedBinanceTrades(data, date);
+  const completed = completedBinanceTrades(data);
+  const allRows = completed.map(({ entry, close, closeQty, reason }) => ({
+    ts: close.time, inst_id: close.symbol, side: String(entry.side || '').toLowerCase(), pos_side: entry.positionSide || 'BOTH', size: closeQty,
+    entryPrice: Number(entry.price || 0), exitPrice: Number(close.price || 0), entryTime: Number(entry.time || 0),
+    entryOrderId: entry.orderId || entry.clientOrderId || '--', exitOrderId: close.orderId || close.clientOrderId || '--',
+    fee: Number(entry.commission || 0) + Number(close.commission || 0), funding_rate: 0,
+    slippage: 0, pnl: Number(close.realizedPnl || 0), close_reason: reason
+  }));
+  calendarRows = allRows;
   const tbody = document.getElementById('tradeBody');
   if (!completed.length) {
     tbody.innerHTML = '<tr><td colspan="14" class="journal-empty">No completed Binance trades found</td></tr>';
@@ -278,13 +300,7 @@ async function loadHistory() {
     updateSummary([]);
     return;
   }
-  const rows = completed.filter(({ close }) => !date || (Number(close.time || 0) >= new Date(date + 'T00:00:00').getTime() && Number(close.time || 0) < new Date(date + 'T00:00:00').getTime() + 86400000)).map(({ entry, close, closeQty, reason }) => ({
-    ts: close.time, inst_id: close.symbol, side: String(entry.side || '').toLowerCase(), pos_side: entry.positionSide || 'BOTH', size: closeQty,
-    entryPrice: Number(entry.price || 0), exitPrice: Number(close.price || 0), entryTime: Number(entry.time || 0),
-        entryOrderId: entry.orderId || entry.clientOrderId || '--', exitOrderId: close.orderId || close.clientOrderId || '--',
-        fee: Number(entry.commission || 0) + Number(close.commission || 0), funding_rate: 0,
-    slippage: 0, pnl: Number(close.realizedPnl || 0), close_reason: reason
-  }));
+  const rows = allRows.filter(t => !date || (Number(t.ts || 0) >= new Date(date + 'T00:00:00').getTime() && Number(t.ts || 0) < new Date(date + 'T00:00:00').getTime() + 86400000));
   journalRows = rows;
   populatePairFilter(rows);
   renderPerformanceCharts(rows);
@@ -329,6 +345,7 @@ async function logout() {
 document.getElementById('closeTradeDetail').addEventListener('click', () => { document.getElementById('tradeDetail').hidden = true; });
 
 ['pairFilter', 'sideFilter', 'outcomeFilter', 'reasonFilter', 'sortFilter'].forEach(id => document.getElementById(id).addEventListener('change', applyJournalFilters));
+document.getElementById('dateFilter').addEventListener('change', loadHistory);
 document.getElementById('calendarPrev').addEventListener('click', () => shiftCalendar(-1));
 document.getElementById('calendarNext').addEventListener('click', () => shiftCalendar(1));
 renderPnlCalendar();
