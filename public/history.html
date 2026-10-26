@@ -143,7 +143,7 @@ function renderPnlCalendar() {
     const key = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
     const pnl = totals.get(key);
     const state = pnl == null ? '' : pnl >= 0 ? 'calendar-profit' : 'calendar-loss-cell';
-    cells.push(`<button type="button" class="calendar-day ${state}" title="${pnl == null ? 'No trades' : fmtUsd(pnl)}"><b>${day}</b><small>${pnl == null ? '--' : fmtUsd(pnl)}</small></button>`);
+    cells.push(`<button type="button" class="calendar-day ${state}" aria-label="${esc(calendarMonth.toLocaleString(undefined, { month: 'long' }) + ' ' + day + ': ' + (pnl == null ? 'No trades' : fmtUsd(pnl)))}" title="${pnl == null ? 'No trades' : fmtUsd(pnl)}"><b>${day}</b><small>${pnl == null ? '--' : fmtUsd(pnl)}</small></button>`);
   }
   document.getElementById('pnlCalendar').innerHTML = cells.join('');
 }
@@ -334,8 +334,9 @@ document.getElementById('calendarNext').addEventListener('click', () => shiftCal
 renderPnlCalendar();
 // Set today as default
  document.getElementById('dateFilter').value = new Date().toISOString().split('T')[0];
-if (initialView === 'jev') showHistoryTab('jev');
-else if (initialView === 'binance') showHistoryTab('binance');
+const activeView = initialView === 'binance' ? 'binance' : 'jev';
+if (initialView !== 'jev' && initialView !== 'binance') history.replaceState(null, '', '/history.html?view=jev');
+showHistoryTab(activeView);
 </script>
 </body>
 </html>

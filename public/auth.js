@@ -4,23 +4,30 @@ const toggleLink = document.getElementById('toggleAuth');
 const btn = document.getElementById('authBtn');
 let isLogin = true;
 
-toggleLink.addEventListener('click', e => {
+function toggleAuthMode(e) {
   e.preventDefault();
   isLogin = !isLogin;
   btn.textContent = isLogin ? 'LOGIN' : 'REGISTER';
   toggleLink.parentElement.innerHTML = isLogin
     ? 'No account? <a href="#" id="toggleAuth">Register</a>'
     : 'Have account? <a href="#" id="toggleAuth">Login</a>';
-  document.getElementById('toggleAuth').addEventListener('click', arguments.callee);
+  document.getElementById('toggleAuth').addEventListener('click', toggleAuthMode);
   errEl.textContent = '';
-});
+  errEl.style.color = '';
+}
+toggleLink.addEventListener('click', toggleAuthMode);
 
 form.addEventListener('submit', async e => {
   e.preventDefault();
   errEl.textContent = '';
   const username = document.getElementById('username').value.trim();
   const password = document.getElementById('password').value;
-  if (!username || !password) return;
+  if (!username || !password) {
+    errEl.style.color = '';
+    errEl.textContent = 'Username and password required';
+    (!username ? document.getElementById('username') : document.getElementById('password')).focus();
+    return;
+  }
   try {
     const res = await fetch('/api/' + (isLogin ? 'login' : 'register'), {
       method: 'POST',
