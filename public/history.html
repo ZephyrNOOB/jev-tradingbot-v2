@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>JEV - Trade History</title>
+<title>JEV - Trade Journal</title>
 <link rel="stylesheet" href="/style.css">
 </head>
 <body>
@@ -14,7 +14,7 @@
       <a class="nav-item" href="/dashboard.html">Dashboard</a>
       <a class="nav-item" href="/exchange.html">Settings</a>
       <div class="nav-history-menu">
-        <span class="nav-item nav-parent" aria-haspopup="true">Trade History</span>
+        <a class="nav-item nav-parent" href="/history.html?view=jev" aria-haspopup="true">Trade Journal</a>
         <div class="nav-history-submenu" role="menu">
           <a href="/history.html?view=jev" role="menuitem">JEV History</a>
           <a href="/history.html?view=binance" role="menuitem">Binance History</a>
@@ -26,57 +26,61 @@
     </div>
   </aside>
   <main class="main">
-    <div class="page-header" id="historyHeader" hidden>
-      <h2 class="page-title" id="historyTitle">HISTORY</h2>
-      <div style="display:flex;gap:10px;align-items:center">
-        <input type="date" id="dateFilter" style="width:auto;margin:0">
-        <button onclick="loadHistory()" style="width:auto;padding:8px 16px">FILTER</button>
-        <button onclick="loadHistory()" style="width:auto;padding:8px 16px;border-color:var(--muted);color:var(--muted)">REFRESH</button>
+    <div class="journal-shell" id="journalShell">
+      <div class="journal-heading">
+        <div>
+          <div class="eyebrow">PERFORMANCE JOURNAL</div>
+          <h1 class="journal-title" id="historyTitle">TRADE JOURNAL</h1>
+          <p class="journal-subtitle">Verified exchange fills, completed trades, and performance review.</p>
+        </div>
+        <div class="journal-actions">
+          <label class="journal-date">DATE <input type="date" id="dateFilter"></label>
+          <button class="journal-button" onclick="loadHistory()">FILTER</button>
+          <button class="journal-button journal-button-muted" onclick="loadHistory()">REFRESH</button>
+        </div>
       </div>
-    </div>
-
-    <section id="emptyHistoryPanel" style="display:none"></section>
-    <section id="jevHistoryPanel" hidden>
-    <!-- Summary Cards -->
-    <div class="card-grid" id="summaryCards">
-      <div class="card"><div class="stat-label">Total Trades</div><div class="stat-value" id="sumTrades">0</div></div>
-      <div class="card"><div class="stat-label">Net PnL (after fees)</div><div class="stat-value" id="sumPnl">0.00</div></div>
-      <div class="card"><div class="stat-label">Total Commission</div><div class="stat-value" id="sumFee" style="color:var(--red)">0.00</div></div>
-      <div class="card"><div class="stat-label">Total Funding</div><div class="stat-value" id="sumFunding">0.00</div></div>
-      <div class="card"><div class="stat-label">Total Slippage</div><div class="stat-value" id="sumSlip" style="color:var(--red)">0.00</div></div>
-      <div class="card"><div class="stat-label">Win Rate</div><div class="stat-value" id="sumWr">--%</div></div>
-    </div>
-
-    <!-- Trade Table -->
-    <div class="card">
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Time</th>
-              <th>Pair</th>
-              <th>Side</th>
-              <th>Pos Side</th>
-              <th>Size</th>
-              <th>Price</th>
-              <th>Commission</th>
-              <th>Funding Rate</th>
-              <th>Funding Cost</th>
-              <th>Slippage</th>
-              <th>PnL Gross</th>
-              <th>PnL Net</th>
-            </tr>
-          </thead>
-          <tbody id="tradeBody">
-            <tr><td colspan="12" style="text-align:center;color:var(--muted);padding:40px">No trades yet</td></tr>
-          </tbody>
-        </table>
+      <nav class="journal-tabs" aria-label="Trade Journal views">
+        <button type="button" class="journal-tab" id="jevTab" onclick="showHistoryTab('jev')">JEV JOURNAL</button>
+        <button type="button" class="journal-tab" id="binanceTab" onclick="showHistoryTab('binance')">BINANCE RAW</button>
+      </nav>
+      <div class="journal-filters" aria-label="Trade filters">
+        <label>PAIR <select id="pairFilter"><option value="">ALL PAIRS</option></select></label>
+        <label>SIDE <select id="sideFilter"><option value="">ALL SIDES</option><option value="buy">BUY</option><option value="sell">SELL</option></select></label>
+        <label>OUTCOME <select id="outcomeFilter"><option value="">ALL OUTCOMES</option><option value="win">WIN</option><option value="loss">LOSS</option></select></label>
+        <label>REASON <select id="reasonFilter"><option value="">ALL REASONS</option><option value="TP">TP</option><option value="SL">SL</option><option value="MANUAL">MANUAL</option></select></label>
+        <label>SORT <select id="sortFilter"><option value="newest">NEWEST</option><option value="oldest">OLDEST</option><option value="pnl-high">PNL HIGH</option><option value="pnl-low">PNL LOW</option></select></label>
+        <button type="button" class="journal-button journal-button-muted" onclick="resetJournalFilters()">RESET</button>
+        <button type="button" class="journal-button journal-button-muted" onclick="exportJournalCsv()">EXPORT CSV</button>
       </div>
+
+      <section id="emptyHistoryPanel" hidden></section>
+      <section id="jevHistoryPanel" class="journal-view" hidden>
+        <div class="journal-section-heading"><div><div class="eyebrow">OVERVIEW</div><h2>Performance snapshot</h2></div></div>
+        <div class="card-grid journal-summary" id="summaryCards">
+          <div class="card journal-stat"><div class="stat-label">TOTAL TRADES</div><div class="stat-value" id="sumTrades">0</div></div>
+          <div class="card journal-stat"><div class="stat-label">NET PNL</div><div class="stat-value" id="sumPnl">0.00</div></div>
+          <div class="card journal-stat"><div class="stat-label">COMMISSION</div><div class="stat-value" id="sumFee" style="color:var(--red)">0.00</div></div>
+          <div class="card journal-stat"><div class="stat-label">FUNDING</div><div class="stat-value" id="sumFunding">0.00</div></div>
+          <div class="card journal-stat"><div class="stat-label">SLIPPAGE</div><div class="stat-value" id="sumSlip" style="color:var(--red)">0.00</div></div>
+          <div class="card journal-stat"><div class="stat-label">WIN RATE</div><div class="stat-value" id="sumWr">--%</div></div>
+          <div class="card journal-stat"><div class="stat-label">PROFIT FACTOR</div><div class="stat-value" id="sumPf">--</div></div>
+          <div class="card journal-stat"><div class="stat-label">AVG WIN</div><div class="stat-value" id="sumAvgWin">--</div></div>
+          <div class="card journal-stat"><div class="stat-label">AVG LOSS</div><div class="stat-value" id="sumAvgLoss">--</div></div>
+          <div class="card journal-stat"><div class="stat-label">EXPECTANCY</div><div class="stat-value" id="sumExpectancy">--</div></div>
+        </div>
+        <div class="journal-section-heading"><div><div class="eyebrow">PERFORMANCE CALENDAR</div><h2>Daily P&amp;L</h2></div></div>
+        <div class="journal-chart-grid"><div class="card journal-chart-card"><div class="journal-card-heading"><span>EQUITY CURVE</span><span id="equityValue">--</span></div><svg id="equityChart" class="journal-chart" viewBox="0 0 800 220" role="img" aria-label="Cumulative PnL chart"></svg></div><div class="card journal-chart-card"><div class="journal-card-heading"><span>DRAWDOWN</span><span id="drawdownValue">--</span></div><svg id="drawdownChart" class="journal-chart" viewBox="0 0 800 220" role="img" aria-label="Drawdown chart"></svg></div></div>
+        <div class="card journal-chart-card"><div class="journal-card-heading"><span>DAILY P&amp;L</span><span id="dailyPnlValue">--</span></div><div id="dailyPnlChart" class="daily-pnl-chart" role="img" aria-label="Daily PnL chart"></div></div>
+        <div class="card journal-calendar-card"><div class="journal-calendar-head"><button type="button" class="journal-calendar-nav" id="calendarPrev" aria-label="Previous month">‹</button><strong id="calendarLabel">--</strong><button type="button" class="journal-calendar-nav" id="calendarNext" aria-label="Next month">›</button></div><div class="journal-calendar-grid journal-calendar-weekdays"><span>MON</span><span>TUE</span><span>WED</span><span>THU</span><span>FRI</span><span>SAT</span><span>SUN</span></div><div class="journal-calendar-grid" id="pnlCalendar"></div><div class="journal-calendar-legend"><span><i class="calendar-dot calendar-win"></i> PROFIT</span><span><i class="calendar-dot calendar-loss"></i> LOSS</span></div></div>
+        <div class="journal-section-heading"><div><div class="eyebrow">CLOSED TRADES</div><h2>Completed trade journal</h2></div></div>
+        <div class="card journal-table-card"><div class="table-wrap"><table><thead><tr><th>Close Time</th><th>Pair</th><th>Side</th><th>Pos Side</th><th>Qty</th><th>Entry</th><th>Exit</th><th>Duration</th><th>Commission</th><th>Funding</th><th>Slippage</th><th>PnL Gross</th><th>PnL Net</th><th>Reason</th></tr></thead><tbody id="tradeBody"><tr><td colspan="14" class="journal-empty">No trades yet</td></tr></tbody></table></div></div>
+        <aside class="card journal-detail" id="tradeDetail" hidden aria-live="polite"><div class="journal-card-heading"><span>SELECTED TRADE</span><button type="button" class="journal-detail-close" id="closeTradeDetail" aria-label="Close trade detail">×</button></div><div class="journal-detail-grid" id="tradeDetailBody"></div></aside>
+      </section>
+      <section id="binanceHistoryPanel" class="journal-view" hidden>
+        <div class="journal-section-heading"><div><div class="eyebrow">EXCHANGE EVIDENCE</div><h2>Binance raw history</h2></div></div>
+        <div class="card journal-table-card"><div class="table-wrap"><table><thead><tr><th>Type</th><th>Time</th><th>Pair</th><th>Order ID</th><th>Client Order ID</th><th>Side</th><th>Status</th><th>Price</th><th>Qty</th><th>Realized PnL</th><th>Commission</th></tr></thead><tbody id="binanceHistoryBody"><tr><td colspan="11" class="journal-empty">No Binance history loaded</td></tr></tbody></table></div></div>
+      </section>
     </div>
-    </section>
-    <section id="binanceHistoryPanel" hidden>
-      <div class="card"><div class="table-wrap"><table><thead><tr><th>Type</th><th>Time</th><th>Pair</th><th>Order ID</th><th>Client Order ID</th><th>Side</th><th>Status</th><th>Price</th><th>Qty</th><th>Realized PnL</th><th>Commission</th></tr></thead><tbody id="binanceHistoryBody"><tr><td colspan="11" style="text-align:center;color:var(--muted);padding:40px">No Binance history loaded</td></tr></tbody></table></div></div>
-    </section>
   </main>
 </div>
 <script>
@@ -93,12 +97,132 @@ async function api(path, opts = {}) {
 function fmt(n, d = 4) { return Number(n || 0).toFixed(d); }
 function fmtUsd(n) { return (n >= 0 ? '+' : '') + Number(n || 0).toFixed(2); }
 function esc(v) { return String(v ?? '--').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+let journalRows = [];
+let calendarMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+
+function renderSvgChart(id, values, color) {
+  const svg = document.getElementById(id);
+  if (!values.length) { svg.innerHTML = '<text x="400" y="115" text-anchor="middle" class="chart-empty">No completed trades</text>'; return; }
+  const min = Math.min(...values, 0), max = Math.max(...values, 0), span = max - min || 1;
+  const points = values.map((v, i) => `${(i / Math.max(values.length - 1, 1)) * 780 + 10},${205 - ((v - min) / span) * 190}`).join(' ');
+  const zeroY = 205 - ((0 - min) / span) * 190;
+  svg.innerHTML = `<line x1="10" y1="${zeroY}" x2="790" y2="${zeroY}" class="chart-zero"/><polyline points="${points}" fill="none" stroke="${color}" stroke-width="3" stroke-linejoin="round"/><circle cx="${points.split(' ').at(-1).split(',')[0]}" cy="${points.split(' ').at(-1).split(',')[1]}" r="4" fill="${color}"/>`;
+}
+
+function renderPerformanceCharts(rows) {
+  const ordered = rows.slice().sort((a, b) => a.ts - b.ts);
+  let equity = 0, peak = 0, maxDrawdown = 0;
+  const equityValues = [], drawdownValues = [];
+  for (const t of ordered) { equity += t.pnl - Math.abs(t.fee); peak = Math.max(peak, equity); const dd = equity - peak; maxDrawdown = Math.min(maxDrawdown, dd); equityValues.push(equity); drawdownValues.push(dd); }
+  renderSvgChart('equityChart', equityValues, 'var(--cyan)');
+  renderSvgChart('drawdownChart', drawdownValues, 'var(--red)');
+  document.getElementById('equityValue').textContent = ordered.length ? fmtUsd(equity) : '--';
+  document.getElementById('drawdownValue').textContent = ordered.length ? fmtUsd(maxDrawdown) : '--';
+  const daily = new Map();
+  for (const t of ordered) { const key = new Date(t.ts).toISOString().slice(0, 10); daily.set(key, (daily.get(key) || 0) + t.pnl - Math.abs(t.fee)); }
+  const days = [...daily.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+  const maxAbs = Math.max(...days.map(([, v]) => Math.abs(v)), 1);
+  document.getElementById('dailyPnlValue').textContent = days.length ? fmtUsd(days.reduce((sum, [, v]) => sum + v, 0)) : '--';
+  document.getElementById('dailyPnlChart').innerHTML = days.length ? days.map(([day, pnl]) => `<div class="daily-pnl-bar"><small>${esc(day.slice(5))}</small><i class="${pnl >= 0 ? 'daily-profit' : 'daily-loss'}" style="height:${Math.max(8, Math.abs(pnl) / maxAbs * 100)}%" title="${fmtUsd(pnl)}"></i><b>${fmtUsd(pnl)}</b></div>`).join('') : '<span class="chart-empty">No completed trades</span>';
+}
+
+function renderPnlCalendar() {
+  const year = calendarMonth.getFullYear();
+  const month = calendarMonth.getMonth();
+  document.getElementById('calendarLabel').textContent = calendarMonth.toLocaleString(undefined, { month: 'long', year: 'numeric' }).toUpperCase();
+  const totals = new Map();
+  for (const t of journalRows) {
+    const key = new Date(t.ts).toISOString().slice(0, 10);
+    totals.set(key, (totals.get(key) || 0) + t.pnl - Math.abs(t.fee));
+  }
+  const firstDay = (new Date(year, month, 1).getDay() + 6) % 7;
+  const days = new Date(year, month + 1, 0).getDate();
+  const cells = [];
+  for (let i = 0; i < firstDay; i++) cells.push('<span class="calendar-day calendar-empty"></span>');
+  for (let day = 1; day <= days; day++) {
+    const key = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    const pnl = totals.get(key);
+    const state = pnl == null ? '' : pnl >= 0 ? 'calendar-profit' : 'calendar-loss-cell';
+    cells.push(`<button type="button" class="calendar-day ${state}" title="${pnl == null ? 'No trades' : fmtUsd(pnl)}"><b>${day}</b><small>${pnl == null ? '--' : fmtUsd(pnl)}</small></button>`);
+  }
+  document.getElementById('pnlCalendar').innerHTML = cells.join('');
+}
+
+function shiftCalendar(delta) {
+  calendarMonth = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + delta, 1);
+  renderPnlCalendar();
+}
+
+
+function applyJournalFilters() {
+  const pair = document.getElementById('pairFilter').value;
+  const side = document.getElementById('sideFilter').value;
+  const outcome = document.getElementById('outcomeFilter').value;
+  const reason = document.getElementById('reasonFilter').value;
+  const sort = document.getElementById('sortFilter').value;
+  const rows = journalRows.filter(t => (!pair || t.inst_id === pair) && (!side || t.side === side) && (!reason || t.close_reason === reason) && (!outcome || (outcome === 'win' ? t.pnl - Math.abs(t.fee) > 0 : t.pnl - Math.abs(t.fee) <= 0)));
+  rows.sort((a, b) => sort === 'oldest' ? a.ts - b.ts : sort === 'pnl-high' ? b.pnl - a.pnl : sort === 'pnl-low' ? a.pnl - b.pnl : b.ts - a.ts);
+  renderJournalRows(rows);
+  updateSummary(rows);
+  document.querySelectorAll('#tradeBody tr[data-trade-index]').forEach(row => {
+    const open = () => renderTradeDetail(rows[Number(row.dataset.tradeIndex)]);
+    row.addEventListener('click', open);
+    row.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); open(); } });
+  });
+}
+
+function renderTradeDetail(t) {
+  const pnlNet = t.pnl - Math.abs(t.fee);
+  const fields = [['PAIR', t.inst_id], ['SIDE', t.side.toUpperCase()], ['POSITION', t.pos_side], ['CLOSE REASON', t.close_reason], ['ENTRY TIME', new Date(t.entryTime).toLocaleString()], ['EXIT TIME', new Date(t.ts).toLocaleString()], ['ENTRY ORDER', t.entryOrderId], ['EXIT ORDER', t.exitOrderId], ['QUANTITY', fmt(t.size)], ['ENTRY PRICE', fmt(t.entryPrice, 2)], ['EXIT PRICE', fmt(t.exitPrice, 2)], ['COMMISSION', fmt(t.fee)], ['REALIZED PNL', fmtUsd(t.pnl)], ['NET PNL', fmtUsd(pnlNet)]];
+  document.getElementById('tradeDetailBody').innerHTML = fields.map(([label, value]) => `<div><small>${esc(label)}</small><strong>${esc(value)}</strong></div>`).join('');
+  document.getElementById('tradeDetail').hidden = false;
+}
+
+function renderJournalRows(rows) {
+  const tbody = document.getElementById('tradeBody');
+  tbody.innerHTML = rows.length ? rows.map((t, index) => {
+    const time = new Date(t.ts).toLocaleString();
+    const durationMs = Math.max(0, t.ts - t.entryTime);
+    const duration = durationMs >= 3600000 ? (durationMs / 3600000).toFixed(1) + 'h' : (durationMs / 60000).toFixed(0) + 'm';
+    const sideBadge = t.side === 'buy' ? '<span class="badge badge-long">BUY</span>' : '<span class="badge badge-short">SELL</span>';
+    const pnlNet = t.pnl - Math.abs(t.fee);
+    return `<tr tabindex="0" data-trade-index="${index}" aria-label="Open trade detail for ${esc(t.inst_id)}"> <td>${esc(time)}</td><td style="font-weight:600">${esc(t.inst_id)}</td><td>${sideBadge}</td><td>${esc(t.pos_side)}</td><td>${fmt(t.size)}</td><td>${fmt(t.entryPrice, 2)}</td><td>${fmt(t.exitPrice, 2)}</td><td>${esc(duration)}</td><td style="color:var(--red)">${fmt(t.fee)}</td><td>0.0000</td><td>0.0000</td><td class="${t.pnl >= 0 ? 'pos' : 'neg'}">${fmtUsd(t.pnl)}</td><td class="${pnlNet >= 0 ? 'pos' : 'neg'}" style="font-weight:700">${fmtUsd(pnlNet)}</td><td><span class="journal-reason ${t.close_reason === 'MANUAL' ? 'journal-reason-manual' : ''}">${esc(t.close_reason)}</span></td></tr>`;
+  }).join('') : '<tr><td colspan="14" class="journal-empty">No trades match filters</td></tr>';
+}
+
+function populatePairFilter(rows) {
+  const select = document.getElementById('pairFilter');
+  const current = select.value;
+  select.innerHTML = '<option value="">ALL PAIRS</option>' + [...new Set(rows.map(t => t.inst_id))].sort().map(pair => `<option value="${esc(pair)}">${esc(pair)}</option>`).join('');
+  if ([...select.options].some(option => option.value === current)) select.value = current;
+}
+
+function resetJournalFilters() {
+  ['pairFilter', 'sideFilter', 'outcomeFilter', 'reasonFilter', 'sortFilter'].forEach(id => document.getElementById(id).value = id === 'sortFilter' ? 'newest' : '');
+  applyJournalFilters();
+}
+
+function exportJournalCsv() {
+  const pair = document.getElementById('pairFilter').value;
+  const side = document.getElementById('sideFilter').value;
+  const outcome = document.getElementById('outcomeFilter').value;
+  const reason = document.getElementById('reasonFilter').value;
+  const rows = journalRows.filter(t => (!pair || t.inst_id === pair) && (!side || t.side === side) && (!reason || t.close_reason === reason) && (!outcome || (outcome === 'win' ? t.pnl - Math.abs(t.fee) > 0 : t.pnl - Math.abs(t.fee) <= 0)));
+  const cell = value => '"' + String(value ?? '').replace(/"/g, '""') + '"';
+  const csv = [['Close Time', 'Pair', 'Side', 'Position Side', 'Quantity', 'Entry Price', 'Exit Price', 'Duration Minutes', 'Commission', 'Gross PnL', 'Net PnL', 'Close Reason'], ...rows.map(t => [new Date(t.ts).toISOString(), t.inst_id, t.side.toUpperCase(), t.pos_side, t.size, t.entryPrice, t.exitPrice, Math.max(0, t.ts - t.entryTime) / 60000, t.fee, t.pnl, t.pnl - Math.abs(t.fee), t.close_reason])].map(row => row.map(cell).join(',')).join('\n');
+  const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+  const link = document.createElement('a');
+  link.href = url; link.download = `jev-trade-journal-${new Date().toISOString().slice(0, 10)}.csv`; link.click();
+  URL.revokeObjectURL(url);
+}
+
 function showHistoryTab(tab) {
-  document.getElementById('historyHeader').hidden = false;
   document.getElementById('emptyHistoryPanel').hidden = true;
-  document.getElementById('historyTitle').textContent = tab === 'jev' ? 'JEV HISTORY' : 'BINANCE HISTORY';
+  document.getElementById('historyTitle').textContent = tab === 'jev' ? 'TRADE JOURNAL' : 'BINANCE RAW HISTORY';
   document.getElementById('jevHistoryPanel').hidden = tab !== 'jev';
   document.getElementById('binanceHistoryPanel').hidden = tab !== 'binance';
+  document.getElementById('jevTab').classList.toggle('active', tab === 'jev');
+  document.getElementById('binanceTab').classList.toggle('active', tab === 'binance');
   if (tab === 'jev') loadHistory();
   else loadBinanceHistory();
 }
@@ -147,35 +271,42 @@ async function loadHistory() {
   const completed = completedBinanceTrades(data, date);
   const tbody = document.getElementById('tradeBody');
   if (!completed.length) {
-    tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;color:var(--muted);padding:40px">No completed Binance trades found</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="14" class="journal-empty">No completed Binance trades found</td></tr>';
+    journalRows = [];
+    renderPerformanceCharts([]);
+    renderPnlCalendar();
     updateSummary([]);
     return;
   }
   const rows = completed.filter(({ close }) => !date || (Number(close.time || 0) >= new Date(date + 'T00:00:00').getTime() && Number(close.time || 0) < new Date(date + 'T00:00:00').getTime() + 86400000)).map(({ entry, close, closeQty, reason }) => ({
     ts: close.time, inst_id: close.symbol, side: String(entry.side || '').toLowerCase(), pos_side: entry.positionSide || 'BOTH', size: closeQty,
-    price: close.price, fee: Number(entry.commission || 0) + Number(close.commission || 0), funding_rate: 0,
+    entryPrice: Number(entry.price || 0), exitPrice: Number(close.price || 0), entryTime: Number(entry.time || 0),
+        entryOrderId: entry.orderId || entry.clientOrderId || '--', exitOrderId: close.orderId || close.clientOrderId || '--',
+        fee: Number(entry.commission || 0) + Number(close.commission || 0), funding_rate: 0,
     slippage: 0, pnl: Number(close.realizedPnl || 0), close_reason: reason
   }));
-  tbody.innerHTML = rows.map(t => {
-    const time = new Date(t.ts).toLocaleString();
-    const sideBadge = t.side === 'buy' ? '<span class="badge badge-long">BUY</span>' : '<span class="badge badge-short">SELL</span>';
-    const pnlNet = t.pnl - Math.abs(t.fee);
-    return `<tr><td>${esc(time)}</td><td style="font-weight:600">${esc(t.inst_id)}</td><td>${sideBadge}</td><td>${esc(t.pos_side)}</td><td>${fmt(t.size)}</td><td>${fmt(t.price, 2)}</td><td style="color:var(--red)">${fmt(t.fee)}</td><td>0.000000</td><td>0.0000</td><td>0.0000</td><td class="${t.pnl >= 0 ? 'pos' : 'neg'}">${fmtUsd(t.pnl)}</td><td class="${pnlNet >= 0 ? 'pos' : 'neg'}" style="font-weight:700">${fmtUsd(pnlNet)} ${esc(t.close_reason)}</td></tr>`;
-  }).join('');
-  updateSummary(rows);
+  journalRows = rows;
+  populatePairFilter(rows);
+  renderPerformanceCharts(rows);
+  renderPnlCalendar();
+  applyJournalFilters();
 }
 
 function updateSummary(trades) {
   document.getElementById('sumTrades').textContent = trades.length;
-  let totalPnl = 0, totalFee = 0, totalFunding = 0, totalSlip = 0, wins = 0;
+  let totalPnl = 0, totalFee = 0, totalFunding = 0, totalSlip = 0, wins = 0, grossProfit = 0, grossLoss = 0;
   for (const t of trades) {
     const net = t.pnl - Math.abs(t.fee) - Math.abs(t.slippage);
     totalPnl += net;
     totalFee += Math.abs(t.fee);
     totalFunding += Math.abs(t.funding_rate * t.size * t.price);
     totalSlip += Math.abs(t.slippage);
-    if (net > 0) wins++;
+    if (net > 0) { wins++; grossProfit += net; }
+    else if (net < 0) grossLoss += Math.abs(net);
   }
+  const losses = trades.length - wins;
+  const avgWin = wins ? grossProfit / wins : null;
+  const avgLoss = losses ? grossLoss / losses : null;
   const el = (id, v) => document.getElementById(id);
   el('sumPnl').textContent = fmtUsd(totalPnl);
   el('sumPnl').className = 'stat-value ' + (totalPnl >= 0 ? 'pos' : 'neg');
@@ -184,6 +315,10 @@ function updateSummary(trades) {
   el('sumFunding').className = 'stat-value ' + (totalFunding <= 0 ? 'neg' : 'pos');
   el('sumSlip').textContent = fmtUsd(-totalSlip);
   el('sumWr').textContent = trades.length ? ((wins / trades.length) * 100).toFixed(1) + '%' : '--%';
+  el('sumPf').textContent = grossLoss ? (grossProfit / grossLoss).toFixed(2) : (grossProfit ? '∞' : '--');
+  el('sumAvgWin').textContent = avgWin === null ? '--' : fmtUsd(avgWin);
+  el('sumAvgLoss').textContent = avgLoss === null ? '--' : fmtUsd(-avgLoss);
+  el('sumExpectancy').textContent = trades.length ? fmtUsd(totalPnl / trades.length) : '--';
 }
 
 async function logout() {
@@ -191,8 +326,14 @@ async function logout() {
   window.location.href = '/';
 }
 
+document.getElementById('closeTradeDetail').addEventListener('click', () => { document.getElementById('tradeDetail').hidden = true; });
+
+['pairFilter', 'sideFilter', 'outcomeFilter', 'reasonFilter', 'sortFilter'].forEach(id => document.getElementById(id).addEventListener('change', applyJournalFilters));
+document.getElementById('calendarPrev').addEventListener('click', () => shiftCalendar(-1));
+document.getElementById('calendarNext').addEventListener('click', () => shiftCalendar(1));
+renderPnlCalendar();
 // Set today as default
-document.getElementById('dateFilter').value = new Date().toISOString().split('T')[0];
+ document.getElementById('dateFilter').value = new Date().toISOString().split('T')[0];
 if (initialView === 'jev') showHistoryTab('jev');
 else if (initialView === 'binance') showHistoryTab('binance');
 </script>

@@ -172,11 +172,24 @@ function notifyTelegramExecution(event, userId) {
   if (event?.e !== 'ORDER_TRADE_UPDATE' || order?.X !== 'FILLED' || !order?.i) return;
   queueTelegramExecution(userId, async () => {
     const closeReason = closeReasonFromClientOrderId(order.c);
+    const lifecycle = get('SELECT * FROM execution_lifecycles WHERE user_id = ? AND entry_status = \'FILLED\' AND position_status = \'OPEN\' AND symbol = ? ORDER BY updated_at DESC LIMIT 1', [userId, order.s]);
+    let candidateSide = '';
+    try { candidateSide = String(JSON.parse(lifecycle?.candidate_json || '{}').side || '').toUpperCase(); } catch {}
+    const manualClose = Boolean(lifecycle && candidateSide && String(order.S || '').toUpperCase() !== candidateSide);
+    if (manualClose) {
+      await sendTelegram(
+        'JEV CLOSE\\nPair: ' + (order.s || '-') + '\\nReason: MANUAL' +
+        '\\nOrderID: ' + order.i + '\\nPrice: ' + (order.ap || '-') +
+        '\\nQty: ' + (order.z || '-') + '\\nStatus: CLOSED',
+        'CLOSE:' + order.s + ':' + (lifecycle?.thesis_key || order.i) + ':MANUAL', userId
+      );
+      return;
+    }
     if (closeReason) {
       await sendTelegram(
-        'JEV CLOSE\nPair: ' + (order.s || '-') + '\nReason: ' + closeReason +
-        '\nOrderID: ' + order.i + '\nPrice: ' + (order.ap || '-') +
-        '\nQty: ' + (order.z || '-') + '\nStatus: CLOSED',
+        'JEV CLOSE\\nPair: ' + (order.s || '-') + '\\nReason: ' + closeReason +
+        '\\nOrderID: ' + order.i + '\\nPrice: ' + (order.ap || '-') +
+        '\\nQty: ' + (order.z || '-') + '\\nStatus: CLOSED',
         'CLOSE:' + order.s + ':' + order.i + ':' + closeReason, userId
       );
       return;
