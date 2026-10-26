@@ -14,7 +14,7 @@
       <a class="nav-item" href="/dashboard.html">Dashboard</a>
       <a class="nav-item" href="/exchange.html">Settings</a>
       <div class="nav-history-menu">
-        <a class="nav-item nav-parent" href="/history.html?view=jev" aria-haspopup="true">Trade Journal</a>
+        <span class="nav-item nav-parent" aria-haspopup="true" aria-disabled="true">Trade Journal</span>
         <div class="nav-history-submenu" role="menu">
           <a href="/history.html?view=jev" role="menuitem">JEV History</a>
           <a href="/history.html?view=binance" role="menuitem">Binance History</a>
@@ -39,11 +39,9 @@
           <button class="journal-button journal-button-muted" onclick="loadHistory()">REFRESH</button>
         </div>
       </div>
-      <nav class="journal-tabs" aria-label="Trade Journal views">
-        <button type="button" class="journal-tab" id="jevTab" onclick="showHistoryTab('jev')">JEV JOURNAL</button>
-        <button type="button" class="journal-tab" id="binanceTab" onclick="showHistoryTab('binance')">BINANCE RAW</button>
-      </nav>
+
       <div class="journal-filters" aria-label="Trade filters">
+        <label class="period-control">PERIOD <select id="periodFilter" aria-label="Performance period"><option value="daily">DAILY</option><option value="weekly">WEEKLY</option><option value="monthly">MONTHLY</option><option value="yearly">YEARLY</option></select></label>
         <label>PAIR <select id="pairFilter"><option value="">ALL PAIRS</option></select></label>
         <label>SIDE <select id="sideFilter"><option value="">ALL SIDES</option><option value="buy">BUY</option><option value="sell">SELL</option></select></label>
         <label>OUTCOME <select id="outcomeFilter"><option value="">ALL OUTCOMES</option><option value="win">WIN</option><option value="loss">LOSS</option></select></label>
@@ -96,7 +94,9 @@ async function api(path, opts = {}) {
 
 function fmt(n, d = 4) { return Number(n || 0).toFixed(d); }
 function fmtUsd(n) { return (n >= 0 ? '+' : '') + Number(n || 0).toFixed(2); }
+function fmtUsdPrecise(n) { const value = Number(n || 0); return (value >= 0 ? '+' : '') + (Math.abs(value) < 0.01 && value !== 0 ? value.toFixed(4) : value.toFixed(2)); }
 function esc(v) { return String(v ?? '--').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+let allRows = [];
 let journalRows = [];
 let calendarRows = [];
 let calendarMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
@@ -155,16 +155,48 @@ function shiftCalendar(delta) {
 }
 
 
-function applyJournalFilters() {
+function renderPeriodSummary(rows) {
+  const period = document.getElementById('periodFilter').value;
+  const groups = new Map();
+  for (const trade of rows) {
+    const d = new Date(trade.ts);
+    let key;
+    if (period === 'yearly') key = String(d.getFullYear());
+    else if (period === 'monthly') key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    else if (period === 'weekly') { const monday = new Date(d); monday.setHours(0, 0, 0, 0); monday.setDate(d.getDate() - ((d.getDay() + 6) % 7)); key = monday.toISOString().slice(0, 10); }
+    else key = d.toISOString().slice(0, 10);
+    const group = groups.get(key) || { pnl: 0, wins: 0, profit: 0, loss: 0, trades: 0 };
+    const net = trade.pnl - Math.abs(trade.fee) - Math.abs(trade.slippage);
+    group.trades++; group.pnl += net;
+    if (net > 0) { group.wins++; group.profit += net; } else if (net < 0) group.loss += Math.abs(net);
+    groups.set(key, group);
+  }
+  const summary = [...groups.values()].reduce((total, g) => { total.trades += g.trades; total.wins += g.wins; total.pnl += g.pnl; total.profit += g.profit; total.loss += g.loss; return total; }, { trades: 0, wins: 0, pnl: 0, profit: 0, loss: 0 });
+  updateSummary(rows);
+  document.getElementById('sumTrades').textContent = summary.trades;
+  document.getElementById('sumPnl').textContent = fmtUsd(summary.pnl);
+  document.getElementById('sumWr').textContent = summary.trades ? ((summary.wins / summary.trades) * 100).toFixed(1) + '%' : '--%';
+  document.getElementById('sumPf').textContent = summary.loss ? (summary.profit / summary.loss).toFixed(2) : (summary.profit ? '∞' : '--');
+  document.getElementById('sumAvgWin').textContent = summary.wins ? fmtUsd(summary.profit / summary.wins) : '--';
+  document.getElementById('sumAvgLoss').textContent = summary.loss ? fmtUsd(-summary.loss / (summary.trades - summary.wins)) : '--';
+  document.getElementById('sumExpectancy').textContent = summary.trades ? fmtUsd(summary.pnl / summary.trades) : '--';
+ }
+
+function filterRows(rows) {
   const pair = document.getElementById('pairFilter').value;
   const side = document.getElementById('sideFilter').value;
   const outcome = document.getElementById('outcomeFilter').value;
   const reason = document.getElementById('reasonFilter').value;
+  return rows.filter(t => (!pair || t.inst_id === pair) && (!side || t.side === side) && (!reason || t.close_reason === reason) && (!outcome || (outcome === 'win' ? t.pnl - Math.abs(t.fee) > 0 : t.pnl - Math.abs(t.fee) <= 0)));
+}
+
+function applyJournalFilters() {
   const sort = document.getElementById('sortFilter').value;
-  const rows = journalRows.filter(t => (!pair || t.inst_id === pair) && (!side || t.side === side) && (!reason || t.close_reason === reason) && (!outcome || (outcome === 'win' ? t.pnl - Math.abs(t.fee) > 0 : t.pnl - Math.abs(t.fee) <= 0)));
+  const rows = filterRows(journalRows);
+  const periodRows = rows.slice();
   rows.sort((a, b) => sort === 'oldest' ? a.ts - b.ts : sort === 'pnl-high' ? b.pnl - a.pnl : sort === 'pnl-low' ? a.pnl - b.pnl : b.ts - a.ts);
   renderJournalRows(rows);
-  updateSummary(rows);
+  renderPeriodSummary(periodRows);
   document.querySelectorAll('#tradeBody tr[data-trade-index]').forEach(row => {
     const open = () => renderTradeDetail(rows[Number(row.dataset.tradeIndex)]);
     row.addEventListener('click', open);
@@ -208,7 +240,7 @@ function exportJournalCsv() {
   const side = document.getElementById('sideFilter').value;
   const outcome = document.getElementById('outcomeFilter').value;
   const reason = document.getElementById('reasonFilter').value;
-  const rows = journalRows.filter(t => (!pair || t.inst_id === pair) && (!side || t.side === side) && (!reason || t.close_reason === reason) && (!outcome || (outcome === 'win' ? t.pnl - Math.abs(t.fee) > 0 : t.pnl - Math.abs(t.fee) <= 0)));
+  const rows = filterRows(journalRows);
   const cell = value => '"' + String(value ?? '').replace(/"/g, '""') + '"';
   const csv = [['Close Time', 'Pair', 'Side', 'Position Side', 'Quantity', 'Entry Price', 'Exit Price', 'Duration Minutes', 'Commission', 'Gross PnL', 'Net PnL', 'Close Reason'], ...rows.map(t => [new Date(t.ts).toISOString(), t.inst_id, t.side.toUpperCase(), t.pos_side, t.size, t.entryPrice, t.exitPrice, Math.max(0, t.ts - t.entryTime) / 60000, t.fee, t.pnl, t.pnl - Math.abs(t.fee), t.close_reason])].map(row => row.map(cell).join(',')).join('\n');
   const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
@@ -222,8 +254,6 @@ function showHistoryTab(tab) {
   document.getElementById('historyTitle').textContent = tab === 'jev' ? 'TRADE JOURNAL' : 'BINANCE RAW HISTORY';
   document.getElementById('jevHistoryPanel').hidden = tab !== 'jev';
   document.getElementById('binanceHistoryPanel').hidden = tab !== 'binance';
-  document.getElementById('jevTab').classList.toggle('active', tab === 'jev');
-  document.getElementById('binanceTab').classList.toggle('active', tab === 'binance');
   if (tab === 'jev') loadHistory();
   else loadBinanceHistory();
 }
@@ -280,10 +310,15 @@ function completedBinanceTrades(data) {
 
 async function loadHistory() {
   const date = document.getElementById('dateFilter').value;
+  const loading = document.getElementById('tradeBody');
+  loading.innerHTML = '<tr><td colspan="14" class="journal-empty">Loading completed trades...</td></tr>';
   const data = await api('/binance-history');
-  if (!data?.ok) return;
+  if (!data?.ok) {
+    loading.innerHTML = '<tr><td colspan="14" class="journal-empty">Unable to load completed trades</td></tr>';
+    return;
+  }
   const completed = completedBinanceTrades(data);
-  const allRows = completed.map(({ entry, close, closeQty, reason }) => ({
+  allRows = completed.map(({ entry, close, closeQty, reason }) => ({
     ts: close.time, inst_id: close.symbol, side: String(entry.side || '').toLowerCase(), pos_side: entry.positionSide || 'BOTH', size: closeQty,
     entryPrice: Number(entry.price || 0), exitPrice: Number(close.price || 0), entryTime: Number(entry.time || 0),
     entryOrderId: entry.orderId || entry.clientOrderId || '--', exitOrderId: close.orderId || close.clientOrderId || '--',
@@ -296,6 +331,7 @@ async function loadHistory() {
     tbody.innerHTML = '<tr><td colspan="14" class="journal-empty">No completed Binance trades found</td></tr>';
     journalRows = [];
     renderPerformanceCharts([]);
+    renderPeriodSummary([]);
     renderPnlCalendar();
     updateSummary([]);
     return;
@@ -326,7 +362,7 @@ function updateSummary(trades) {
   const el = (id, v) => document.getElementById(id);
   el('sumPnl').textContent = fmtUsd(totalPnl);
   el('sumPnl').className = 'stat-value ' + (totalPnl >= 0 ? 'pos' : 'neg');
-  el('sumFee').textContent = fmtUsd(-totalFee);
+  el('sumFee').textContent = fmtUsdPrecise(-totalFee);
   el('sumFunding').textContent = fmtUsd(-totalFunding);
   el('sumFunding').className = 'stat-value ' + (totalFunding <= 0 ? 'neg' : 'pos');
   el('sumSlip').textContent = fmtUsd(-totalSlip);
@@ -345,6 +381,7 @@ async function logout() {
 document.getElementById('closeTradeDetail').addEventListener('click', () => { document.getElementById('tradeDetail').hidden = true; });
 
 ['pairFilter', 'sideFilter', 'outcomeFilter', 'reasonFilter', 'sortFilter'].forEach(id => document.getElementById(id).addEventListener('change', applyJournalFilters));
+document.getElementById('periodFilter').addEventListener('change', () => renderPeriodSummary(filterRows(journalRows)));
 document.getElementById('dateFilter').addEventListener('change', loadHistory);
 document.getElementById('calendarPrev').addEventListener('click', () => shiftCalendar(-1));
 document.getElementById('calendarNext').addEventListener('click', () => shiftCalendar(1));
