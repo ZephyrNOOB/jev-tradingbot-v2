@@ -110,17 +110,20 @@ function renderSvgChart(id, values, color) {
   svg.innerHTML = `<line x1="10" y1="${zeroY}" x2="790" y2="${zeroY}" class="chart-zero"/><polyline points="${points}" fill="none" stroke="${color}" stroke-width="3" stroke-linejoin="round"/><circle cx="${points.split(' ').at(-1).split(',')[0]}" cy="${points.split(' ').at(-1).split(',')[1]}" r="4" fill="${color}"/>`;
 }
 
+function netPnl(t) { return Number(t.pnl || 0) - Math.abs(Number(t.fee || 0)); }
+function localDay(ts) { const d = new Date(ts); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
+
 function renderPerformanceCharts(rows) {
   const ordered = rows.slice().sort((a, b) => a.ts - b.ts);
   let equity = 0, peak = 0, maxDrawdown = 0;
   const equityValues = [], drawdownValues = [];
-  for (const t of ordered) { equity += t.pnl - Math.abs(t.fee); peak = Math.max(peak, equity); const dd = equity - peak; maxDrawdown = Math.min(maxDrawdown, dd); equityValues.push(equity); drawdownValues.push(dd); }
+  for (const t of ordered) { equity += netPnl(t); peak = Math.max(peak, equity); const dd = equity - peak; maxDrawdown = Math.min(maxDrawdown, dd); equityValues.push(equity); drawdownValues.push(dd); }
   renderSvgChart('equityChart', equityValues, 'var(--cyan)');
   renderSvgChart('drawdownChart', drawdownValues, 'var(--red)');
   document.getElementById('equityValue').textContent = ordered.length ? fmtUsd(equity) : '--';
   document.getElementById('drawdownValue').textContent = ordered.length ? fmtUsd(maxDrawdown) : '--';
   const daily = new Map();
-  for (const t of ordered) { const key = new Date(t.ts).toISOString().slice(0, 10); daily.set(key, (daily.get(key) || 0) + t.pnl - Math.abs(t.fee)); }
+  for (const t of ordered) { const key = localDay(t.ts); daily.set(key, (daily.get(key) || 0) + netPnl(t)); }
   const days = [...daily.entries()].sort((a, b) => a[0].localeCompare(b[0]));
   const maxAbs = Math.max(...days.map(([, v]) => Math.abs(v)), 1);
   document.getElementById('dailyPnlValue').textContent = days.length ? fmtUsd(days.reduce((sum, [, v]) => sum + v, 0)) : '--';
@@ -133,8 +136,8 @@ function renderPnlCalendar() {
   document.getElementById('calendarLabel').textContent = calendarMonth.toLocaleString(undefined, { month: 'long', year: 'numeric' }).toUpperCase();
   const totals = new Map();
   for (const t of calendarRows) {
-    const key = new Date(t.ts).toISOString().slice(0, 10);
-    totals.set(key, (totals.get(key) || 0) + t.pnl - Math.abs(t.fee));
+    const key = localDay(t.ts);
+    totals.set(key, (totals.get(key) || 0) + netPnl(t));
   }
   const firstDay = (new Date(year, month, 1).getDay() + 6) % 7;
   const days = new Date(year, month + 1, 0).getDate();
@@ -158,7 +161,8 @@ function shiftCalendar(delta) {
 function periodBounds(rows) {
   const period = document.getElementById('periodFilter').value;
   const selected = document.getElementById('dateFilter').value;
-  const anchor = selected ? new Date(selected + 'T00:00:00') : new Date(rows.length ? Math.max(...rows.map(t => t.ts)) : NaN);
+  const latest = rows.length ? Math.max(...rows.map(t => t.ts)) : NaN;
+  const anchor = new Date(selected ? selected + 'T00:00:00' : latest);
   if (!Number.isFinite(anchor.getTime())) return null;
   const start = new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate());
   let end;
@@ -172,8 +176,7 @@ function periodBounds(rows) {
 }
 
 function renderPeriodSummary(rows) {
-  const bounds = periodBounds(allRows);
-  updateSummary(bounds ? rows.filter(t => t.ts >= bounds.start && t.ts < bounds.end) : []);
+  updateSummary(rows);
 }
 
 function filterRows(rows) {
@@ -181,13 +184,21 @@ function filterRows(rows) {
   const side = document.getElementById('sideFilter').value;
   const outcome = document.getElementById('outcomeFilter').value;
   const reason = document.getElementById('reasonFilter').value;
-  return rows.filter(t => (!pair || t.inst_id === pair) && (!side || t.side === side) && (!reason || t.close_reason === reason) && (!outcome || (outcome === 'win' ? t.pnl - Math.abs(t.fee) > 0 : t.pnl - Math.abs(t.fee) <= 0)));
+  return rows.filter(t => (!pair || t.inst_id === pair) && (!side || t.side === side) && (!reason || t.close_reason === reason) && (!outcome || (outcome === 'win' ? netPnl(t) > 0 : netPnl(t) <= 0)));
+}
+
+function scopedRows(rows = allRows) {
+  const bounds = periodBounds(rows);
+  return bounds ? rows.filter(t => t.ts >= bounds.start && t.ts < bounds.end) : [];
 }
 
 function applyJournalFilters() {
   const sort = document.getElementById('sortFilter').value;
-  const tableRows = filterRows(journalRows);
-  const summaryRows = filterRows(allRows);
+  const scope = scopedRows(allRows);
+  journalRows = scope;
+  calendarRows = allRows;
+  const tableRows = filterRows(scope);
+  const summaryRows = filterRows(scope);
   tableRows.sort((a, b) => sort === 'oldest' ? a.ts - b.ts : sort === 'pnl-high' ? b.pnl - a.pnl : sort === 'pnl-low' ? a.pnl - b.pnl : b.ts - a.ts);
   renderJournalRows(tableRows);
   renderPeriodSummary(summaryRows);
@@ -234,7 +245,7 @@ function exportJournalCsv() {
   const side = document.getElementById('sideFilter').value;
   const outcome = document.getElementById('outcomeFilter').value;
   const reason = document.getElementById('reasonFilter').value;
-  const rows = filterRows(journalRows);
+  const rows = filterRows(scopedRows(allRows));
   const cell = value => '"' + String(value ?? '').replace(/"/g, '""') + '"';
   const csv = [['Close Time', 'Pair', 'Side', 'Position Side', 'Quantity', 'Entry Price', 'Exit Price', 'Duration Minutes', 'Commission', 'Gross PnL', 'Net PnL', 'Close Reason'], ...rows.map(t => [new Date(t.ts).toISOString(), t.inst_id, t.side.toUpperCase(), t.pos_side, t.size, t.entryPrice, t.exitPrice, Math.max(0, t.ts - t.entryTime) / 60000, t.fee, t.pnl, t.pnl - Math.abs(t.fee), t.close_reason])].map(row => row.map(cell).join(',')).join('\n');
   const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
@@ -358,7 +369,6 @@ async function loadHistory() {
     const raw = await api('/binance-history');
     allRows = raw?.ok ? rawHistoryRows(raw) : [];
   }
-  calendarRows = allRows;
   const tbody = document.getElementById('tradeBody');
   if (!allRows.length) {
     tbody.innerHTML = '<tr><td colspan="14" class="journal-empty">No completed trades found</td></tr>';
@@ -368,19 +378,18 @@ async function loadHistory() {
   }
   const start = date ? new Date(date + 'T00:00:00').getTime() : -Infinity;
   const end = date ? start + 86400000 : Infinity;
-  const rows = allRows.filter(t => t.ts >= start && t.ts < end);
-  journalRows = rows;
+  if (date) document.getElementById('dateFilter').value = date;
   populatePairFilter(allRows);
-  renderPerformanceCharts(rows);
-  renderPnlCalendar();
   applyJournalFilters();
+  renderPerformanceCharts(scopedRows(allRows));
+  renderPnlCalendar();
 }
 
 function updateSummary(trades) {
   document.getElementById('sumTrades').textContent = trades.length;
   let totalPnl = 0, totalFee = 0, totalFunding = 0, totalSlip = 0, wins = 0, grossProfit = 0, grossLoss = 0;
   for (const t of trades) {
-    const net = t.pnl - Math.abs(t.fee) - Math.abs(t.slippage);
+    const net = netPnl(t);
     totalPnl += net;
     totalFee += Math.abs(t.fee);
     totalFunding += Math.abs(Number(t.funding || 0));
@@ -413,7 +422,7 @@ async function logout() {
 document.getElementById('closeTradeDetail').addEventListener('click', () => { document.getElementById('tradeDetail').hidden = true; });
 
 ['pairFilter', 'sideFilter', 'outcomeFilter', 'reasonFilter', 'sortFilter'].forEach(id => document.getElementById(id).addEventListener('change', applyJournalFilters));
-document.getElementById('periodFilter').addEventListener('change', () => renderPeriodSummary(filterRows(allRows)));
+document.getElementById('periodFilter').addEventListener('change', () => { applyJournalFilters(); renderPerformanceCharts(scopedRows(allRows)); renderPnlCalendar(); });
 document.getElementById('dateFilter').addEventListener('change', loadHistory);
 document.getElementById('calendarPrev').addEventListener('click', () => shiftCalendar(-1));
 document.getElementById('calendarNext').addEventListener('click', () => shiftCalendar(1));

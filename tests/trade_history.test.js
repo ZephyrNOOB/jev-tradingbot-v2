@@ -26,7 +26,10 @@ test('period selector scopes overview by anchor while date remains table filter'
   assert.match(source, /case 'weekly': start\.setDate\(start\.getDate\(\) - \(start\.getDay\(\) \+ 6\) % 7\)/);
   assert.match(source, /case 'monthly': start\.setDate\(1\); end = new Date\(start\.getFullYear\(\), start\.getMonth\(\) \+ 1, 1\)/);
   assert.match(source, /case 'yearly': start\.setMonth\(0, 1\); end = new Date\(start\.getFullYear\(\) \+ 1, 0, 1\)/);
-  assert.match(source, /updateSummary\(bounds \? rows\.filter\(t => t\.ts >= bounds\.start && t\.ts < bounds\.end\) : \[\]\)/);
+  assert.match(source, /const anchor = new Date\(selected \? selected \+ 'T00:00:00' : latest\)/);
+  assert.match(source, /const scope = scopedRows\(allRows\)/);
+  assert.match(source, /updateSummary\(rows\)/);
+  assert.match(source, /function netPnl\(t\)/);
   assert.match(source, /renderJournalRows\(tableRows\)/);
   assert.match(source, /renderPeriodSummary\(summaryRows\)/);
   assert.doesNotMatch(source, /renderPeriodSummary\(filterRows\(journalRows\)\)/);

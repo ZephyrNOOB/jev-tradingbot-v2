@@ -815,9 +815,9 @@ function reconcilePendingClosedLifecycles(userId, openOrders) {
     run('UPDATE execution_lifecycles SET position_status=?, close_reason=?, completed_at=?, updated_at=? WHERE user_id=? AND thesis_key=? AND position_status=\'CLOSED\'', [restored.position_status, restored.close_reason, restored.completed_at, Date.now(), userId, lifecycle.thesis_key]);
   }
 }
-function reconcileManualClosedLifecycles(userId, positions, tradesBySymbol = {}) {
+function reconcileManualClosedLifecycles(userId, positions, tradesBySymbol = {}, options = {}) {
   const openSymbols = new Set(positions.filter(position => Number(position.positionAmt) !== 0).map(position => position.symbol));
-  for (const lifecycle of all('SELECT * FROM execution_lifecycles WHERE user_id = ? AND position_status = \'OPEN\' AND entry_status = \'FILLED\'', [userId])) {
+  for (const lifecycle of all("SELECT * FROM execution_lifecycles WHERE user_id = ? AND entry_status = 'FILLED' AND position_status IN ('OPEN','CLOSED')", [userId])) {
     let candidate = null;
     try { candidate = lifecycle.candidate_json ? JSON.parse(lifecycle.candidate_json) : null; } catch {}
     const entrySide = String(candidate?.side || '').toUpperCase();
@@ -829,10 +829,19 @@ function reconcileManualClosedLifecycles(userId, positions, tradesBySymbol = {})
     const closeQty = closeTrades.reduce((sum, trade) => sum + Number(trade.qty || 0), 0);
     const exchangeClose = closeQty + 1e-12 >= entryQty ? closeTrades[closeTrades.length - 1] : null;
     if (openSymbols.has(lifecycle.symbol) || !exchangeClose) continue;
+    const completedAt = Number(exchangeClose.time);
+    if (!Number.isFinite(completedAt) || completedAt <= 0) continue;
     const now = Date.now();
-    run('UPDATE execution_lifecycles SET position_status=\'CLOSED\', close_reason=\'MANUAL\', exit_order_id=?, updated_at=?, completed_at=? WHERE user_id=? AND thesis_key=? AND position_status=\'OPEN\'', [exchangeClose ? String(exchangeClose.orderId || '') : null, now, now, userId, lifecycle.thesis_key]);
-    run('UPDATE trade_history SET status=\'CLOSED\', close_reason=\'MANUAL\', exit_order_id=?, completed_at=? WHERE user_id=? AND (thesis_key=? OR client_order_id=?) AND status != \'CLOSED\'', [exchangeClose ? String(exchangeClose.orderId || '') : null, now, userId, lifecycle.thesis_key, lifecycle.client_order_id]);
-    queueTelegramExecution(userId, () => sendTelegram(
+    if (lifecycle.position_status === 'CLOSED') {
+      if (lifecycle.completed_at !== completedAt) {
+        run('UPDATE execution_lifecycles SET completed_at=?, updated_at=? WHERE user_id=? AND thesis_key=? AND position_status=\'CLOSED\'', [completedAt, now, userId, lifecycle.thesis_key]);
+        run('UPDATE trade_history SET completed_at=? WHERE user_id=? AND (thesis_key=? OR client_order_id=?)', [completedAt, userId, lifecycle.thesis_key, lifecycle.client_order_id]);
+      }
+      continue;
+    }
+    run('UPDATE execution_lifecycles SET position_status=\'CLOSED\', close_reason=\'MANUAL\', exit_order_id=?, updated_at=?, completed_at=? WHERE user_id=? AND thesis_key=? AND position_status=\'OPEN\'', [String(exchangeClose.orderId || ''), now, completedAt, userId, lifecycle.thesis_key]);
+    run('UPDATE trade_history SET status=\'CLOSED\', close_reason=\'MANUAL\', exit_order_id=?, completed_at=? WHERE user_id=? AND (thesis_key=? OR client_order_id=?) AND status != \'CLOSED\'', [String(exchangeClose.orderId || ''), completedAt, userId, lifecycle.thesis_key, lifecycle.client_order_id]);
+    if (options.notify !== false) queueTelegramExecution(userId, () => sendTelegram(
       'JEV CLOSE\nPair: ' + lifecycle.symbol + '\nReason: MANUAL\nStatus: CLOSED',
       'CLOSE:' + lifecycle.symbol + ':' + lifecycle.thesis_key + ':MANUAL', userId
     ));
@@ -1537,14 +1546,24 @@ app.get('/api/binance-history', auth, async (req, res) => {
 });
 
 app.get('/api/history', auth, async (req, res) => {
-  try { await syncTradeHistory(req.userId); } catch {}
+  try {
+    await syncTradeHistory(req.userId);
+    const key = get("SELECT * FROM api_keys WHERE user_id = ? AND exchange = 'binanceTestnet' AND status = 'connected' ORDER BY id DESC LIMIT 1", [req.userId]);
+    if (key) {
+      const apiKey = decryptSecret(key.api_key), secret = decryptSecret(key.secret_key);
+      const signed = (method, apiPath, params = {}) => signedBinanceRequest(apiKey, secret, method, apiPath, params);
+      const positions = await signed('GET', '/fapi/v2/positionRisk');
+      const exchangeTrades = Object.fromEntries(await Promise.all(SUPPORTED_SYMBOLS.map(async symbol => [symbol, await signed('GET', '/fapi/v1/userTrades', { symbol, limit: '100' })])));
+      if (Array.isArray(positions) && Object.values(exchangeTrades).every(Array.isArray)) reconcileManualClosedLifecycles(req.userId, positions, exchangeTrades, { notify: false });
+    }
+  } catch {}
   const date = req.query.date;
   let sql = "SELECT * FROM trade_history WHERE user_id = ? AND status = 'CLOSED' AND entry_order_id IS NOT NULL AND exit_order_id IS NOT NULL";
   const params = [req.userId];
   if (date) {
     const start = new Date(date + 'T00:00:00').getTime();
     const end = start + 86400000;
-    sql += ' AND ts >= ? AND ts < ?';
+    sql += ' AND completed_at >= ? AND completed_at < ?';
     params.push(start, end);
   }
   sql += ' ORDER BY ts DESC LIMIT 500';
