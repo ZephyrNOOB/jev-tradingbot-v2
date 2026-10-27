@@ -19,6 +19,7 @@ import { runStartupRecovery as selectAndRunStartupRecovery } from './v2/scripts/
 import { startBinanceMarketStream, getBinanceStreamPrices, getBinanceStreamCandles, getBinanceStreamState, onClosedCandle } from './v2/scripts/binance_market_stream.js';
 import { startBinanceUserStream, stopBinanceUserStream, getBinanceUserStreamState } from './v2/scripts/binance_user_stream.js';
 import { closeReasonFromClientOrderId } from './v2/scripts/telegram_execution.js';
+import { formatPlanReady, formatExecution, formatClose } from './v2/scripts/telegram_format.js';
 import { restorePendingLifecycle } from './v2/scripts/pending_lifecycle_recovery.js';
 import { findActiveSessionId } from './v2/scripts/recovery_session.js';
 import { appendLossTrade } from './v2/scripts/loss_trade_logger.js';
@@ -177,29 +178,15 @@ function notifyTelegramExecution(event, userId) {
     try { candidateSide = String(JSON.parse(lifecycle?.candidate_json || '{}').side || '').toUpperCase(); } catch {}
     const manualClose = Boolean(lifecycle && candidateSide && String(order.S || '').toUpperCase() !== candidateSide);
     if (manualClose) {
-      await sendTelegram(
-        'JEV CLOSE\\nPair: ' + (order.s || '-') + '\\nReason: MANUAL' +
-        '\\nOrderID: ' + order.i + '\\nPrice: ' + (order.ap || '-') +
-        '\\nQty: ' + (order.z || '-') + '\\nStatus: CLOSED',
-        'CLOSE:' + order.s + ':' + (lifecycle?.thesis_key || order.i) + ':MANUAL', userId
-      );
+      await sendTelegram(formatClose({ symbol: order.s, reason: 'MANUAL', orderId: order.i, price: order.ap, qty: order.z }), 'CLOSE:' + order.s + ':' + (lifecycle?.thesis_key || order.i) + ':MANUAL', userId);
       return;
     }
     if (closeReason) {
-      await sendTelegram(
-        'JEV CLOSE\\nPair: ' + (order.s || '-') + '\\nReason: ' + closeReason +
-        '\\nOrderID: ' + order.i + '\\nPrice: ' + (order.ap || '-') +
-        '\\nQty: ' + (order.z || '-') + '\\nStatus: CLOSED',
-        'CLOSE:' + order.s + ':' + order.i + ':' + closeReason, userId
-      );
+      await sendTelegram(formatClose({ symbol: order.s, reason: closeReason, orderId: order.i, price: order.ap, qty: order.z }), 'CLOSE:' + order.s + ':' + order.i + ':' + closeReason, userId);
       return;
     }
     const key = 'EXEC:' + order.s + ':' + order.i + ':FILLED';
-    await sendTelegram(
-      'JEV EXECUTION\nPair: ' + (order.s || '-') + '\nSide: ' + (order.S || '-') +
-      '\nOrderID: ' + order.i + '\nPrice: ' + (order.ap || '-') +
-      '\nQty: ' + (order.z || '-') + '\nStatus: FILLED', key, userId
-    );
+    await sendTelegram(formatExecution({ symbol: order.s, side: order.S, orderId: order.i, price: order.ap, qty: order.z }), key, userId);
   });
 }
 
@@ -842,7 +829,7 @@ function reconcileManualClosedLifecycles(userId, positions, tradesBySymbol = {},
     run('UPDATE execution_lifecycles SET position_status=\'CLOSED\', close_reason=\'MANUAL\', exit_order_id=?, updated_at=?, completed_at=? WHERE user_id=? AND thesis_key=? AND position_status=\'OPEN\'', [String(exchangeClose.orderId || ''), now, completedAt, userId, lifecycle.thesis_key]);
     run('UPDATE trade_history SET status=\'CLOSED\', close_reason=\'MANUAL\', exit_order_id=?, completed_at=? WHERE user_id=? AND (thesis_key=? OR client_order_id=?) AND status != \'CLOSED\'', [String(exchangeClose.orderId || ''), completedAt, userId, lifecycle.thesis_key, lifecycle.client_order_id]);
     if (options.notify !== false) queueTelegramExecution(userId, () => sendTelegram(
-      'JEV CLOSE\nPair: ' + lifecycle.symbol + '\nReason: MANUAL\nStatus: CLOSED',
+      formatClose({ symbol: lifecycle.symbol, reason: 'MANUAL', orderId: exchangeClose.orderId, price: exchangeClose.price, qty: exchangeClose.qty }),
       'CLOSE:' + lifecycle.symbol + ':' + lifecycle.thesis_key + ':MANUAL', userId
     ));
   }
@@ -1023,7 +1010,7 @@ async function executeDemoCandidate(req, res) {
       return res.status(409).json({ ok: false, demoOnly: true, status: 'FILLED_THESIS_INVALIDATED_POSITION_CLOSED', entry: current, emergencyClose, ordersSent: true, withdrawalsSent: false });
     }
     const execDedup = 'EXEC:' + candidate.symbol + ':' + current.orderId + ':FILLED';
-    sendTelegram('<b>JEV EXECUTION</b>\nPair: ' + candidate.symbol + '\nSide: ' + (candidate.side || '-') + '\nOrderID: ' + current.orderId + '\nPrice: ' + (current.avgPrice || current.price || '-') + '\nQty: ' + (current.executedQty || '-') + '\nStatus: FILLED', execDedup, req.userId);
+    sendTelegram(formatExecution({ symbol: candidate.symbol, side: candidate.side, orderId: current.orderId, price: current.avgPrice || current.price, qty: current.executedQty }), execDedup, req.userId);
     const protectionOrdersAfterFill = buildProtectionOrders(candidate, sizing, precision, current.avgPrice || current.price);
     let protectionAfterFill = [];
     if (protectionOrdersAfterFill.status !== 'READY_AFTER_ENTRY_FILL') {
@@ -1099,7 +1086,7 @@ async function runExecutionCycle(userId) {
     const freshness = validateCandidateFreshness(artifact, candidate);
     if (!freshness.ok || candidate.status !== 'APPROVED_FOR_EXECUTION') return;
     const planDedup = 'PLAN:' + candidate.symbol + ':' + candidate.client_order_id;
-    sendTelegram('JEV PLAN READY\nPair: ' + candidate.symbol + '\nSetup: ' + (candidate.setup_id || '-') + '\nSide: ' + (candidate.side || '-') + '\nEntry: ' + (candidate.entry || '-') + '\nSL: ' + (candidate.sl || '-') + '\nTP: ' + (candidate.tp || '-') + '\nStatus: APPROVED\nExecution: runner submitting to Binance', planDedup, userId);
+    sendTelegram(formatPlanReady({ symbol: candidate.symbol, setupId: candidate.setup_id, side: candidate.side, entry: candidate.entry, sl: candidate.sl, tp: candidate.tp }), planDedup, userId);
     if (botStates.get(userId) !== true) return;
     const key = userId + ":" + candidate.client_order_id;
     const prior = demoExecutionSummaries.get(key);
