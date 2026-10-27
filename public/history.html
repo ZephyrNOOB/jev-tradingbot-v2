@@ -92,7 +92,7 @@ async function api(path, opts = {}) {
   return r.json();
 }
 
-function fmt(n, d = 4) { return Number(n || 0).toFixed(d); }
+function fmt(n, d = 4) { return n == null || n === '' ? '--' : Number(n).toFixed(d); }
 function fmtUsd(n) { return (n >= 0 ? '+' : '') + Number(n || 0).toFixed(2); }
 function fmtUsdPrecise(n) { const value = Number(n || 0); return (value >= 0 ? '+' : '') + (Math.abs(value) < 0.01 && value !== 0 ? value.toFixed(4) : value.toFixed(2)); }
 function esc(v) { return String(v ?? '--').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -155,32 +155,26 @@ function shiftCalendar(delta) {
 }
 
 
-function renderPeriodSummary(rows) {
+function periodBounds(rows) {
   const period = document.getElementById('periodFilter').value;
-  const groups = new Map();
-  for (const trade of rows) {
-    const d = new Date(trade.ts);
-    let key;
-    if (period === 'yearly') key = String(d.getFullYear());
-    else if (period === 'monthly') key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-    else if (period === 'weekly') { const monday = new Date(d); monday.setHours(0, 0, 0, 0); monday.setDate(d.getDate() - ((d.getDay() + 6) % 7)); key = monday.toISOString().slice(0, 10); }
-    else key = d.toISOString().slice(0, 10);
-    const group = groups.get(key) || { pnl: 0, wins: 0, profit: 0, loss: 0, trades: 0 };
-    const net = trade.pnl - Math.abs(trade.fee) - Math.abs(trade.slippage);
-    group.trades++; group.pnl += net;
-    if (net > 0) { group.wins++; group.profit += net; } else if (net < 0) group.loss += Math.abs(net);
-    groups.set(key, group);
+  const selected = document.getElementById('dateFilter').value;
+  const anchor = selected ? new Date(selected + 'T00:00:00') : new Date(rows.length ? Math.max(...rows.map(t => t.ts)) : NaN);
+  if (!Number.isFinite(anchor.getTime())) return null;
+  const start = new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate());
+  let end;
+  switch (period) {
+    case 'weekly': start.setDate(start.getDate() - (start.getDay() + 6) % 7); end = new Date(start.getFullYear(), start.getMonth(), start.getDate() + 7); break;
+    case 'monthly': start.setDate(1); end = new Date(start.getFullYear(), start.getMonth() + 1, 1); break;
+    case 'yearly': start.setMonth(0, 1); end = new Date(start.getFullYear() + 1, 0, 1); break;
+    default: end = new Date(start.getFullYear(), start.getMonth(), start.getDate() + 1);
   }
-  const summary = [...groups.values()].reduce((total, g) => { total.trades += g.trades; total.wins += g.wins; total.pnl += g.pnl; total.profit += g.profit; total.loss += g.loss; return total; }, { trades: 0, wins: 0, pnl: 0, profit: 0, loss: 0 });
-  updateSummary(rows);
-  document.getElementById('sumTrades').textContent = summary.trades;
-  document.getElementById('sumPnl').textContent = fmtUsd(summary.pnl);
-  document.getElementById('sumWr').textContent = summary.trades ? ((summary.wins / summary.trades) * 100).toFixed(1) + '%' : '--%';
-  document.getElementById('sumPf').textContent = summary.loss ? (summary.profit / summary.loss).toFixed(2) : (summary.profit ? '∞' : '--');
-  document.getElementById('sumAvgWin').textContent = summary.wins ? fmtUsd(summary.profit / summary.wins) : '--';
-  document.getElementById('sumAvgLoss').textContent = summary.loss ? fmtUsd(-summary.loss / (summary.trades - summary.wins)) : '--';
-  document.getElementById('sumExpectancy').textContent = summary.trades ? fmtUsd(summary.pnl / summary.trades) : '--';
- }
+  return { start: start.getTime(), end: end.getTime() };
+}
+
+function renderPeriodSummary(rows) {
+  const bounds = periodBounds(allRows);
+  updateSummary(bounds ? rows.filter(t => t.ts >= bounds.start && t.ts < bounds.end) : []);
+}
 
 function filterRows(rows) {
   const pair = document.getElementById('pairFilter').value;
@@ -192,13 +186,13 @@ function filterRows(rows) {
 
 function applyJournalFilters() {
   const sort = document.getElementById('sortFilter').value;
-  const rows = filterRows(journalRows);
-  const periodRows = rows.slice();
-  rows.sort((a, b) => sort === 'oldest' ? a.ts - b.ts : sort === 'pnl-high' ? b.pnl - a.pnl : sort === 'pnl-low' ? a.pnl - b.pnl : b.ts - a.ts);
-  renderJournalRows(rows);
-  renderPeriodSummary(periodRows);
+  const tableRows = filterRows(journalRows);
+  const summaryRows = filterRows(allRows);
+  tableRows.sort((a, b) => sort === 'oldest' ? a.ts - b.ts : sort === 'pnl-high' ? b.pnl - a.pnl : sort === 'pnl-low' ? a.pnl - b.pnl : b.ts - a.ts);
+  renderJournalRows(tableRows);
+  renderPeriodSummary(summaryRows);
   document.querySelectorAll('#tradeBody tr[data-trade-index]').forEach(row => {
-    const open = () => renderTradeDetail(rows[Number(row.dataset.tradeIndex)]);
+    const open = () => renderTradeDetail(tableRows[Number(row.dataset.tradeIndex)]);
     row.addEventListener('click', open);
     row.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); open(); } });
   });
@@ -219,7 +213,7 @@ function renderJournalRows(rows) {
     const duration = durationMs >= 3600000 ? (durationMs / 3600000).toFixed(1) + 'h' : (durationMs / 60000).toFixed(0) + 'm';
     const sideBadge = t.side === 'buy' ? '<span class="badge badge-long">BUY</span>' : '<span class="badge badge-short">SELL</span>';
     const pnlNet = t.pnl - Math.abs(t.fee);
-    return `<tr tabindex="0" data-trade-index="${index}" aria-label="Open trade detail for ${esc(t.inst_id)}"> <td>${esc(time)}</td><td style="font-weight:600">${esc(t.inst_id)}</td><td>${sideBadge}</td><td>${esc(t.pos_side)}</td><td>${fmt(t.size)}</td><td>${fmt(t.entryPrice, 2)}</td><td>${fmt(t.exitPrice, 2)}</td><td>${esc(duration)}</td><td style="color:var(--red)">${fmt(t.fee)}</td><td>0.0000</td><td>0.0000</td><td class="${t.pnl >= 0 ? 'pos' : 'neg'}">${fmtUsd(t.pnl)}</td><td class="${pnlNet >= 0 ? 'pos' : 'neg'}" style="font-weight:700">${fmtUsd(pnlNet)}</td><td><span class="journal-reason ${t.close_reason === 'MANUAL' ? 'journal-reason-manual' : ''}">${esc(t.close_reason)}</span></td></tr>`;
+    return `<tr tabindex="0" data-trade-index="${index}" aria-label="Open trade detail for ${esc(t.inst_id)}"> <td>${esc(time)}</td><td style="font-weight:600">${esc(t.inst_id)}</td><td>${sideBadge}</td><td>${esc(t.pos_side)}</td><td>${fmt(t.size)}</td><td>${fmt(t.entryPrice, 2)}</td><td>${fmt(t.exitPrice, 2)}</td><td>${esc(duration)}</td><td style="color:var(--red)">${fmt(t.fee)}</td><td>${fmt(t.funding)}</td><td>${fmt(t.slippage)}</td><td class="${t.pnl >= 0 ? 'pos' : 'neg'}">${fmtUsd(t.pnl)}</td><td class="${pnlNet >= 0 ? 'pos' : 'neg'}" style="font-weight:700">${fmtUsd(pnlNet)}</td><td><span class="journal-reason ${t.close_reason === 'MANUAL' ? 'journal-reason-manual' : ''}">${esc(t.close_reason)}</span></td></tr>`;
   }).join('') : '<tr><td colspan="14" class="journal-empty">No trades match filters</td></tr>';
 }
 
@@ -308,37 +302,75 @@ function completedBinanceTrades(data) {
   return completed;
 }
 
+function normalizeHistoryRows(rows) {
+  const canonical = rows.map(t => ({
+    source: t,
+    ts: Number(t.completed_at || 0), inst_id: t.inst_id, side: String(t.side || '').toLowerCase(), pos_side: t.pos_side || 'BOTH',
+    size: Number(t.size || 0), entryPrice: Number(t.price || 0), exitPrice: null, entryTime: Number(t.ts || 0),
+    entryOrderId: t.entry_order_id || null, exitOrderId: t.exit_order_id || null, fee: Number(t.fee || 0),
+    funding: Number(t.funding || 0), funding_rate: Number(t.funding_rate || 0), slippage: Number(t.slippage || 0),
+    pnl: Number(t.pnl || 0), close_reason: t.close_reason || 'MANUAL'
+  })).filter(t => t.inst_id && t.ts && t.entryOrderId && t.exitOrderId);
+  return [...new Map(canonical.map(t => [`${t.entryOrderId}|${t.exitOrderId}`, t])).values()];
+}
+
+function enrichHistoryRows(rows, data) {
+  const trades = new Map((data?.trades || []).map(t => [String(t.orderId || ''), t]));
+  const income = new Map();
+  for (const item of data?.income || []) if (item.incomeType === 'FUNDING_FEE' && item.orderId) income.set(String(item.orderId), (income.get(String(item.orderId)) || 0) + Number(item.income || 0));
+  return rows.map(row => {
+    const entry = trades.get(String(row.entryOrderId));
+    const exit = trades.get(String(row.exitOrderId));
+    if (!exit) return row;
+    const pnl = Number(exit.realizedPnl);
+    return {
+      ...row,
+      entryPrice: entry ? Number(entry.price || row.entryPrice) : row.entryPrice,
+      exitPrice: Number(exit.price),
+      size: Number(exit.qty || row.size),
+      fee: (entry ? Number(entry.commission || 0) : 0) + Number(exit.commission || 0),
+      funding: income.get(String(row.exitOrderId)) || row.funding,
+      pnl: Number.isFinite(pnl) ? pnl : row.pnl,
+      entryTime: entry ? Number(entry.time || row.entryTime) : row.entryTime
+    };
+  });
+}
+
+function rawHistoryRows(data) {
+  return completedBinanceTrades(data).map(({ entry, close, closeQty, reason }) => ({
+    ts: Number(close.time || 0), inst_id: close.symbol, side: String(entry.side || '').toLowerCase(), pos_side: entry.positionSide || 'BOTH', size: closeQty,
+    entryPrice: Number(entry.price || 0), exitPrice: Number(close.price || 0), entryTime: Number(entry.time || 0),
+    entryOrderId: entry.orderId || entry.clientOrderId || '--', exitOrderId: close.orderId || close.clientOrderId || '--',
+    fee: Number(entry.commission || 0) + Number(close.commission || 0), funding: 0, funding_rate: 0,
+    slippage: 0, pnl: Number(close.realizedPnl || 0), close_reason: reason
+  }));
+}
+
 async function loadHistory() {
   const date = document.getElementById('dateFilter').value;
   const loading = document.getElementById('tradeBody');
   loading.innerHTML = '<tr><td colspan="14" class="journal-empty">Loading completed trades...</td></tr>';
-  const data = await api('/binance-history');
-  if (!data?.ok) {
-    loading.innerHTML = '<tr><td colspan="14" class="journal-empty">Unable to load completed trades</td></tr>';
-    return;
+  const normalized = await api('/history');
+  if (Array.isArray(normalized)) {
+    const raw = await api('/binance-history');
+    allRows = enrichHistoryRows(normalizeHistoryRows(normalized), raw?.ok ? raw : null);
+  } else {
+    const raw = await api('/binance-history');
+    allRows = raw?.ok ? rawHistoryRows(raw) : [];
   }
-  const completed = completedBinanceTrades(data);
-  allRows = completed.map(({ entry, close, closeQty, reason }) => ({
-    ts: close.time, inst_id: close.symbol, side: String(entry.side || '').toLowerCase(), pos_side: entry.positionSide || 'BOTH', size: closeQty,
-    entryPrice: Number(entry.price || 0), exitPrice: Number(close.price || 0), entryTime: Number(entry.time || 0),
-    entryOrderId: entry.orderId || entry.clientOrderId || '--', exitOrderId: close.orderId || close.clientOrderId || '--',
-    fee: Number(entry.commission || 0) + Number(close.commission || 0), funding_rate: 0,
-    slippage: 0, pnl: Number(close.realizedPnl || 0), close_reason: reason
-  }));
   calendarRows = allRows;
   const tbody = document.getElementById('tradeBody');
-  if (!completed.length) {
-    tbody.innerHTML = '<tr><td colspan="14" class="journal-empty">No completed Binance trades found</td></tr>';
+  if (!allRows.length) {
+    tbody.innerHTML = '<tr><td colspan="14" class="journal-empty">No completed trades found</td></tr>';
     journalRows = [];
-    renderPerformanceCharts([]);
-    renderPeriodSummary([]);
-    renderPnlCalendar();
-    updateSummary([]);
+    renderPerformanceCharts([]); renderPeriodSummary([]); renderPnlCalendar();
     return;
   }
-  const rows = allRows.filter(t => !date || (Number(t.ts || 0) >= new Date(date + 'T00:00:00').getTime() && Number(t.ts || 0) < new Date(date + 'T00:00:00').getTime() + 86400000));
+  const start = date ? new Date(date + 'T00:00:00').getTime() : -Infinity;
+  const end = date ? start + 86400000 : Infinity;
+  const rows = allRows.filter(t => t.ts >= start && t.ts < end);
   journalRows = rows;
-  populatePairFilter(rows);
+  populatePairFilter(allRows);
   renderPerformanceCharts(rows);
   renderPnlCalendar();
   applyJournalFilters();
@@ -351,7 +383,7 @@ function updateSummary(trades) {
     const net = t.pnl - Math.abs(t.fee) - Math.abs(t.slippage);
     totalPnl += net;
     totalFee += Math.abs(t.fee);
-    totalFunding += Math.abs(t.funding_rate * t.size * t.price);
+    totalFunding += Math.abs(Number(t.funding || 0));
     totalSlip += Math.abs(t.slippage);
     if (net > 0) { wins++; grossProfit += net; }
     else if (net < 0) grossLoss += Math.abs(net);
@@ -381,13 +413,12 @@ async function logout() {
 document.getElementById('closeTradeDetail').addEventListener('click', () => { document.getElementById('tradeDetail').hidden = true; });
 
 ['pairFilter', 'sideFilter', 'outcomeFilter', 'reasonFilter', 'sortFilter'].forEach(id => document.getElementById(id).addEventListener('change', applyJournalFilters));
-document.getElementById('periodFilter').addEventListener('change', () => renderPeriodSummary(filterRows(journalRows)));
+document.getElementById('periodFilter').addEventListener('change', () => renderPeriodSummary(filterRows(allRows)));
 document.getElementById('dateFilter').addEventListener('change', loadHistory);
 document.getElementById('calendarPrev').addEventListener('click', () => shiftCalendar(-1));
 document.getElementById('calendarNext').addEventListener('click', () => shiftCalendar(1));
 renderPnlCalendar();
-// Set today as default
- document.getElementById('dateFilter').value = new Date().toISOString().split('T')[0];
+// Blank date keeps full normalized history visible.
 const activeView = initialView === 'binance' ? 'binance' : 'jev';
 if (initialView !== 'jev' && initialView !== 'binance') history.replaceState(null, '', '/history.html?view=jev');
 showHistoryTab(activeView);

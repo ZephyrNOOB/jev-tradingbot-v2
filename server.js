@@ -752,9 +752,18 @@ async function syncTradeHistory(userId) {
     const existing = get('SELECT id FROM trade_history WHERE user_id = ? AND order_id = ? LIMIT 1', [userId, orderId]);
     const duplicateTrade = tradeId ? get('SELECT id FROM trade_history WHERE user_id = ? AND trade_id = ? LIMIT 1', [userId, tradeId]) : null;
     if (duplicateTrade && !existing) continue;
+    const rootClientOrderId = String(trade.clientOrderId || '').replace(/_(?:sl|tp|ec)$/i, '');
+    const lifecycle = rootClientOrderId ? get('SELECT * FROM execution_lifecycles WHERE user_id = ? AND thesis_key = ?', [userId, rootClientOrderId]) : null;
+    const canonical = lifecycle?.entry_order_id
+      ? get("SELECT * FROM trade_history WHERE user_id = ? AND (entry_order_id = ? OR order_id = ?) AND status != 'EXCHANGE_EVIDENCE' LIMIT 1", [userId, String(lifecycle.entry_order_id), String(lifecycle.entry_order_id)])
+      : rootClientOrderId ? get("SELECT * FROM trade_history WHERE user_id = ? AND client_order_id = ? AND status != 'EXCHANGE_EVIDENCE' ORDER BY id DESC LIMIT 1", [userId, rootClientOrderId]) : null;
     const candidate = get('SELECT setup_id, structure_event_id, client_order_id, thesis_key FROM trade_history WHERE user_id = ? AND order_id = ? LIMIT 1', [userId, orderId]);
+    if (canonical && canonical.id !== existing?.id && Number(trade.realizedPnl || 0) !== 0) {
+      run('UPDATE trade_history SET fee=fee + ?, pnl=pnl + ?, status=\'CLOSED\', exit_order_id=?, completed_at=?, close_reason=? WHERE id=?', [Number(trade.commission || 0), Number(trade.realizedPnl || 0), orderId, Number(trade.time || Date.now()), closeReasonFromClientOrderId(trade.clientOrderId) || 'EXCHANGE_CLOSE', canonical.id]);
+      run('UPDATE execution_lifecycles SET position_status=\'CLOSED\', exit_order_id=?, close_reason=?, completed_at=?, updated_at=? WHERE user_id=? AND thesis_key=?', [orderId, closeReasonFromClientOrderId(trade.clientOrderId) || 'EXCHANGE_CLOSE', Number(trade.time || Date.now()), Date.now(), userId, lifecycle.thesis_key]);
+    }
     if (existing) {
-      run('UPDATE trade_history SET trade_id=?, fee=?, pnl=?, raw_json=?, client_order_id=COALESCE(NULLIF(client_order_id, \'\'), ?), setup_id=COALESCE(NULLIF(setup_id, \'\'), ?), structure_event_id=COALESCE(NULLIF(structure_event_id, \'\'), ?), thesis_key=COALESCE(NULLIF(thesis_key, \'\'), ?) WHERE id=?', [tradeId, Number(trade.commission || 0), Number(trade.realizedPnl || 0), JSON.stringify(trade), candidate?.client_order_id || trade.clientOrderId || '', candidate?.setup_id || '', candidate?.structure_event_id || '', candidate?.thesis_key || '', existing.id]);
+      run('UPDATE trade_history SET trade_id=?, fee=?, pnl=?, raw_json=?, status=CASE WHEN status=\'CLOSED\' AND entry_order_id IS NULL THEN \'EXCHANGE_EVIDENCE\' ELSE status END, client_order_id=COALESCE(NULLIF(client_order_id, \'\'), ?), setup_id=COALESCE(NULLIF(setup_id, \'\'), ?), structure_event_id=COALESCE(NULLIF(structure_event_id, \'\'), ?), thesis_key=COALESCE(NULLIF(thesis_key, \'\'), ?) WHERE id=?', [tradeId, Number(trade.commission || 0), Number(trade.realizedPnl || 0), JSON.stringify(trade), candidate?.client_order_id || trade.clientOrderId || '', candidate?.setup_id || '', candidate?.structure_event_id || '', candidate?.thesis_key || '', existing.id]);
       if (Number(trade.realizedPnl || 0) < 0) {
         const root = String(trade.clientOrderId || '').replace(/_(?:sl|tp|ec)$/i, '');
         const lifecycle = get('SELECT * FROM execution_lifecycles WHERE user_id = ? AND thesis_key = ?', [userId, root]);
@@ -773,7 +782,7 @@ async function syncTradeHistory(userId) {
       }
       continue;
     }
-    run('INSERT INTO trade_history (user_id,inst_id,side,pos_side,size,price,fee,funding_rate,slippage,pnl,ts,raw_json,client_order_id,order_id,trade_id,setup_id,structure_event_id,status,thesis_key) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', [userId, symbol, String(trade.side || '').toLowerCase(), trade.positionSide || '', Number(trade.qty || 0), Number(trade.price || 0), Number(trade.commission || 0), 0, 0, Number(trade.realizedPnl || 0), Number(trade.time || Date.now()), JSON.stringify(trade), candidate?.client_order_id || trade.clientOrderId || '', orderId, tradeId, candidate?.setup_id || '', candidate?.structure_event_id || '', Number(trade.realizedPnl || 0) !== 0 ? 'CLOSED' : 'OPEN', candidate?.thesis_key || '']);
+    run('INSERT INTO trade_history (user_id,inst_id,side,pos_side,size,price,fee,funding_rate,slippage,pnl,ts,raw_json,client_order_id,order_id,trade_id,setup_id,structure_event_id,status,thesis_key) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', [userId, symbol, String(trade.side || '').toLowerCase(), trade.positionSide || '', Number(trade.qty || 0), Number(trade.price || 0), Number(trade.commission || 0), 0, 0, Number(trade.realizedPnl || 0), Number(trade.time || Date.now()), JSON.stringify(trade), candidate?.client_order_id || trade.clientOrderId || '', orderId, tradeId, candidate?.setup_id || '', candidate?.structure_event_id || '', canonical ? 'EXCHANGE_EVIDENCE' : 'EXCHANGE_EVIDENCE', candidate?.thesis_key || '']);
     if (Number(trade.realizedPnl || 0) < 0) {
       appendLossTrade(LOSS_TRADES_FILE, {
         recordedAt: new Date(Number(trade.time || Date.now())).toISOString(), userId, symbol,
@@ -1530,7 +1539,7 @@ app.get('/api/binance-history', auth, async (req, res) => {
 app.get('/api/history', auth, async (req, res) => {
   try { await syncTradeHistory(req.userId); } catch {}
   const date = req.query.date;
-  let sql = "SELECT * FROM trade_history WHERE user_id = ? AND status = 'CLOSED'";
+  let sql = "SELECT * FROM trade_history WHERE user_id = ? AND status = 'CLOSED' AND entry_order_id IS NOT NULL AND exit_order_id IS NOT NULL";
   const params = [req.userId];
   if (date) {
     const start = new Date(date + 'T00:00:00').getTime();
